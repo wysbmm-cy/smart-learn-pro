@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Brain, NotebookPen, Layers, Sparkles, X, Loader, FileText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import WordCard from '../components/WordCard';
