@@ -62,7 +62,7 @@ const UserGuideModal = ({ onClose }) => {
                             </p>
                             <ul className="list-disc pl-5 space-y-1 marker:text-amber-400">
                                 <li><strong>新词</strong>：间隔 1 天复习。</li>
-                                <li><strong>记得</strong>：间隔呈指数增长 (1 -> 3 -> 7 -> ...)。</li>
+                                <li><strong>记得</strong>：间隔呈指数增长 (1 → 3 → 7 → ...)。</li>
                                 <li><strong>忘记</strong>：重置进度，立即重新学习。</li>
                             </ul>
                         </div>
