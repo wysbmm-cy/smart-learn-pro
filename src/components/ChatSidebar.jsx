@@ -339,7 +339,7 @@ const ChatSidebar = () => {
                             if (e.key === 'Escape') setShowSuggestions(false);
                         }}
                         placeholder="Ask anything... (Type '@' to add context)"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3 text-sm text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto"
                     />
                     <button
                         onClick={handleSend}
