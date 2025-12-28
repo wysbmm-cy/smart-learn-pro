@@ -54,12 +54,14 @@ export const analyzeText = async (text, settings) => {
   // Sends text ONCE (Saving Input Tokens) and makes ONE request (Saving RPM).
 
   const vocabCount = settings.vocabCount || "10-15";
-  const analysisSystemPrompt = `
+
+  // Use custom prompt from settings, or fallback to default
+  let analysisSystemPrompt = settings.vocabAnalysisPrompt || `
   Role: Expert English Teacher.
   Task: Analyze the provided text comprehensively in one go.
   Requirements:
   1. Summary: Chinese summary + Difficulty Level.
-  2. Vocabulary: Extract ${vocabCount} key words/phrases (prioritize academic). For each: Chinese meaning, mnemonic, usage tips.
+  2. Vocabulary: Extract {{vocabCount}} key words/phrases (prioritize academic). For each: Chinese meaning, mnemonic, usage tips.
   3. Grammar: Identify 2-3 **truly advanced or noteworthy** syntactic structures (e.g., Inversion, Subjunctive, Participle Phrases, Complex Clauses). 
      *   **Ignore** simple Subject-Verb-Object sentences.
      *   Focus on sentence variety and rhetorical function.
@@ -78,6 +80,9 @@ export const analyzeText = async (text, settings) => {
     ]
   }
   `;
+
+  // Replace placeholder
+  analysisSystemPrompt = analysisSystemPrompt.replace('{{vocabCount}}', vocabCount);
 
   // Cap text to ~6000 chars to be safe for most 16k/32k context models while leaving room for output
   const safeText = text.length > 8000 ? text.substring(0, 8000) + "..." : text;

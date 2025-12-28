@@ -223,18 +223,30 @@ const SettingsView = () => {
                     <h3 className="text-lg">配置 AI 核心人设 (System Prompt)</h3>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                        System Instruction
-                    </label>
-                    <textarea
-                        value={settings.systemPrompt}
-                        onChange={(e) => updateSetting('systemPrompt', e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-slate-700 min-h-[120px]"
-                        placeholder="Define how the AI should behave..."
-                    />
-                    <p className="text-[11px] text-slate-400 mt-2">
-                        This prompt dictates the AI's personality and expertise.
-                    </p>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            System Instruction (Role Definition)
+                        </label>
+                        <textarea
+                            value={settings.systemPrompt}
+                            onChange={(e) => updateSetting('systemPrompt', e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-slate-700 min-h-[100px] mb-6"
+                            placeholder="Define how the AI should behave..."
+                        />
+
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            Vocabulary Analysis Prompt (词汇分析指令)
+                        </label>
+                        <textarea
+                            value={settings.vocabAnalysisPrompt}
+                            onChange={(e) => updateSetting('vocabAnalysisPrompt', e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-slate-600 min-h-[300px]"
+                            placeholder="Define the strict JSON output structure..."
+                        />
+                        <p className="text-[11px] text-slate-400 mt-2">
+                            <b>Tip:</b> Use <code>{'{{vocabCount}}'}</code> as a placeholder for the number required (e.g. "10-15"). Must maintain VALID JSON output structure for the app to work.
+                        </p>
+                    </div>
                 </div>
             </div>
 

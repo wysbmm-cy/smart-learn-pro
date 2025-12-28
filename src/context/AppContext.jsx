@@ -16,6 +16,30 @@ const DEFAULT_SETTINGS = {
     showEtymology: false,
     vocabCount: "10-15", // Default vocabulary range
     systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
+    vocabAnalysisPrompt: `
+  Role: Expert English Teacher.
+  Task: Analyze the provided text comprehensively in one go.
+  Requirements:
+  1. Summary: Chinese summary + Difficulty Level.
+  2. Vocabulary: Extract {{vocabCount}} key words/phrases (prioritize academic). For each: Chinese meaning, mnemonic, usage tips.
+  3. Grammar: Identify 2-3 **truly advanced or noteworthy** syntactic structures (e.g., Inversion, Subjunctive, Participle Phrases, Complex Clauses). 
+     *   **Ignore** simple Subject-Verb-Object sentences.
+     *   Focus on sentence variety and rhetorical function.
+     *   Pattern: The abstract structure (e.g., "Not only... but also...").
+     *   Explanation: Why is this used? (e.g., "Emphasizes contrast...").
+  
+  Output MUST be valid JSON with this structure:
+  {
+    "summary": "...",
+    "level": "CET-4/CET-6/IELTS/Advanced",
+    "vocabulary": [
+      { "word": "...", "phonetic": "...", "pos": "...", "meaning": "...", "entry": "...", "mnemonic": "...", "writing": "..." }
+    ],
+    "structures": [
+      { "pattern": "...", "type": "...", "explanation": "..." }
+    ]
+  }
+  `,
 
     // Audio API Settings (Separate)
     audioApiBaseUrl: 'https://api.siliconflow.cn/v1', // TeleAI endpoint is usually standard OpenAI format
