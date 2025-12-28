@@ -1,22 +1,132 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { X, Send, Bot, User, Loader2 } from 'lucide-react';
+import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { streamChatMessage } from '../services/ai';
 
 const ChatSidebar = () => {
-    const { isChatOpen, toggleChat, chatMessages, addChatMessage, updateLastChatMessage, settings } = useApp();
+    const {
+        isChatOpen, toggleChat, chatMessages, addChatMessage, updateLastChatMessage, settings,
+        loadUserNotes, loadFiles, currentArticle, analysisResult
+    } = useApp();
     const [input, setInput] = useState('');
     const [isSending, setIsSending] = useState(false);
+
+    // Suggestion State
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [suggestionQuery, setSuggestionQuery] = useState('');
+    const [suggestions, setSuggestions] = useState([]);
+    const [cursorPosition, setCursorPosition] = useState(0);
+
     const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
+    // Handle Input & Mentions
+    const handleInputChange = (e) => {
+        const val = e.target.value;
+        const pos = e.target.selectionStart;
+        setInput(val);
+        setCursorPosition(pos);
+
+        // Detect @
+        const lastAt = val.lastIndexOf('@', pos);
+        if (lastAt !== -1 && lastAt < pos) {
+            // Check if there's a space before @ (or it's start of string)
+            const charBefore = lastAt === 0 ? ' ' : val[lastAt - 1];
+            if (charBefore === ' ' || charBefore === '\n') {
+                const query = val.slice(lastAt + 1, pos);
+                if (!query.includes(' ')) { // Only allow single word search or until space? Let's allow spaces for titles.
+                    // Actually, usually suggestions close on space. But titles have spaces. 
+                    // Let's assume search until Enter or Selection.
+                    // Relaxed rule: just show if @ is detected recently.
+                    setSuggestionQuery(query);
+                    setShowSuggestions(true);
+                    fetchSuggestions(query);
+                    return;
+                }
+            }
+        }
+        setShowSuggestions(false);
+    };
+
+    const fetchSuggestions = async (query) => {
+        const q = query.toLowerCase();
+        const options = [];
+
+        // 1. Current Context
+        if (currentArticle) {
+            options.push({
+                type: 'context', id: 'current', title: 'Current Article/Analysis',
+                content: currentArticle, icon: Brain
+            });
+        }
+
+        // 2. Notes
+        const notes = await loadUserNotes();
+        notes.forEach(n => {
+            options.push({ type: 'note', id: n.id, title: n.title, content: n.content, icon: NotebookPen });
+        });
+
+        // 3. Files
+        // Files content loading is async and might be heavy. For now, maybe just offer to load?
+        // Or if we have small files. For now, let's skip files content unless we have a way to peek.
+        // Actually, files are in DB with blobs. We can't easily search content without loading.
+        // Let's just list file names, and load content on select.
+        const files = await loadFiles();
+        files.forEach(f => {
+            options.push({ type: 'file', id: f.id, title: f.name, data: f, icon: FileText }); // Pass full obj to load later
+        });
+
+        setSuggestions(options.filter(o => o.title.toLowerCase().includes(q)));
+    };
+
+    const handleSelectSuggestion = async (item) => {
+        let contentToInsert = "";
+
+        if (item.type === 'file') {
+            // Need to load file content? 
+            // Text files: read blob. 
+            // PDF: Use pdf service? (Too complex for now without import)
+            // Audio: Can't paste audio.
+            if (item.data.type.includes('text') || item.data.name.endsWith('.md')) {
+                const text = await item.data.blob.text();
+                contentToInsert = text;
+            } else {
+                contentToInsert = "[Binary File: " + item.title + "]";
+            }
+        } else {
+            contentToInsert = item.content;
+        }
+
+        // Truncate if too long? AI can handle ~100k tokens. Let's cap at 5000 chars for UI sanity.
+        if (contentToInsert.length > 2000) contentToInsert = contentToInsert.slice(0, 2000) + "...(truncated)";
+
+        const formatted = `\n> 📎 **${item.title}**\n> ${contentToInsert.replace(/\n/g, '\n> ')}\n\n`;
+
+        // Replace @query with content
+        const before = input.slice(0, input.lastIndexOf('@', cursorPosition));
+        const after = input.slice(cursorPosition);
+
+        setInput(before + formatted + after);
+        setShowSuggestions(false);
+        inputRef.current?.focus();
+    };
+
     useEffect(() => {
         scrollToBottom();
     }, [chatMessages, isChatOpen]);
+
+    // Auto-resize textarea
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto'; // Reset to calculate new height
+            inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 192) + 'px'; // Cap at max-h-48 (12rem * 16 = 192px)
+        }
+    }, [input]);
 
     const handleSend = async () => {
         if (!input.trim() || isSending) return;
@@ -60,13 +170,56 @@ const ChatSidebar = () => {
         }
     };
 
-    // if (!isChatOpen) return null; // Remove this to allow animation out
+    // Resizable Logic
+    const [width, setWidth] = useState(400); // Default width
+    const [isResizing, setIsResizing] = useState(false);
+    const sidebarRef = useRef(null);
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isResizing) return;
+            const newWidth = window.innerWidth - e.clientX;
+            if (newWidth > 300 && newWidth < 800) {
+                setWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        if (isResizing) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     return (
         <div
-            className={`border-l border-slate-200 bg-white shadow-xl transition-all duration-300 flex flex-col h-full shrink-0 ${isChatOpen ? 'w-96 translate-x-0' : 'w-0 translate-x-full border-l-0 overflow-hidden opacity-0'
+            ref={sidebarRef}
+            style={{ width: isChatOpen ? width : 0 }}
+            className={`border-l border-slate-200 bg-white shadow-xl transition-all duration-300 flex flex-col h-full shrink-0 relative ${isChatOpen ? 'translate-x-0' : 'translate-x-full border-l-0 overflow-hidden opacity-0'
                 }`}
         >
+            {/* Resize Handle */}
+            <div
+                onMouseDown={(e) => {
+                    setIsResizing(true);
+                    e.stopPropagation();
+                }}
+                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-indigo-500/20 z-50 transition-colors"
+                title="Drag to resize"
+            />
+
             {/* Header */}
             <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 bg-slate-50/50 backdrop-blur-sm">
                 <div className="flex items-center gap-2 font-bold text-slate-800">
@@ -134,19 +287,59 @@ const ChatSidebar = () => {
             </div>
 
             {/* Input */}
-            <div className="p-4 bg-white border-t border-slate-100">
+            <div className="p-4 bg-white border-t border-slate-100 relative">
+                {/* Context Menu */}
+                {showSuggestions && suggestions.length > 0 && (
+                    <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden max-h-60 overflow-y-auto animate-fade-in z-50">
+                        <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            Reference Context
+                        </div>
+                        {suggestions.map((item, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => handleSelectSuggestion(item)}
+                                className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 transition-colors border-b border-slate-50 last:border-0"
+                            >
+                                <div className={`p-1.5 rounded-lg ${item.type === 'context' ? 'bg-purple-100 text-purple-600' :
+                                    item.type === 'note' ? 'bg-blue-100 text-blue-600' :
+                                        'bg-slate-100 text-slate-600'
+                                    }`}>
+                                    <item.icon size={16} />
+                                </div>
+                                <div>
+                                    <div className="font-bold text-sm text-slate-700 truncate">{item.title}</div>
+                                    <div className="text-xs text-slate-400 truncate max-w-[200px]">
+                                        {item.type.toUpperCase()}
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 <div className="relative">
                     <textarea
+                        ref={inputRef}
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={handleInputChange}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
+                                if (showSuggestions) {
+                                    // Maybe select first? For now let's just close or send.
+                                    // Better UX: Enter selects first suggestion if open.
+                                    if (suggestions.length > 0) {
+                                        e.preventDefault();
+                                        handleSelectSuggestion(suggestions[0]);
+                                        return;
+                                    }
+                                }
                                 e.preventDefault();
                                 handleSend();
                             }
+                            if (e.key === 'Escape') setShowSuggestions(false);
                         }}
-                        placeholder="Ask anything..."
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none h-14"
+                        placeholder="Ask anything... (Type '@' to add context)"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto"
                     />
                     <button
                         onClick={handleSend}

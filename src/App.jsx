@@ -4,24 +4,38 @@ import Layout from './layouts/Layout';
 import Dashboard from './views/Dashboard';
 import ImportView from './views/ImportView';
 import StudyView from './views/StudyView';
+import HistoryView from './views/HistoryView';
+import LibraryView from './views/LibraryView';
+import NotesView from './views/NotesView';
+import FlashcardView from './views/FlashcardView';
 import SettingsView from './views/SettingsView';
 
 function AppContent() {
     const [currentView, setCurrentView] = useState('dashboard');
+    const [secondaryView, setSecondaryView] = useState('notes');
+    const [isSplit, setIsSplit] = useState(false);
 
-    const renderView = () => {
-        switch (currentView) {
+    const getViewComponent = (viewId) => {
+        switch (viewId) {
             case 'dashboard':
                 return <Dashboard onNavigate={setCurrentView} />;
             case 'import':
                 return <ImportView onAnalyzeSuccess={() => setCurrentView('study')} />;
             case 'study':
                 return <StudyView onNavigate={setCurrentView} />;
+            case 'history':
+                return <HistoryView onNavigate={setCurrentView} />;
+            case 'library':
+                return <LibraryView />;
+            case 'notes':
+                return <NotesView />;
+            case 'flashcards':
+                return <FlashcardView />;
             case 'settings':
                 return <SettingsView />;
             case 'plan':
                 return (
-                    <div className="flex items-center justify-center h-full text-slate-400 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200">
+                    <div className="flex items-center justify-center h-full text-slate-400 bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-700">
                         Work in Progress: Learning Plan Module
                     </div>
                 );
@@ -30,9 +44,21 @@ function AppContent() {
         }
     };
 
+    const handleOpenSplit = (viewId) => {
+        setSecondaryView(viewId);
+        setIsSplit(true);
+    };
+
     return (
-        <Layout currentView={currentView} setCurrentView={setCurrentView}>
-            {renderView()}
+        <Layout
+            currentView={currentView}
+            setCurrentView={setCurrentView}
+            isSplit={isSplit}
+            setIsSplit={setIsSplit}
+            onOpenSplit={handleOpenSplit}
+            secondaryContent={getViewComponent(secondaryView)}
+        >
+            {getViewComponent(currentView)}
         </Layout>
     );
 }

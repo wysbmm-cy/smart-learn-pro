@@ -1,10 +1,29 @@
 import React, { useState } from 'react';
-import { Sparkles, Zap } from 'lucide-react';
+import { Sparkles, Zap, Copy, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const WordCard = ({ wordData, isFastMode }) => {
     const { settings } = useApp();
     const [activeTab, setActiveTab] = useState('core');
+    const [isCopied, setIsCopied] = useState(false);
+
+    const handleCopy = () => {
+        const textToCopy = `
+${wordData.word} ${wordData.phonetic}
+[${wordData.pos}] ${wordData.meaning}
+Level: ${wordData.level || 'N/A'}
+
+【Review】:
+${wordData.example}
+
+${wordData.mnemonic ? `【Mnemonic】: ${wordData.mnemonic}` : ''}
+${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
+`.trim();
+
+        navigator.clipboard.writeText(textToCopy);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+    };
 
     // Logic to determine available tabs
     const availableTabs = ['core'];
@@ -19,7 +38,7 @@ const WordCard = ({ wordData, isFastMode }) => {
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6 transition-all hover:shadow-md animate-slide-up">
             {/* Header */}
-            <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-start">
+            <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-start group">
                 <div>
                     <div className="flex items-baseline gap-3 flex-wrap">
                         <h3 className="text-2xl font-bold text-slate-800">{wordData.word}</h3>
@@ -33,6 +52,14 @@ const WordCard = ({ wordData, isFastMode }) => {
                         <span className="text-slate-700">{wordData.meaning}</span>
                     </div>
                 </div>
+
+                <button
+                    onClick={handleCopy}
+                    className="p-2 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    title="Copy Word Card"
+                >
+                    {isCopied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+                </button>
             </div>
 
             {/* Tabs */}
@@ -43,8 +70,8 @@ const WordCard = ({ wordData, isFastMode }) => {
                             key={tab}
                             onClick={() => setActiveTab(tab)}
                             className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab === tab
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-slate-500 hover:text-slate-700'
                                 }`}
                         >
                             {labels[tab]}

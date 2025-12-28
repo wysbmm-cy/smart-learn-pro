@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, getAllData } from '../services/db';
 
 const AppContext = createContext();
 
@@ -13,7 +14,18 @@ const DEFAULT_SETTINGS = {
     showMnemonic: true,
     showCollocations: true,
     showEtymology: false,
-    systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience."
+    vocabCount: "10-15", // Default vocabulary range
+    systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
+
+    // Audio API Settings (Separate)
+    audioApiBaseUrl: 'https://api.siliconflow.cn/v1',
+    audioApiKey: '',
+    audioModelName: 'FunAudioLLM/SenseVoiceSmall',
+
+    // Appearance (Zen Mode)
+    backgroundImage: 'https://images.unsplash.com/photo-1497436072909-60f360e1d4b0?q=80&w=2560&auto=format&fit=crop', // Nature by default
+    glassBlur: 'md', // sm, md, lg, xl
+    glassOpacity: 0.3, // White overlay opacity
 };
 
 // Initial Mock Analysis
@@ -42,7 +54,7 @@ export const AppProvider = ({ children }) => {
     // --- Persistent Settings ---
     const [settings, setSettings] = useState(() => {
         const saved = localStorage.getItem('smartlearn_settings');
-        return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+        return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
     });
 
     // --- Persistent Stats ---
@@ -59,6 +71,49 @@ export const AppProvider = ({ children }) => {
     // --- Session State ---
     const [currentArticle, setCurrentArticle] = useState("");
     const [analysisResult, setAnalysisResult] = useState(null);
+
+    // --- Import Persistence State ---
+    const [importText, setImportText] = useState("");
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [progressMsg, setProgressMsg] = useState("");
+
+    // --- Audio Player State (Global) ---
+    const [audioState, setAudioState] = useState({
+        file: null, // { name, url, type }
+        isPlaying: false,
+        isMinimized: false
+    });
+
+    const playAudio = (file) => {
+        // If it's a new file, revoke old URL if ephemeral
+        // But here we rely on the logic passing a valid object.
+        // Usually file from DB has a blob. We need to createURL.
+        let url = file.url;
+        if (!url && file.blob) {
+            url = URL.createObjectURL(file.blob);
+        }
+
+        setAudioState({
+            file: { ...file, url },
+            isPlaying: true,
+            isMinimized: false
+        });
+    };
+
+    const closeAudio = () => {
+        setAudioState(prev => {
+            if (prev.file && prev.file.url) {
+                // If we created it, revoke it? 
+                // Careful not to revoke if it's used elsewhere, but for now safe.
+                // URL.revokeObjectURL(prev.file.url); 
+            }
+            return { file: null, isPlaying: false, isMinimized: false };
+        });
+    };
+
+    const toggleAudioPlay = (playing) => {
+        setAudioState(prev => ({ ...prev, isPlaying: playing }));
+    };
 
     // --- Chat State (New) ---
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -96,17 +151,103 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         const today = new Date().toDateString();
         if (stats.lastLoginDate !== today) {
-            // New day logic could go here
             setStats(prev => ({
                 ...prev,
                 lastLoginDate: today,
-                // concise streak logic can be expanded
             }));
         }
     }, []);
 
+    // Load Local Background (IDB) on Start
+    useEffect(() => {
+        const loadLocalBg = async () => {
+            try {
+                const file = await getFile('theme_background');
+                if (file && file.blob) {
+                    const url = URL.createObjectURL(file.blob);
+                    setSettings(prev => ({ ...prev, backgroundImage: url }));
+                }
+            } catch (e) {
+                console.log("No local background found");
+            }
+        };
+        loadLocalBg();
+    }, []);
+
     const updateSetting = (key, value) => {
         setSettings(prev => ({ ...prev, [key]: value }));
+    };
+
+    // --- DB Wrappers ---
+    const saveToHistory = async (article, result) => {
+        const record = {
+            id: Date.now().toString(),
+            article,
+            result,
+            summary: result.summary,
+            level: result.level,
+            date: new Date().toLocaleDateString()
+        };
+        await saveHistory(record);
+        return record;
+    };
+
+    const loadHistory = async () => {
+        return await getHistory();
+    };
+
+    const removeHistoryItem = async (id) => {
+        await deleteHistory(id);
+    };
+
+    const saveToFileLibrary = async (fileObj) => {
+        // fileObj: { name, type, blob }
+        const record = {
+            id: Date.now().toString(),
+            ...fileObj,
+            timestamp: Date.now()
+        };
+        await saveFile(record);
+        return record;
+    };
+
+    const loadFiles = async () => {
+        return await getFiles();
+    };
+
+    const removeFileItem = async (id) => {
+        await deleteFile(id);
+    };
+
+    const saveToNotes = async (noteObj) => {
+        // noteObj: { id, title, content }
+        const record = {
+            id: noteObj.id || Date.now().toString(),
+            title: noteObj.title || "New Note",
+            content: noteObj.content || "",
+            updatedAt: Date.now()
+        };
+        await saveNote(record);
+        return record;
+    };
+
+    const loadUserNotes = async () => {
+        return await getNotes();
+    };
+
+    const removeNoteItem = async (id) => {
+        await deleteNote(id);
+    };
+
+    const exportUserData = async () => {
+        const dbData = await getAllData();
+        return {
+            timestamp: new Date().toISOString(),
+            version: '1.0',
+            settings,
+            stats,
+            ...dbData
+        };
     };
 
     const addLearnedWords = (count) => {
@@ -114,6 +255,20 @@ export const AppProvider = ({ children }) => {
             ...prev,
             todayLearned: prev.todayLearned + count
         }));
+    };
+
+    // Flashcards
+    const addFlashcard = async (card) => {
+        // card: { id, front, back, tags }
+        await saveFlashcard({ ...card, id: card.id || Date.now().toString() });
+    };
+
+    const loadUserFlashcards = async () => {
+        return await getFlashcards();
+    };
+
+    const removeFlashcard = async (id) => {
+        await deleteFlashcard(id);
     };
 
     const value = {
@@ -126,12 +281,41 @@ export const AppProvider = ({ children }) => {
         setAnalysisResult,
         addLearnedWords,
         DEFAULT_ANALYSIS,
+        // Persistence
+        importText,
+        setImportText,
+        isAnalyzing,
+        setIsAnalyzing,
+        progressMsg,
+        setProgressMsg,
         // Chat
         isChatOpen,
         toggleChat,
         chatMessages,
         addChatMessage,
-        updateLastChatMessage
+        updateLastChatMessage,
+        // DB Methods
+        saveToHistory,
+        loadHistory,
+        removeHistoryItem,
+        saveToFileLibrary,
+        loadFiles,
+        removeFileItem,
+        saveToNotes,
+        loadUserNotes,
+        removeNoteItem,
+        exportUserData,
+        addFlashcard,
+        loadUserFlashcards,
+        removeFlashcard,
+        // Audio
+        audioState,
+        playAudio,
+        closeAudio,
+        toggleAudioPlay,
+        // Helpers
+        saveFile,
+        deleteFile
     };
 
     return (

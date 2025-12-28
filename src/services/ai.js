@@ -40,21 +40,21 @@ export const analyzeText = async (text, settings) => {
 
   // Task 1: Summary & Difficulty (Fast)
   const taskSummary = fetchFromAI([
-    { role: "system", content: analysisSystemPrompt + " Output JSON only: { \"summary\": \"Chinese summary\", \"level\": \"CET-4/6/IELTS\" }" },
-    { role: "user", content: `Summarize this text in Chinese and assess difficulty level:\n${text.substring(0, 2000)}` }
+    { role: "system", content: analysisSystemPrompt + " Output JSON only: { \"summary\": \"(Required) Detailed summary in Chinese\", \"level\": \"CET-4/6/IELTS\" }" },
+    { role: "user", content: `Summarize this text in Chinese (Important) and assess difficulty level:\n${text.substring(0, 2000)}` }
   ], settings);
 
   // Task 2: Vocabulary (Parallel)
   const taskVocab = fetchFromAI([
-    { role: "system", content: analysisSystemPrompt + " Output JSON only: { \"vocabulary\": [{ word, phonetic, pos, meaning, example, writing, mnemonic, collocations }] }" },
-    { role: "user", content: `Extract 5 key words from this text. For each, provide writing tips and mnemonics:\n${text}` }
+    { role: "system", content: analysisSystemPrompt + " Output JSON only: { \"vocabulary\": [{ word, phonetic, pos, meaning: \"(Required) Chinese Meaning\", example, writing, mnemonic: \"(Required) Chinese Mnemonic\", collocations }] }" },
+    { role: "user", content: `Extract ${settings.vocabCount || "10-15"} essential key words from this text. Prioritize academic or less common words. For each, provide Chinese meaning, Chinese mnemonic, and writing tips:\n${text}` }
   ], settings);
 
   // Task 3: Grammar (Parallel)
   // Only analyze if text is long enough, otherwise skip or do simple analysis
   const taskGrammar = fetchFromAI([
-    { role: "system", content: analysisSystemPrompt + " Output JSON only: { \"structures\": [{ pattern, type, explanation }] }" },
-    { role: "user", content: `Analyze the grammar of this text. Find 1-2 complex sentence structures:\n${text}` }
+    { role: "system", content: analysisSystemPrompt + " Output JSON only: { \"structures\": [{ pattern, type, explanation: \"(Required) Chinese Explanation\" }] }" },
+    { role: "user", content: `Analyze the grammar of this text. Identify complex or noteworthy sentence structures. Provide explanations in Chinese:\n${text}` }
   ], settings);
 
   try {
@@ -99,6 +99,23 @@ export const checkConnection = async (settings) => {
   });
 
   if (!response.ok) throw new Error("Connection failed");
+  return true;
+};
+
+export const checkAudioConnection = async (settings) => {
+  const apiKey = settings.audioApiKey || settings.apiKey;
+  const apiBaseUrl = settings.audioApiBaseUrl || settings.apiBaseUrl;
+  const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+
+  const response = await fetch(`${cleanUrl}/models`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) throw new Error("Audio API Connection failed");
   return true;
 };
 
@@ -168,6 +185,43 @@ export const streamChatMessage = async (messages, settings, onDelta) => {
     }
   } catch (error) {
     console.error("Stream Error:", error);
+    throw error;
+  }
+};
+
+export const transcribeAudio = async (file, settings) => {
+  // Use specific audio settings if available, otherwise fallback to main settings
+  const apiKey = settings.audioApiKey || settings.apiKey;
+  const apiBaseUrl = settings.audioApiBaseUrl || settings.apiBaseUrl;
+  const modelName = settings.audioModelName || (apiBaseUrl.includes("siliconflow") ? "FunAudioLLM/SenseVoiceSmall" : "whisper-1");
+
+  if (!apiKey) throw new Error("Missing Audio API Key (or Main Key)");
+
+  const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("model", modelName);
+
+  try {
+    const response = await fetch(`${cleanUrl}/audio/transcriptions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        // Do NOT set Content-Type here, let browser set it with boundary
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Whisper Error: ${response.status} - ${err}`);
+    }
+
+    const data = await response.json();
+    return data.text;
+  } catch (error) {
+    console.error("Transcription Error:", error);
     throw error;
   }
 };

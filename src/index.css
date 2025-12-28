@@ -1,14 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  /* Importing Inter for that clean SaaS look */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  :root {
+    /* Cyber Zen Dark Theme Palette */
+    --bg-deep: #0f172a;
+    /* Slate 900 */
+    --bg-glass: rgba(15, 23, 42, 0.6);
+    --border-glass: rgba(255, 255, 255, 0.1);
+    --accent-glow: rgba(139, 92, 246, 0.5);
+    /* Violet */
+    --text-primary: #f8fafc;
+    /* Slate 50 */
+    --text-secondary: #94a3b8;
+    /* Slate 400 */
+  }
 
   body {
-    @apply bg-[#F5F7FA] text-slate-800 font-sans antialiased;
+    @apply text-slate-100 font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-deep);
+    /* Default dark background */
   }
 }
 
@@ -46,4 +60,36 @@
 
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out forwards;
+}
+
+@layer utilities {
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
+
+  /* Markdown Styles */
+  mark {
+    @apply bg-yellow-200 text-slate-800 px-1 rounded;
+  }
+
+  /* Basic HLJS-like styling */
+  .hljs-keyword {
+    @apply text-purple-400;
+  }
+
+  .hljs-function {
+    @apply text-blue-400;
+  }
+
+  .hljs-string {
+    @apply text-green-400;
+  }
+
+  .hljs-title {
+    @apply text-blue-300;
+  }
+
+  .hljs-comment {
+    @apply text-slate-500 italic;
+  }
 }
