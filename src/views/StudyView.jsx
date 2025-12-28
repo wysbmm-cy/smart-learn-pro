@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Brain, NotebookPen, Layers, Sparkles, X, Loader, FileText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import WordCard from '../components/WordCard';
-import { generateDeepWordAnalysis } from '../services/ai';
+import { generateDeepWordAnalysis, sendChatMessage } from '../services/ai';
+import ArticleActionMenu from '../components/ArticleActionMenu';
 
 const StudyView = ({ onNavigate }) => {
     const { currentArticle, analysisResult, saveToNotes, addFlashcard, settings } = useApp();
@@ -12,6 +13,59 @@ const StudyView = ({ onNavigate }) => {
     const [deepContent, setDeepContent] = useState('');
     const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
     const [currentDeepWord, setCurrentDeepWord] = useState(null);
+
+    // Text Selection State
+    const [selection, setSelection] = useState(null); // { text, x, y }
+
+    // Clear selection when clicking elsewhere
+    useEffect(() => {
+        const handleClick = () => setSelection(null);
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
+
+    const handleMouseUp = (e) => {
+        e.stopPropagation(); // Prevent clearing immediately
+        const text = window.getSelection().toString().trim();
+        if (text && text.length > 0) {
+            const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+            setSelection({
+                text: text,
+                x: rect.left + (rect.width / 2),
+                y: rect.top
+            });
+        } else {
+            setSelection(null);
+        }
+    };
+
+    const handleTranslateSelection = async () => {
+        if (!selection) return;
+        const text = selection.text;
+        try {
+            alert(`Translating...`);
+            const result = await sendChatMessage([
+                { role: "user", content: `Translate this to Chinese (Direct translation only): "${text}"` }
+            ], settings);
+            alert(`翻译结果:\n\n${result}`);
+        } catch (e) {
+            alert("Translation failed: " + e.message);
+        }
+        setSelection(null);
+    };
+
+    const handleSaveSelectionWord = async () => {
+        if (!selection) return;
+        const text = selection.text;
+        await addFlashcard({
+            front: text,
+            back: "从文章中摘录",
+            tags: ["Contextual"],
+            createdAt: Date.now()
+        });
+        alert(`Saved "${text}"!`);
+        setSelection(null);
+    };
 
     const handleSaveFlashcard = async (word) => {
         await addFlashcard({
@@ -148,8 +202,21 @@ const StudyView = ({ onNavigate }) => {
                         {analysisResult.level || '智能识别'}
                     </span>
                 </div>
-                <div className="p-8 overflow-y-auto flex-1 text-slate-600 leading-loose text-lg font-serif whitespace-pre-wrap selection:bg-blue-100 selection:text-blue-800">
+                <div
+                    className="p-8 overflow-y-auto flex-1 text-slate-600 leading-loose text-lg font-serif whitespace-pre-wrap selection:bg-blue-100 selection:text-blue-800 relative"
+                    onMouseUp={handleMouseUp}
+                >
                     {currentArticle || "暂无内容。"}
+
+                    {selection && (
+                        <ArticleActionMenu
+                            position={{ x: selection.x, y: selection.y }}
+                            text={selection.text}
+                            onTranslate={handleTranslateSelection}
+                            onSave={handleSaveSelectionWord}
+                            onClose={() => setSelection(null)}
+                        />
+                    )}
                 </div>
             </div>
 

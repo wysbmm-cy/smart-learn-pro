@@ -89,12 +89,14 @@ export const AppProvider = ({ children }) => {
     // --- Persistent Stats ---
     const [stats, setStats] = useState(() => {
         const saved = localStorage.getItem('smartlearn_stats');
-        return saved ? JSON.parse(saved) : {
+        const defaultStats = {
             todayLearned: 0,
             todayGoal: 20,
             streak: 1,
-            lastLoginDate: new Date().toDateString()
+            lastLoginDate: new Date().toDateString(),
+            dailyActivity: {} // { "2023-10-27": 5 }
         };
+        return saved ? { ...defaultStats, ...JSON.parse(saved) } : defaultStats;
     });
 
     // --- Session State ---
@@ -356,10 +358,21 @@ export const AppProvider = ({ children }) => {
     };
 
     const addLearnedWords = (count) => {
-        setStats(prev => ({
-            ...prev,
-            todayLearned: prev.todayLearned + count
-        }));
+        const dateKey = new Date().toISOString().split('T')[0];
+
+        setStats(prev => {
+            const currentActivity = prev.dailyActivity || {};
+            const newCount = (currentActivity[dateKey] || 0) + count;
+
+            return {
+                ...prev,
+                todayLearned: prev.todayLearned + count,
+                dailyActivity: {
+                    ...currentActivity,
+                    [dateKey]: newCount
+                }
+            };
+        });
     };
 
     // Flashcards
