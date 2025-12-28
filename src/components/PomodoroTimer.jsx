@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, Coffee, ChevronDown, ChevronUp, X, Minimize2, GripHorizontal } from 'lucide-react';
+import { Play, Pause, RotateCcw, Coffee, ChevronDown, ChevronUp, X, Minimize2, GripHorizontal, Maximize2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const TomatoIcon = ({ size = 20, className }) => (
