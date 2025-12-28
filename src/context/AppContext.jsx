@@ -7,9 +7,9 @@ export const useApp = () => useContext(AppContext);
 
 // Initial default settings
 const DEFAULT_SETTINGS = {
-    apiBaseUrl: 'https://api.openai.com/v1',
-    modelName: 'gpt-3.5-turbo',
-    apiKey: '',
+    apiBaseUrl: 'https://api.moonshot.cn/v1',
+    modelName: 'kimi-k2-0905-preview',
+    apiKey: 'sk-oZJYOSFELAIMihGSsTILis6FDgWTUB0xnujShpivalzUr9Ci',
     showWriting: true,
     showMnemonic: true,
     showCollocations: true,
@@ -18,9 +18,9 @@ const DEFAULT_SETTINGS = {
     systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
 
     // Audio API Settings (Separate)
-    audioApiBaseUrl: 'https://api.siliconflow.cn/v1',
-    audioApiKey: '',
-    audioModelName: 'FunAudioLLM/SenseVoiceSmall',
+    audioApiBaseUrl: 'https://api.siliconflow.cn/v1', // TeleAI endpoint is usually standard OpenAI format
+    audioApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
+    audioModelName: 'TeleAI/TeleSpeechASR',
 
     // Appearance (Zen Mode)
     backgroundImage: 'https://images.unsplash.com/photo-1497436072909-60f360e1d4b0?q=80&w=2560&auto=format&fit=crop', // Nature by default
