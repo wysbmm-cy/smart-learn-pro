@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession } from '../services/db';
 
 const AppContext = createContext();
 
@@ -90,9 +90,6 @@ export const AppProvider = ({ children }) => {
     });
 
     const playAudio = (file) => {
-        // If it's a new file, revoke old URL if ephemeral
-        // But here we rely on the logic passing a valid object.
-        // Usually file from DB has a blob. We need to createURL.
         let url = file.url;
         if (!url && file.blob) {
             url = URL.createObjectURL(file.blob);
@@ -107,11 +104,6 @@ export const AppProvider = ({ children }) => {
 
     const closeAudio = () => {
         setAudioState(prev => {
-            if (prev.file && prev.file.url) {
-                // If we created it, revoke it? 
-                // Careful not to revoke if it's used elsewhere, but for now safe.
-                // URL.revokeObjectURL(prev.file.url); 
-            }
             return { file: null, isPlaying: false, isMinimized: false };
         });
     };
@@ -120,16 +112,96 @@ export const AppProvider = ({ children }) => {
         setAudioState(prev => ({ ...prev, isPlaying: playing }));
     };
 
-    // --- Chat State (New) ---
+    // --- Chat State (New in v5: Multi-Session Persistence) ---
     const [isChatOpen, setIsChatOpen] = useState(false);
-    const [chatMessages, setChatMessages] = useState([
-        { role: 'assistant', content: 'Hello! I am your AI English tutor. Ask me anything about grammar, vocabulary, or learning methods.' }
-    ]);
+    const [currentSessionId, setCurrentSessionId] = useState(null);
+    const [chatSessions, setChatSessions] = useState([]);
+
+    // Default welcome message
+    const DEFAULT_MSG = { role: 'assistant', content: 'Hello! I am your AI English tutor. Ask me anything about grammar, vocabulary, or learning methods.' };
+
+    const [chatMessages, setChatMessages] = useState([DEFAULT_MSG]);
+
+    // Load sessions on mount
+    useEffect(() => {
+        const loadSessions = async () => {
+            const sessions = await getChatSessions();
+            setChatSessions(sessions);
+
+            // Auto-load latest session if exists? Or start new?
+            // Let's start clean, but having list available is good.
+        };
+        loadSessions();
+    }, []);
+
+    // Helper: Save current session to DB
+    const saveCurrentSessionToDB = async (messages, id) => {
+        if (!id) return; // Don't save if no ID (ephemeral start)
+        // Title logic: First user message or "New Chat"
+        const firstUserMsg = messages.find(m => m.role === 'user');
+        const title = firstUserMsg ? firstUserMsg.content.slice(0, 30) : "New Chat";
+
+        const session = {
+            id,
+            title,
+            messages
+        };
+        await saveChatSession(session);
+        // Update local list
+        setChatSessions(prev => {
+            const existing = prev.findIndex(s => s.id === id);
+            if (existing !== -1) {
+                const newSessions = [...prev];
+                newSessions[existing] = { ...session, updatedAt: Date.now() }; // Update timestamp implicitly by sort in DB, but here manual
+                return newSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+            } else {
+                return [session, ...prev];
+            }
+        });
+    };
+
+    const createNewChatSession = () => {
+        const newId = Date.now().toString();
+        setCurrentSessionId(newId);
+        setChatMessages([DEFAULT_MSG]);
+        // We don't save to DB until first message? Or save immediately.
+        // Let's save on first message to avoid empty spam. 
+        // But for UI "Active" state, let's just set ID.
+    };
+
+    const loadChatSession = (session) => {
+        setCurrentSessionId(session.id);
+        setChatMessages(session.messages || []);
+    };
+
+    const removeChatSession = async (id) => {
+        await deleteChatSession(id);
+        setChatSessions(prev => prev.filter(s => s.id !== id));
+        if (currentSessionId === id) {
+            // Reset to empty
+            setCurrentSessionId(null);
+            setChatMessages([DEFAULT_MSG]);
+        }
+    };
 
     const toggleChat = () => setIsChatOpen(prev => !prev);
 
+
     const addChatMessage = (role, content) => {
-        setChatMessages(prev => [...prev, { role, content }]);
+        setChatMessages(prev => {
+            const newMsgs = [...prev, { role, content }];
+
+            // Auto-init session ID if null
+            let sessionId = currentSessionId;
+            if (!sessionId) {
+                sessionId = Date.now().toString();
+                setCurrentSessionId(sessionId);
+            }
+
+            // Debounce save? Or save immediately for safety.
+            saveCurrentSessionToDB(newMsgs, sessionId);
+            return newMsgs;
+        });
     };
 
     const updateLastChatMessage = (content) => {
@@ -137,6 +209,10 @@ export const AppProvider = ({ children }) => {
             const newMsgs = [...prev];
             if (newMsgs.length > 0) {
                 newMsgs[newMsgs.length - 1].content = content;
+            }
+            // Also save to DB
+            if (currentSessionId) {
+                saveCurrentSessionToDB(newMsgs, currentSessionId);
             }
             return newMsgs;
         });
@@ -339,6 +415,12 @@ export const AppProvider = ({ children }) => {
         chatMessages,
         addChatMessage,
         updateLastChatMessage,
+        // Chat Sessions
+        currentSessionId,
+        chatSessions,
+        createNewChatSession,
+        loadChatSession,
+        removeChatSession,
         // DB Methods
         saveToHistory,
         loadHistory,

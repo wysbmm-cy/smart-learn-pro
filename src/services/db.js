@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -37,6 +37,11 @@ export const initDB = () => {
                 const taskStore = db.createObjectStore('tasks', { keyPath: 'id' });
                 taskStore.createIndex('type', 'type', { unique: false }); // 'long' or 'short'
                 taskStore.createIndex('completed', 'completed', { unique: false });
+            }
+            // Store for Chat Sessions (New in v5)
+            if (!db.objectStoreNames.contains('chat_sessions')) {
+                const chatStore = db.createObjectStore('chat_sessions', { keyPath: 'id' });
+                chatStore.createIndex('updatedAt', 'updatedAt', { unique: false });
             }
         };
 
@@ -242,9 +247,46 @@ export const deleteTask = async (id) => {
     });
 };
 
+export const saveChatSession = async (session) => {
+    const db = await initDB();
+    const tx = db.transaction('chat_sessions', 'readwrite');
+    const store = tx.objectStore('chat_sessions');
+    return new Promise((resolve, reject) => {
+        // session: { id, title, messages, updatedAt }
+        const request = store.put({ ...session, updatedAt: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getChatSessions = async () => {
+    const db = await initDB();
+    const tx = db.transaction('chat_sessions', 'readonly');
+    const store = tx.objectStore('chat_sessions');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const results = request.result.sort((a, b) => b.updatedAt - a.updatedAt);
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteChatSession = async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('chat_sessions', 'readwrite');
+    const store = tx.objectStore('chat_sessions');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
 export const getAllData = async () => {
     const db = await initDB();
-    const tx = db.transaction(['history', 'notes', 'files', 'flashcards'], 'readonly');
+    const tx = db.transaction(['history', 'notes', 'files', 'flashcards', 'chat_sessions'], 'readonly');
 
     // Helper to promisify store.getAll
     const getAll = (storeName) => new Promise((resolve, reject) => {
@@ -258,6 +300,8 @@ export const getAllData = async () => {
         const notes = await getAll('notes');
         const flashcards = await getAll('flashcards');
         const files = await getAll('files');
+        // We can include sessions if we want
+        const chatSessions = await getAll('chat_sessions');
 
         // Map files to metadata only (exclude giant Blobs for JSON export)
         const fileMetadata = files.map(f => ({
@@ -268,7 +312,7 @@ export const getAllData = async () => {
             size: f.blob?.size || 0
         }));
 
-        return { history, notes, flashcards, files: fileMetadata };
+        return { history, notes, flashcards, chat_sessions: chatSessions, files: fileMetadata };
     } catch (err) {
         throw err;
     }
