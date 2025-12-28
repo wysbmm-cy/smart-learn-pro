@@ -7,6 +7,7 @@ import GlobalPlayer from '../components/GlobalPlayer';
 import SplitPane from '../components/SplitPane';
 
 import {
+    BarChart2, Upload, BookOpen, Activity, Settings, Brain,
     Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic
 } from 'lucide-react';
 // NotesView import removed (dynamic in App.jsx)
