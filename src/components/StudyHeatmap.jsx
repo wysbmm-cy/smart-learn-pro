@@ -54,7 +54,7 @@ const StudyHeatmap = ({ dailyActivity }) => {
                                 return (
                                     <div
                                         key={dateStr}
-                                        className={`w-3 h-3 rounded-sm ${getColor(count)} transition-all hover:scale-125 hover:ring-2 ring-offset-1 ring-green-300 relative group cursor-pointer`}
+                                        className={`w-3 h-3 rounded-sm ${getColor(count)} transition-all hover:scale-125 hover:ring-2 ring-offset-1 ring-green-300 relative group cursor-pointer hover:z-20`}
                                     >
                                         {/* Tooltip */}
                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
