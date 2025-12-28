@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, getAllData } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData } from '../services/db';
 
 const AppContext = createContext();
 
@@ -26,6 +26,11 @@ const DEFAULT_SETTINGS = {
     backgroundImage: 'https://images.unsplash.com/photo-1497436072909-60f360e1d4b0?q=80&w=2560&auto=format&fit=crop', // Nature by default
     glassBlur: 'md', // sm, md, lg, xl
     glassOpacity: 0.3, // White overlay opacity
+
+    // Pomodoro
+    showPomodoro: true,
+    pomodoroFocus: 25,
+    pomodoroBreak: 5,
 };
 
 // Initial Mock Analysis
@@ -263,12 +268,52 @@ export const AppProvider = ({ children }) => {
         await saveFlashcard({ ...card, id: card.id || Date.now().toString() });
     };
 
+    const updateFlashcard = async (card) => {
+        await saveFlashcard(card);
+    };
+
     const loadUserFlashcards = async () => {
         return await getFlashcards();
     };
 
     const removeFlashcard = async (id) => {
         await deleteFlashcard(id);
+    };
+
+    const updateFlashcardProgress = async (id, quality) => {
+        // quality: 1 (Remembered), 0 (Forgot)
+        const cards = await getFlashcards();
+        const card = cards.find(c => c.id === id);
+        if (!card) return;
+
+        let interval = card.interval || 1;
+        let repetitions = card.repetitions || 0;
+        let nextReview = Date.now();
+
+        if (quality === 1) {
+            // Remembered
+            if (repetitions === 0) interval = 1;
+            else if (repetitions === 1) interval = 3;
+            else interval = Math.round(interval * 2.5); // Exponential growth
+
+            repetitions += 1;
+        } else {
+            // Forgot
+            interval = 1;
+            repetitions = 0;
+        }
+
+        nextReview = Date.now() + (interval * 24 * 60 * 60 * 1000);
+
+        const updatedCard = {
+            ...card,
+            interval,
+            repetitions,
+            nextReview,
+            lastReview: Date.now()
+        };
+
+        await saveFlashcard(updatedCard);
     };
 
     const value = {
@@ -306,8 +351,13 @@ export const AppProvider = ({ children }) => {
         removeNoteItem,
         exportUserData,
         addFlashcard,
+        updateFlashcard,
+        saveTask,
+        getTasks,
+        deleteTask,
         loadUserFlashcards,
         removeFlashcard,
+        updateFlashcardProgress,
         // Audio
         audioState,
         playAudio,

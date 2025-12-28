@@ -1,13 +1,26 @@
-import React from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import ForgettingCurveChart from '../components/ForgettingCurveChart';
+import UserGuideModal from '../components/UserGuideModal';
 
 const Dashboard = ({ onNavigate }) => {
-    const { stats, settings } = useApp();
+    const { stats, settings, loadUserFlashcards } = useApp();
     const hasKey = !!settings.apiKey;
+    const [flashcards, setFlashcards] = useState([]);
+    const [showGuide, setShowGuide] = useState(false);
+
+    useEffect(() => {
+        const load = async () => {
+            const cards = await loadUserFlashcards();
+            setFlashcards(cards);
+        };
+        load();
+    }, []);
 
     return (
-        <div className="space-y-6 animate-fade-in pb-10">
+        <div className="space-y-6 animate-fade-in pb-10 relative">
+            {showGuide && <UserGuideModal onClose={() => setShowGuide(false)} />}
 
             {/* 1. Hero Banner - The Blue Gradient Card */}
             <div className="w-full bg-gradient-to-r from-[#3B82F6] to-[#4F46E5] rounded-[2rem] p-8 md:p-10 shadow-xl shadow-blue-500/20 text-white relative overflow-hidden flex flex-col justify-center min-h-[220px]">
@@ -26,15 +39,30 @@ const Dashboard = ({ onNavigate }) => {
                         }
                     </p>
 
-                    <button
-                        onClick={() => onNavigate('import')}
-                        className="bg-white text-blue-600 px-8 py-3.5 rounded-full font-bold text-sm hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2 w-fit"
-                    >
-                        <Upload size={18} strokeWidth={2.5} />
-                        导入新内容
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => onNavigate('import')}
+                            className="bg-white text-blue-600 px-8 py-3.5 rounded-full font-bold text-sm hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2"
+                        >
+                            <Upload size={18} strokeWidth={2.5} />
+                            导入新内容
+                        </button>
+                        <button
+                            onClick={() => setShowGuide(true)}
+                            className="bg-blue-600/30 backdrop-blur text-white border border-white/20 px-6 py-3.5 rounded-full font-bold text-sm hover:bg-blue-600/40 transition-all flex items-center gap-2"
+                        >
+                            <BookOpen size={18} strokeWidth={2.5} />
+                            使用手册
+                        </button>
+                    </div>
                 </div>
             </div>
+
+            {/* 2. Forgetting Curve & Today's Task */}
+            <ForgettingCurveChart
+                flashcards={flashcards}
+                onReviewStart={() => onNavigate('flashcards')}
+            />
 
             {/* 2. Stats Grid - Clean White Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

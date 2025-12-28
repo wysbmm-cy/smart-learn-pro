@@ -3,7 +3,7 @@ import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, C
 import { useApp } from '../context/AppContext';
 
 const FlashcardView = () => {
-    const { loadUserFlashcards, addFlashcard, removeFlashcard } = useApp();
+    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress } = useApp();
     const [cards, setCards] = useState([]);
     const [mode, setMode] = useState('manage'); // 'manage' | 'study'
 
@@ -40,7 +40,10 @@ const FlashcardView = () => {
             front: newFront,
             back: newBack,
             tags: [],
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            nextReview: Date.now(),
+            interval: 1,
+            repetitions: 0
         });
         setNewFront("");
         setNewBack("");
@@ -56,10 +59,24 @@ const FlashcardView = () => {
     };
 
     const startSession = () => {
-        // Simple shuffle
-        const shuffled = [...cards].sort(() => 0.5 - Math.random());
-        // Apply Random Draw (Lottery)
-        const selected = shuffled.slice(0, drawCount);
+        const now = Date.now();
+        // 1. Filter Due Cards
+        const due = cards.filter(c => !c.nextReview || c.nextReview <= now);
+        // 2. Filter New Cards (if not many due)
+        const newCards = cards.filter(c => c.repetitions === 0 && !due.includes(c));
+
+        // Combine: Priority Due -> New -> Random Others
+        let queue = [...due, ...newCards];
+
+        // If not enough, fill with others (Review ahead)
+        if (queue.length < drawCount) {
+            const others = cards.filter(c => !queue.includes(c));
+            queue = [...queue, ...others];
+        }
+
+        // Slice to draw count
+        const selected = queue.slice(0, drawCount);
+
         setStudyQueue(selected);
         setCurrentCardIndex(0);
         setIsFlipped(false);
@@ -81,7 +98,12 @@ const FlashcardView = () => {
         }, 50);
     };
 
-    const handleNextCard = (known) => {
+    const handleNextCard = async (known) => {
+        const currentCard = studyQueue[currentCardIndex];
+
+        // Update SRS Progress
+        await updateFlashcardProgress(currentCard.id, known ? 1 : 0);
+
         if (known) {
             setSessionStats(prev => ({ ...prev, correct: prev.correct + 1 }));
         }
@@ -93,6 +115,7 @@ const FlashcardView = () => {
         } else {
             alert(`学习完成！ 本次共复习 ${sessionStats.reviewed + 1} 张卡片。`);
             setMode('manage');
+            loadCards(); // Reload to update dates
         }
     };
 
@@ -189,20 +212,31 @@ const FlashcardView = () => {
 
                         {/* List */}
                         <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {cards.map(card => (
-                                <div key={card.id} className="relative bg-white border border-slate-100 rounded-2xl p-6 hover:shadow-lg transition-all group">
-                                    <h3 className="font-bold text-lg text-slate-800 mb-2 truncate" title={card.front}>{card.front}</h3>
-                                    <div className="w-full h-px bg-slate-100 my-3" />
-                                    <p className="text-slate-500 text-sm line-clamp-3">{card.back}</p>
+                            {cards.map(card => {
+                                const isDue = !card.nextReview || card.nextReview <= Date.now();
+                                const daysUntil = card.nextReview ? Math.ceil((card.nextReview - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
 
-                                    <button
-                                        onClick={() => handleDelete(card.id)}
-                                        className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            ))}
+                                return (
+                                    <div key={card.id} className={`relative bg-white border rounded-2xl p-6 hover:shadow-lg transition-all group ${isDue ? 'border-amber-200 shadow-amber-100' : 'border-slate-100'}`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h3 className="font-bold text-lg text-slate-800 truncate flex-1" title={card.front}>{card.front}</h3>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDue ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
+                                                {isDue ? '待复习' : `${daysUntil}天后`}
+                                            </span>
+                                        </div>
+                                        <div className="w-full h-px bg-slate-100 my-3" />
+                                        <p className="text-slate-500 text-sm line-clamp-3">{card.back}</p>
+
+                                        <button
+                                            onClick={() => handleDelete(card.id)}
+                                            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                                            style={{ top: 'auto', bottom: '1rem' }} // Move delete button to bottom right to avoid conflict with tag
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                )
+                            })}
                             {cards.length === 0 && !isAdding && (
                                 <div className="col-span-full text-center py-20 text-slate-400">
                                     暂无卡片，添加一张开始吧！

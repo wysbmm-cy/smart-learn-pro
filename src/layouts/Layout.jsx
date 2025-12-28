@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import ChatSidebar from '../components/ChatSidebar';
+import PomodoroTimer from '../components/PomodoroTimer';
 import GlobalPlayer from '../components/GlobalPlayer';
 // Custom Split Component
 import SplitPane from '../components/SplitPane';
@@ -202,6 +203,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
             <ChatSidebar />
             <GlobalPlayer />
+            <PomodoroTimer />
         </div>
     );
 };

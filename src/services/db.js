@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -31,6 +31,12 @@ export const initDB = () => {
                 const flashcardStore = db.createObjectStore('flashcards', { keyPath: 'id' });
                 flashcardStore.createIndex('createdAt', 'createdAt', { unique: false });
                 flashcardStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+            }
+            // Store for Learning Tasks (New in v4)
+            if (!db.objectStoreNames.contains('tasks')) {
+                const taskStore = db.createObjectStore('tasks', { keyPath: 'id' });
+                taskStore.createIndex('type', 'type', { unique: false }); // 'long' or 'short'
+                taskStore.createIndex('completed', 'completed', { unique: false });
             }
         };
 
@@ -192,6 +198,43 @@ export const deleteFlashcard = async (id) => {
     const db = await initDB();
     const tx = db.transaction('flashcards', 'readwrite');
     const store = tx.objectStore('flashcards');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const saveTask = async (task) => {
+    const db = await initDB();
+    const tx = db.transaction('tasks', 'readwrite');
+    const store = tx.objectStore('tasks');
+    return new Promise((resolve, reject) => {
+        // task: { id, title, type, completed, createdAt }
+        const request = store.put({ ...task, createdAt: task.createdAt || Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getTasks = async () => {
+    const db = await initDB();
+    const tx = db.transaction('tasks', 'readonly');
+    const store = tx.objectStore('tasks');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const results = request.result.sort((a, b) => b.createdAt - a.createdAt);
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteTask = async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('tasks', 'readwrite');
+    const store = tx.objectStore('tasks');
     return new Promise((resolve, reject) => {
         const request = store.delete(id);
         request.onsuccess = () => resolve();

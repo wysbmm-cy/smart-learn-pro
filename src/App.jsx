@@ -9,6 +9,7 @@ import LibraryView from './views/LibraryView';
 import NotesView from './views/NotesView';
 import FlashcardView from './views/FlashcardView';
 import SettingsView from './views/SettingsView';
+import PlanView from './views/PlanView';
 
 function AppContent() {
     const [currentView, setCurrentView] = useState('dashboard');
@@ -34,11 +35,7 @@ function AppContent() {
             case 'settings':
                 return <SettingsView />;
             case 'plan':
-                return (
-                    <div className="flex items-center justify-center h-full text-slate-400 bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-700">
-                        Work in Progress: Learning Plan Module
-                    </div>
-                );
+                return <PlanView />;
             default:
                 return <Dashboard onNavigate={setCurrentView} />;
         }

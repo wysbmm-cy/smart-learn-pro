@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Download, Database, Palette, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
+import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection } from '../services/ai';
 
@@ -235,6 +235,55 @@ const SettingsView = () => {
                     <p className="text-[11px] text-slate-400 mt-2">
                         This prompt dictates the AI's personality and expertise.
                     </p>
+                </div>
+            </div>
+
+            {/* Efficiency Tools Card */}
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                    <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                        <Clock size={20} />
+                    </div>
+                    <h3 className="text-lg">效率工具 (Efficiency Tools)</h3>
+                </div>
+
+                <div className="space-y-6">
+                    <Toggle
+                        title="Enable Global Pomodoro Timer (开启全局番茄钟)"
+                        checked={settings.showPomodoro}
+                        onChange={(v) => updateSetting('showPomodoro', v)}
+                    />
+
+                    {settings.showPomodoro && (
+                        <div className="grid grid-cols-2 gap-4 animate-fade-in-up">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    Focus Duration (min)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="120"
+                                    value={settings.pomodoroFocus}
+                                    onChange={(e) => updateSetting('pomodoroFocus', parseInt(e.target.value) || 25)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-bold text-slate-700"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                    Break Duration (min)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="60"
+                                    value={settings.pomodoroBreak}
+                                    onChange={(e) => updateSetting('pomodoroBreak', parseInt(e.target.value) || 5)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-500/10 outline-none transition-all font-mono font-bold text-slate-700"
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
