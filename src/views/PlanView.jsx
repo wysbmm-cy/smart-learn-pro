@@ -316,7 +316,7 @@ const PlanView = () => {
                             value={newTaskTitle}
                             onChange={(e) => setNewTaskTitle(e.target.value)}
                             placeholder="输入任务名称..."
-                            className="w-full bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none text-sm py-2 mb-3"
+                            className="w-full bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none text-sm py-2 mb-3 text-slate-900 placeholder:text-slate-400 font-medium"
                             onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
                         />
                         <div className="flex justify-between items-center">

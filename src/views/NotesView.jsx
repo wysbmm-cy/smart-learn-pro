@@ -15,7 +15,7 @@ const NotesView = () => {
     const [notes, setNotes] = useState([]);
     const [activeNote, setActiveNote] = useState(null);
     const [searchQuery, setSearchQuery] = useState("");
-    const [showPreview, setShowPreview] = useState(true);
+    const [viewMode, setViewMode] = useState('split'); // 'edit', 'split', 'read'
     const [showList, setShowList] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -55,6 +55,7 @@ const NotesView = () => {
         await saveToNotes(newNote);
         await refreshNotes();
         setActiveNote(newNote);
+        setViewMode('edit'); // Switch to edit on create
     };
 
     const handleCreateFolder = () => {
@@ -267,13 +268,30 @@ const NotesView = () => {
                                 <FileDown size={16} />
                             </button>
 
-                            <button
-                                onClick={() => setShowPreview(!showPreview)}
-                                className={`p-1.5 rounded-lg flex items-center gap-2 text-xs font-medium transition-colors ${showPreview ? 'bg-violet-600/20 text-violet-300' : 'text-slate-500 hover:bg-white/5'
-                                    }`}
-                            >
-                                {showPreview ? <Eye size={16} /> : <EyeOff size={16} />}
-                            </button>
+                            {/* View Mode Switcher */}
+                            <div className="flex bg-white/5 rounded-lg p-0.5 ml-2">
+                                <button
+                                    onClick={() => setViewMode('edit')}
+                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'edit' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                    title="Edit Mode"
+                                >
+                                    EDIT
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('split')}
+                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'split' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                    title="Split Mode"
+                                >
+                                    SPLIT
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('read')}
+                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'read' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                    title="Read Mode"
+                                >
+                                    READ
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -281,18 +299,20 @@ const NotesView = () => {
                 {/* Content Area */}
                 {activeNote ? (
                     <div className="flex-1 flex overflow-hidden">
-                        {/* Editor */}
-                        <div className={`flex-1 flex flex-col ${showPreview ? 'border-r border-white/5' : ''}`}>
-                            <textarea
-                                value={activeNote.content}
-                                onChange={(e) => handleUpdate({ content: e.target.value })}
-                                className="flex-1 w-full p-6 resize-none outline-none border-none font-mono text-slate-300 text-sm leading-7 selection:bg-violet-500/30 bg-transparent placeholder:text-slate-700"
-                                placeholder="# Start writing..."
-                            />
-                        </div>
+                        {/* Editor (Shown in Edit & Split) */}
+                        {(viewMode === 'edit' || viewMode === 'split') && (
+                            <div className={`flex-1 flex flex-col ${viewMode === 'split' ? 'border-r border-white/5' : ''}`}>
+                                <textarea
+                                    value={activeNote.content}
+                                    onChange={(e) => handleUpdate({ content: e.target.value })}
+                                    className="flex-1 w-full p-6 resize-none outline-none border-none font-mono text-slate-300 text-sm leading-7 selection:bg-violet-500/30 bg-transparent placeholder:text-slate-700"
+                                    placeholder="# Start writing..."
+                                />
+                            </div>
+                        )}
 
-                        {/* Preview */}
-                        {showPreview && (
+                        {/* Preview (Shown in Split & Read) */}
+                        {(viewMode === 'read' || viewMode === 'split') && (
                             <div className="flex-1 overflow-y-auto bg-slate-950/20 p-6 
                                 prose prose-invert prose-sm max-w-none 
                                 prose-headings:text-violet-200 prose-headings:font-bold prose-headings:border-b prose-headings:border-white/5 prose-headings:pb-2
