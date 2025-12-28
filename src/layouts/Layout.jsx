@@ -7,8 +7,7 @@ import GlobalPlayer from '../components/GlobalPlayer';
 import SplitPane from '../components/SplitPane';
 
 import {
-    BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu
+    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic
 } from 'lucide-react';
 // NotesView import removed (dynamic in App.jsx)
 
@@ -56,6 +55,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         { id: 'flashcards', icon: Layers, label: '抽记卡 (Flashcards)' },
         { id: 'library', icon: FolderOpen, label: '文件库' },
         { id: 'history', icon: Clock, label: '历史回顾' },
+        { id: 'coach', icon: Mic, label: '口语教练 (AI Coach)' },
         { id: 'plan', icon: Activity, label: '智能计划' },
     ];
 

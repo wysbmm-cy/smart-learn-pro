@@ -248,6 +248,45 @@ export const transcribeAudio = async (file, settings) => {
     throw error;
   }
 };
+
+export const synthesizeSpeech = async (text, settings) => {
+  const apiKey = settings.audioApiKey || settings.apiKey;
+  const apiBaseUrl = settings.audioApiBaseUrl || settings.apiBaseUrl;
+  const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+
+  // Default to standard OpenAI model or a SiliconFlow equivalent if detected
+  const modelName = settings.audioTtsModelName || "tts-1";
+  const voice = settings.audioVoice || "alloy";
+
+  if (!apiKey) throw new Error("Missing Audio API Key");
+
+  try {
+    const response = await fetch(`${cleanUrl}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: modelName,
+        input: text,
+        voice: voice
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`TTS Error: ${response.status} - ${err}`);
+    }
+
+    // Return Blob for playback
+    return await response.blob();
+
+  } catch (error) {
+    console.error("TTS Error:", error);
+    throw error;
+  }
+};
 // ... existing exports
 
 export const generateDeepWordAnalysis = async (word, context, settings) => {
