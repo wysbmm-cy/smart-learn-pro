@@ -29,6 +29,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
 const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, onOpenSplit, secondaryContent }) => {
     const { toggleChat, isChatOpen, settings } = useApp();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [showPomodoro, setShowPomodoro] = useState(false); // Default hidden
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState(null);
@@ -162,6 +163,15 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
                     <div className="flex items-center gap-4">
                         <button
+                            onClick={() => setShowPomodoro(!showPomodoro)}
+                            className={`p-2 rounded-full transition-all border ${showPomodoro
+                                ? 'bg-red-500 text-white border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]'
+                                : 'border-white/10 text-slate-400 hover:text-white hover:bg-white/5'}`}
+                            title="Toggle Pomodoro Timer"
+                        >
+                            <Clock size={18} />
+                        </button>
+                        <button
                             onClick={toggleChat}
                             className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all border shadow-lg backdrop-blur-md ${isChatOpen
                                 ? 'bg-violet-600 text-white border-violet-400 shadow-[0_0_15px_rgba(139,92,246,0.4)]'
@@ -203,7 +213,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
             <ChatSidebar />
             <GlobalPlayer />
-            <PomodoroTimer />
+            {showPomodoro && <PomodoroTimer />}
         </div>
     );
 };
