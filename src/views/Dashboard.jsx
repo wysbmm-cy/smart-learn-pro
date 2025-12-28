@@ -3,6 +3,7 @@ import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOp
 import { useApp } from '../context/AppContext';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
+import StudyHeatmap from '../components/StudyHeatmap';
 
 const Dashboard = ({ onNavigate }) => {
     const { stats, settings, loadUserFlashcards } = useApp();
@@ -58,37 +59,17 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
             </div>
 
-            {/* 2. Forgetting Curve & Today's Task */}
+            {/* 2. Study Heatmap (Replaces Daily Goal) */}
+            <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
+
+            {/* 3. Forgetting Curve & Today's Task */}
             <ForgettingCurveChart
                 flashcards={flashcards}
                 onReviewStart={() => onNavigate('flashcards')}
             />
 
-            {/* 2. Stats Grid - Clean White Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-                {/* Card 1: Daily Goal (Green Theme) */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 hover:shadow-md transition-all flex flex-col justify-between h-[180px]">
-                    <div className="flex justify-between items-start">
-                        <div className="p-3 bg-green-50 text-green-600 rounded-2xl">
-                            <CheckCircle size={24} strokeWidth={2.5} />
-                        </div>
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Daily Goal</span>
-                    </div>
-                    <div>
-                        <div className="flex items-baseline gap-1 mb-2">
-                            <span className="text-4xl font-bold text-slate-800">{stats.todayLearned}</span>
-                            <span className="text-xl text-slate-300 font-medium">/{stats.todayGoal}</span>
-                        </div>
-                        <div className="text-sm text-slate-500 font-medium mb-3">词汇学习进度</div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-green-500 rounded-full"
-                                style={{ width: `${Math.min((stats.todayLearned / stats.todayGoal) * 100, 100)}%` }}
-                            ></div>
-                        </div>
-                    </div>
-                </div>
+            {/* 4. Stats Grid - Clean White Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* Card 2: Streak (Orange Theme) */}
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 hover:shadow-md transition-all flex flex-col justify-between h-[180px]">

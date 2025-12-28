@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Target, TrendingUp, Calendar, Zap, Award, ArrowRight, Brain, AlertCircle, Sparkles, Edit2, X } from 'lucide-react';
 import { generatePlanInsight } from '../services/ai';
-import StudyHeatmap from '../components/StudyHeatmap';
 
 const PlanView = () => {
     const { loadUserFlashcards, settings, stats, updateSetting, saveTask, getTasks, deleteTask } = useApp();
@@ -152,9 +151,6 @@ const PlanView = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-3">
-                    <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
-                </div>
 
                 {/* 2. Left Col: Goal & Load */}
                 <div className="lg:col-span-2 space-y-6">
