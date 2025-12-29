@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Layout from '../layouts/Layout';
+import SplitPane from '../components/SplitPane';
 import BilibiliPlayer from '../components/video/BilibiliPlayer';
 import { useApp } from '../context/AppContext';
 import { Search, Sparkles, BookOpen, ChevronRight, PlayCircle, Layers, FileText, Mic, Square, Loader2 } from 'lucide-react';
@@ -17,7 +17,6 @@ const VideoView = () => {
 
     const [url, setUrl] = useState('');
     const [inputUrl, setInputUrl] = useState('');
-    const [isSplit, setIsSplit] = useState(true);
     const [quickNote, setQuickNote] = useState('');
 
     // Audio / AI Hearing State
@@ -75,7 +74,7 @@ const VideoView = () => {
 
     // Sidebar for Input & AI Tools
     const SidebarContent = (
-        <div className="h-full flex flex-col p-4 text-slate-200">
+        <div className="h-full flex flex-col p-4 text-slate-200 bg-slate-900/40">
             {/* Header */}
             <div className="mb-6">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-1">
@@ -144,8 +143,8 @@ const VideoView = () => {
                         onClick={isRecording ? stopRecording : startRecording}
                         disabled={isTranscribing}
                         className={`px-4 rounded-xl flex items-center justify-center transition-all ${isRecording
-                                ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
-                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                            ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
                             } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title="AI Hearing Mode (Record Audio)"
                     >
@@ -189,16 +188,19 @@ const VideoView = () => {
     );
 
     return (
-        <Layout
-            currentView="video"
-            isSplit={isSplit}
-            setIsSplit={setIsSplit}
-            secondaryContent={SidebarContent}
-        >
-            <div className={`w-full h-full flex flex-col ${!url ? 'justify-center items-center' : ''}`}>
-                <BilibiliPlayer url={url} />
-            </div>
-        </Layout>
+        <div className="w-full h-full overflow-hidden rounded-3xl border border-white/5 shadow-2xl bg-slate-900/20 backdrop-blur-sm">
+            <SplitPane
+                initialLeftWidth={350}
+                minLeftWidth={280}
+                maxLeftWidth={500}
+                left={SidebarContent}
+                right={
+                    <div className={`w-full h-full flex flex-col p-6 ${!url ? 'justify-center items-center' : ''}`}>
+                        <BilibiliPlayer url={url} />
+                    </div>
+                }
+            />
+        </div>
     );
 };
 
