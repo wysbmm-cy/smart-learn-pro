@@ -7,6 +7,7 @@ const ArticleActionMenu = ({ position, text, onTranslate, onSave, onClose }) => 
     return (
         <div
             className="fixed z-50 bg-slate-900/90 backdrop-blur-md text-white rounded-xl shadow-xl flex items-center p-2 gap-2 animate-fade-in-up"
+            onMouseDown={(e) => e.stopPropagation()}
             style={{
                 left: position.x,
                 top: position.y,
