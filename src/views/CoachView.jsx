@@ -86,7 +86,13 @@ const CoachView = () => {
 
         } catch (error) {
             console.error("Coach Loop Error:", error);
-            alert("对话处理出错: " + error.message);
+
+            let errMsg = error.message;
+            if (errMsg.includes("400")) {
+                errMsg += "\n\n(提示: 请检查设置中的 TTS Model Name 是否正确。SiliconFlow/其他服务商通常不支持 'tts-1'，请尝试 'CosyVoice-300M-SFT' 等有效模型名)";
+            }
+
+            alert("对话处理出错: " + errMsg);
             setStatus('idle');
         }
     };
@@ -123,9 +129,9 @@ const CoachView = () => {
                 {/* Visualizer / Status Indicator */}
                 <div className="h-64 flex flex-col items-center justify-center border-b border-white/5 bg-gradient-to-b from-slate-900/0 to-slate-900/50">
                     <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${status === 'recording' ? 'bg-red-500/20 shadow-[0_0_50px_rgba(239,68,68,0.3)] scale-110' :
-                            status === 'speaking' ? 'bg-violet-500/20 shadow-[0_0_50px_rgba(139,92,246,0.3)] scale-110 animate-pulse' :
-                                status === 'processing' ? 'bg-blue-500/20 animate-spin-slow' :
-                                    'bg-slate-800/50'
+                        status === 'speaking' ? 'bg-violet-500/20 shadow-[0_0_50px_rgba(139,92,246,0.3)] scale-110 animate-pulse' :
+                            status === 'processing' ? 'bg-blue-500/20 animate-spin-slow' :
+                                'bg-slate-800/50'
                         }`}>
                         {status === 'recording' && <Mic size={48} className="text-red-400 animate-pulse" />}
                         {status === 'speaking' && <Volume2 size={48} className="text-violet-400 animate-bounce" />}
@@ -156,8 +162,8 @@ const CoachView = () => {
                                 {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                             </div>
                             <div className={`px-4 py-3 rounded-2xl max-w-[80%] leading-relaxed ${msg.role === 'user'
-                                    ? 'bg-slate-800 text-slate-200 rounded-tr-none'
-                                    : 'bg-indigo-900/30 text-indigo-100 border border-indigo-500/20 rounded-tl-none'
+                                ? 'bg-slate-800 text-slate-200 rounded-tr-none'
+                                : 'bg-indigo-900/30 text-indigo-100 border border-indigo-500/20 rounded-tl-none'
                                 }`}>
                                 {msg.text}
                             </div>
@@ -179,8 +185,8 @@ const CoachView = () => {
                             onClick={startRecording}
                             disabled={status !== 'idle'}
                             className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all ${status === 'idle'
-                                    ? 'bg-gradient-to-br from-violet-600 to-indigo-600 hover:shadow-violet-500/30 hover:scale-105 active:scale-95 text-white'
-                                    : 'bg-slate-800 cursor-not-allowed opacity-50 text-slate-500'
+                                ? 'bg-gradient-to-br from-violet-600 to-indigo-600 hover:shadow-violet-500/30 hover:scale-105 active:scale-95 text-white'
+                                : 'bg-slate-800 cursor-not-allowed opacity-50 text-slate-500'
                                 }`}
                         >
                             <Mic size={28} />
