@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
-import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2 } from 'lucide-react';
+import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2 } from 'lucide-react';
 import { saveWriting, getWritings, deleteWriting } from '../services/db';
+import { analyzeWriting } from '../services/ai';
 import toast from 'react-hot-toast';
 
 const WriterView = () => {
@@ -12,6 +13,10 @@ const WriterView = () => {
     const [writings, setWritings] = useState([]);
     const [currentId, setCurrentId] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    // AI Analysis State
+    const [analysis, setAnalysis] = useState(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // Persist draft
     useEffect(() => {
@@ -56,12 +61,14 @@ const WriterView = () => {
         setContent('');
         setTitle('');
         setCurrentId(null);
+        setAnalysis(null);
     };
 
     const handleLoad = (w) => {
         setContent(w.content);
         setTitle(w.title);
         setCurrentId(w.id);
+        setAnalysis(null);
     };
 
     const handleDelete = async (e, id) => {
@@ -72,6 +79,33 @@ const WriterView = () => {
             loadWritings();
             toast.success('Draft deleted.');
         }
+    };
+
+    const handleAnalyze = async () => {
+        if (!content.trim()) {
+            toast.error("Please write something first!");
+            return;
+        }
+        setIsAnalyzing(true);
+        setAnalysis(null); // Reset previous analysis
+        try {
+            const result = await analyzeWriting(content, settings);
+            setAnalysis(result);
+            toast.success("Analysis Complete!");
+        } catch (e) {
+            console.error(e);
+            toast.error("Analysis Failed: " + e.message);
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    // Score Badge Color Helper
+    const getScoreColor = (score) => {
+        if (score >= 13) return 'bg-emerald-500 shadow-emerald-500/50'; // Excellent
+        if (score >= 10) return 'bg-blue-500 shadow-blue-500/50';       // Good
+        if (score >= 7) return 'bg-amber-500 shadow-amber-500/50';      // Fair
+        return 'bg-red-500 shadow-red-500/50';                         // Poor
     };
 
     const SidebarContent = (
@@ -128,55 +162,152 @@ const WriterView = () => {
                 maxLeftWidth={400}
                 left={SidebarContent}
                 right={
-                    <div className="flex flex-col h-full bg-slate-950/30 relative">
-                        {/* Editor Toolbar */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
-                            <input
-                                type="text"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Untitled Draft..."
-                                className="bg-transparent text-xl font-bold text-white placeholder-slate-600 focus:outline-none w-full mr-4"
-                            />
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-slate-500 mr-2">
-                                    {wordCount} words
-                                </span>
-                                <button
-                                    onClick={handleSave}
-                                    className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
-                                    title="Save"
-                                >
-                                    {isSaving ? <CheckCircle size={20} className="text-emerald-500" /> : <Save size={20} />}
-                                </button>
-                                <div className="w-px h-6 bg-white/10 mx-1"></div>
-                                <button
-                                    onClick={() => {
-                                        if (!content.trim()) return;
-                                        toggleChat();
-                                        // Delay to allow chat sidebar to open
-                                        setTimeout(() => {
-                                            navigator.clipboard.writeText(`Please proofread this essay:\n\n${content}`);
-                                            setCurrentArticle(content);
-                                            toast.success('Copied to clipboard! AI Assistant opening...');
-                                        }, 100);
-                                    }}
-                                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-900/20 transition-all"
-                                >
-                                    <Sparkles size={16} /> AI Polish
-                                </button>
+                    <div className="flex h-full bg-slate-950/30 relative overflow-hidden">
+                        {/* Main Editor Area */}
+                        <div className={`flex flex-col h-full transition-all duration-300 ${analysis ? 'w-1/2 border-r border-white/5 hidden md:flex' : 'w-full'}`}>
+                            {/* Editor Toolbar */}
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
+                                <input
+                                    type="text"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    placeholder="Untitled Draft..."
+                                    className="bg-transparent text-xl font-bold text-white placeholder-slate-600 focus:outline-none w-full mr-4"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-500 mr-2 whitespace-nowrap">
+                                        {wordCount} words
+                                    </span>
+                                    <button
+                                        onClick={handleSave}
+                                        className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                                        title="Save"
+                                    >
+                                        {isSaving ? <CheckCircle size={20} className="text-emerald-500" /> : <Save size={20} />}
+                                    </button>
+
+                                    <div className="w-px h-6 bg-white/10 mx-1"></div>
+
+                                    <button
+                                        onClick={handleAnalyze}
+                                        disabled={isAnalyzing}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all whitespace-nowrap
+                                            ${isAnalyzing
+                                                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
+                                    >
+                                        {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                                        {isAnalyzing ? 'Analyzing...' : 'AI Polish'}
+                                    </button>
+                                </div>
                             </div>
+
+                            <textarea
+                                value={content}
+                                onChange={(e) => setContent(e.target.value)}
+                                placeholder="Start writing here..."
+                                className="flex-1 w-full bg-transparent p-8 text-lg leading-relaxed text-slate-200 focus:outline-none resize-none custom-scrollbar font-sans"
+                                spellCheck="false"
+                            />
                         </div>
 
-                        {/* Editor Area */}
-                        <textarea
-                            value={content}
-                            onChange={(e) => setContent(e.target.value)}
-                            placeholder="Start writing your masterpiece..."
-                            className="flex-1 w-full bg-transparent p-6 text-lg text-slate-200 focus:outline-none resize-none leading-relaxed custom-scrollbar font-sans"
-                            style={{ maxWidth: '100%' }}
-                            spellCheck="false"
-                        ></textarea>
+                        {/* Analysis Result Panel */}
+                        {analysis && (
+                            <div className="flex-1 h-full bg-slate-900/80 overflow-y-auto custom-scrollbar animate-in slide-in-from-right duration-300 absolute md:static inset-0 z-20 md:z-0 w-full md:w-auto">
+                                <div className="p-6 space-y-6">
+                                    <div className="flex justify-between items-start">
+                                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                            <CheckCircle className="text-emerald-400" />
+                                            Analysis Report
+                                        </h3>
+                                        <button
+                                            onClick={() => setAnalysis(null)}
+                                            className="p-1 hover:bg-white/10 rounded-full text-slate-400 transition-colors"
+                                        >
+                                            <X size={24} />
+                                        </button>
+                                    </div>
+
+                                    {/* Score Card */}
+                                    <div className="bg-slate-800/50 rounded-2xl p-6 border border-white/5 relative overflow-hidden group hover:border-white/10 transition-colors">
+                                        <div className="flex justify-between items-center relative z-10">
+                                            <div>
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">CET Score</div>
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className="text-6xl font-black text-white tracking-tighter">{analysis.score}</span>
+                                                    <span className="text-2xl text-slate-500 font-light">/ 15</span>
+                                                </div>
+                                                <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white mt-3 shadow-lg ${getScoreColor(analysis.score)}`}>
+                                                    {analysis.level}
+                                                </div>
+                                            </div>
+                                            <div className="text-right pl-4 flex-1">
+                                                <div className="text-slate-300 text-sm italic leading-relaxed">"{analysis.comment}"</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Issues List */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                            <AlertCircle size={14} />
+                                            Key Issues ({analysis.issues.length})
+                                        </h4>
+                                        {analysis.issues.length === 0 ? (
+                                            <div className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-sm text-center font-bold">
+                                                🎉 Perfect! No major issues found.
+                                            </div>
+                                        ) : (
+                                            analysis.issues.map((issue, idx) => (
+                                                <div key={idx} className="bg-slate-800/30 rounded-xl p-4 border border-white/5 hover:bg-slate-800/50 transition-colors">
+                                                    <div className="flex flex-wrap gap-2 items-center mb-2">
+                                                        <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 font-bold uppercase border border-indigo-500/30">
+                                                            {issue.type}
+                                                        </span>
+                                                        <span className="text-xs text-red-300 font-mono bg-red-500/10 px-1 rounded line-through decoration-red-500/50">
+                                                            {issue.original}
+                                                        </span>
+                                                        <span className="text-slate-500">→</span>
+                                                        <span className="text-xs text-emerald-300 font-mono bg-emerald-500/10 px-1 rounded font-bold">
+                                                            {issue.fixed}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-400">{issue.reason}</p>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    {/* Improvement Tips */}
+                                    {analysis.improvement_tips && (
+                                        <div className="bg-indigo-900/10 rounded-2xl p-6 border border-indigo-500/10">
+                                            <h4 className="text-sm font-bold text-indigo-300 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                <Sparkles size={14} /> Improvement Tips
+                                            </h4>
+                                            <ul className="space-y-2">
+                                                {analysis.improvement_tips.map((tip, idx) => (
+                                                    <li key={idx} className="text-sm text-indigo-200/80 flex gap-3 text-left">
+                                                        <span className="text-indigo-500 font-bold">•</span> {tip}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Rewritten Version */}
+                                    <div className="pb-6">
+                                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <PenTool size={14} /> Model Essay (14-15 pts)
+                                        </h4>
+                                        <div className="bg-slate-950 rounded-xl p-6 border border-white/10 text-slate-300 text-sm leading-loose font-serif whitespace-pre-wrap shadow-inner relative">
+                                            {/* decorative quote */}
+                                            <div className="absolute top-4 left-4 text-6xl font-serif text-white/5 pointer-events-none">“</div>
+                                            {analysis.corrected_text}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 }
             />

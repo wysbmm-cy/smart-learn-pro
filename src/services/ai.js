@@ -109,6 +109,67 @@ export const analyzeText = async (text, settings) => {
   }
 };
 
+const extractJSON = (str) => {
+  try {
+    const match = str.match(/\{[\s\S]*\}/);
+    return match ? JSON.parse(match[0]) : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+/**
+ * AI Writing Polish Engine (CET-4/6 Standard)
+ */
+export const analyzeWriting = async (text, settings) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const systemPrompt = `
+  Role: Strict English Examiner for Chinese College English Test (CET-4/6).
+  
+  Task: Grade and polish the student's essay based on the 15-Point Grading Scale.
+  
+  Grading Standards (15 Points Max):
+  - 14-15 (Excellent): Relevant, articulate, diverse vocabulary, advanced grammar, effective cohesion.
+  - 11-13 (Good): Relevant, generally clear, some variety in language, minor errors.
+  - 8-10 (Fair): Mostly relevant, basic structure clear, frequent but not major errors.
+  - 5-7 (Poor): Unclear structure, limited vocabulary, frequent grammar errors affecting understanding.
+  - 2-4 (Very Poor): Off-topic or mostly unintelligible.
+  
+  Output Requirements (JSON Only):
+  {
+    "score": Number (0-15),
+    "level": "String (Excellent/Good/Fair/Poor/Very Poor)",
+    "comment": "String (Short overall comment, ~50 words, encouraging but strict)",
+    "corrected_text": "String (The FULL essay rewritten to be 14-15 points standard, keeping original meaning)",
+    "issues": [
+      {
+        "type": "String (Grammar/Vocabulary/Cohesion/Spelling)",
+        "original": "String (The specific error snippet)",
+        "fixed": "String (The corrected snippet)",
+        "reason": "String (Brief explanation in Chinese)"
+      }
+    ],
+    "improvement_tips": ["String", "String", "String"]
+  }
+  `;
+
+  const safeText = text.substring(0, 5000); // Limit input
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: `Here is my essay:\n\n${safeText}` }
+  ], settings, true);
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    const extracted = extractJSON(jsonStr);
+    if (!extracted) throw new Error("AI Parsing Failed: " + jsonStr.substring(0, 100));
+    return extracted;
+  }
+};
+
 export const checkConnection = async (settings) => {
   const { apiKey, apiBaseUrl } = settings;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
