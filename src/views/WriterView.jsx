@@ -6,11 +6,20 @@ import { saveWriting, getWritings, deleteWriting } from '../services/db';
 
 const WriterView = () => {
     const { settings, toggleChat, setCurrentArticle } = useApp();
-    const [content, setContent] = useState('');
-    const [title, setTitle] = useState('');
+    const [content, setContent] = useState(() => localStorage.getItem('draft_writer_content') || '');
+    const [title, setTitle] = useState(() => localStorage.getItem('draft_writer_title') || '');
     const [writings, setWritings] = useState([]);
     const [currentId, setCurrentId] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Persist draft
+    useEffect(() => {
+        localStorage.setItem('draft_writer_content', content);
+    }, [content]);
+
+    useEffect(() => {
+        localStorage.setItem('draft_writer_title', title);
+    }, [title]);
 
     // Stats
     const wordCount = content.trim().split(/\s+/).filter(w => w.length > 0).length;
@@ -86,8 +95,8 @@ const WriterView = () => {
                         key={w.id}
                         onClick={() => handleLoad(w)}
                         className={`p-3 rounded-lg border cursor-pointer group transition-all ${currentId === w.id
-                                ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-100'
-                                : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                            ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-100'
+                            : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
                     >
                         <div className="flex justify-between items-start">

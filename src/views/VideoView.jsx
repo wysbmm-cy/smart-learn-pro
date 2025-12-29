@@ -18,7 +18,12 @@ const VideoView = () => {
 
     const [url, setUrl] = useState('');
     const [inputUrl, setInputUrl] = useState('');
-    const [quickNote, setQuickNote] = useState('');
+    const [quickNote, setQuickNote] = useState(() => localStorage.getItem('draft_video_note') || '');
+
+    // Persist draft
+    useEffect(() => {
+        localStorage.setItem('draft_video_note', quickNote);
+    }, [quickNote]);
 
     // History State
     const [history, setHistory] = useState([]);

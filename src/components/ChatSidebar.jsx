@@ -9,8 +9,13 @@ const ChatSidebar = () => {
         isChatOpen, toggleChat, chatMessages, addChatMessage, updateLastChatMessage, settings,
         loadUserNotes, loadFiles, currentArticle, currentSessionId, chatSessions, createNewChatSession, loadChatSession, removeChatSession
     } = useApp();
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState(() => localStorage.getItem('draft_chat_input') || '');
     const [isSending, setIsSending] = useState(false);
+
+    // Persist chat draft
+    useEffect(() => {
+        localStorage.setItem('draft_chat_input', input);
+    }, [input]);
 
     // View Mode: 'chat' or 'history'
     const [viewMode, setViewMode] = useState('chat');
