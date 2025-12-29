@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { checkConnection, checkAudioConnection } from '../services/ai';
+import { checkConnection, checkAudioConnection, checkTTSConnection } from '../services/ai';
 
 const SettingsView = () => {
     const { settings, updateSetting, exportUserData, saveFile, deleteFile } = useApp();
     const [connectionStatus, setConnectionStatus] = useState('idle');
     const [audioConnectionStatus, setAudioConnectionStatus] = useState('idle');
+    const [ttsConnectionStatus, setTtsConnectionStatus] = useState('idle');
 
     const handleTest = async () => {
         if (!settings.apiKey) return;
@@ -31,6 +32,21 @@ const SettingsView = () => {
             console.error(e);
             setAudioConnectionStatus('error');
             setTimeout(() => setAudioConnectionStatus('idle'), 3000);
+        }
+    };
+
+    const handleTTSTest = async () => {
+        setTtsConnectionStatus('testing');
+        try {
+            await checkTTSConnection(settings);
+            setTtsConnectionStatus('success');
+            // Visual success only
+            setTimeout(() => setTtsConnectionStatus('idle'), 3000);
+        } catch (e) {
+            console.error(e);
+            setTtsConnectionStatus('error');
+            alert("TTS Test Failed: " + e.message);
+            setTimeout(() => setTtsConnectionStatus('idle'), 3000);
         }
     };
 
