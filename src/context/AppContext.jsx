@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
     showMnemonic: true,
     showCollocations: true,
     showEtymology: false,
+    preloadAll: true, // Default to "Fast Mode" (Preload All)
     vocabCount: "10-15", // Default vocabulary range
     systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
     vocabAnalysisPrompt: `

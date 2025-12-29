@@ -460,6 +460,23 @@ const SettingsView = () => {
                 </div>
             </div>
 
+            {/* General Settings */}
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                    <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
+                        <Box size={20} />
+                    </div>
+                    <h3 className="text-lg">General & Performance</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Toggle
+                        title="⚡ Fast Mode (Preload All Views)"
+                        checked={settings.preloadAll !== false}
+                        onChange={(val) => updateSetting('preloadAll', val)}
+                    />
+                </div>
+            </div>
+
             {/* Appearance Card (Zen Mode) */}
             <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
                 <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">

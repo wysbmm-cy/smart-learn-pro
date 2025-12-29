@@ -1,23 +1,44 @@
-import React, { useState, Suspense, lazy } from 'react';
+import React, { useState, Suspense, lazy, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import Layout from './layouts/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import SkeletonLoader from './components/SkeletonLoader';
 
-// Lazy Load Views
-const Dashboard = lazy(() => import('./views/Dashboard'));
-const ImportView = lazy(() => import('./views/ImportView'));
-const StudyView = lazy(() => import('./views/StudyView'));
-const HistoryView = lazy(() => import('./views/HistoryView'));
-const LibraryView = lazy(() => import('./views/LibraryView'));
-const NotesView = lazy(() => import('./views/NotesView'));
-const FlashcardView = lazy(() => import('./views/FlashcardView'));
-const SettingsView = lazy(() => import('./views/SettingsView'));
-const PlanView = lazy(() => import('./views/PlanView'));
-const CoachView = lazy(() => import('./views/CoachView'));
-const VideoView = lazy(() => import('./views/VideoView'));
-const WriterView = lazy(() => import('./views/WriterView'));
+// Lazy Load Views Factories (Exposed for Preloading)
+const viewFactories = {
+    Dashboard: () => import('./views/Dashboard'),
+    ImportView: () => import('./views/ImportView'),
+    StudyView: () => import('./views/StudyView'),
+    HistoryView: () => import('./views/HistoryView'),
+    LibraryView: () => import('./views/LibraryView'),
+    NotesView: () => import('./views/NotesView'),
+    FlashcardView: () => import('./views/FlashcardView'),
+    SettingsView: () => import('./views/SettingsView'),
+    PlanView: () => import('./views/PlanView'),
+    CoachView: () => import('./views/CoachView'),
+    VideoView: () => import('./views/VideoView'),
+    WriterView: () => import('./views/WriterView'),
+};
+
+export const preloadAllViews = () => {
+    Object.values(viewFactories).forEach(factory => {
+        try { factory(); } catch (e) { console.error('Preload failed', e); }
+    });
+};
+
+const Dashboard = lazy(viewFactories.Dashboard);
+const ImportView = lazy(viewFactories.ImportView);
+const StudyView = lazy(viewFactories.StudyView);
+const HistoryView = lazy(viewFactories.HistoryView);
+const LibraryView = lazy(viewFactories.LibraryView);
+const NotesView = lazy(viewFactories.NotesView);
+const FlashcardView = lazy(viewFactories.FlashcardView);
+const SettingsView = lazy(viewFactories.SettingsView);
+const PlanView = lazy(viewFactories.PlanView);
+const CoachView = lazy(viewFactories.CoachView);
+const VideoView = lazy(viewFactories.VideoView);
+const WriterView = lazy(viewFactories.WriterView);
 
 const LoadingFallback = () => <SkeletonLoader />;
 
@@ -25,6 +46,13 @@ function AppContent() {
     const [currentView, setCurrentView] = useState('dashboard');
     const [secondaryView, setSecondaryView] = useState('notes');
     const [isSplit, setIsSplit] = useState(false);
+    const { settings } = useApp();
+
+    useEffect(() => {
+        if (settings.preloadAll) {
+            preloadAllViews();
+        }
+    }, [settings.preloadAll]);
 
     const getViewComponent = (viewId) => {
         switch (viewId) {
