@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { AppProvider } from './context/AppContext';
 import Layout from './layouts/Layout';
-import Dashboard from './views/Dashboard';
-import ImportView from './views/ImportView';
-import StudyView from './views/StudyView';
-import HistoryView from './views/HistoryView';
-import LibraryView from './views/LibraryView';
-import NotesView from './views/NotesView';
-import FlashcardView from './views/FlashcardView';
-import SettingsView from './views/SettingsView';
-import PlanView from './views/PlanView';
-import CoachView from './views/CoachView';
-import VideoView from './views/VideoView';
-import WriterView from './views/WriterView';
+import ErrorBoundary from './components/ErrorBoundary';
+import SkeletonLoader from './components/SkeletonLoader';
+
+// Lazy Load Views
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const ImportView = lazy(() => import('./views/ImportView'));
+const StudyView = lazy(() => import('./views/StudyView'));
+const HistoryView = lazy(() => import('./views/HistoryView'));
+const LibraryView = lazy(() => import('./views/LibraryView'));
+const NotesView = lazy(() => import('./views/NotesView'));
+const FlashcardView = lazy(() => import('./views/FlashcardView'));
+const SettingsView = lazy(() => import('./views/SettingsView'));
+const PlanView = lazy(() => import('./views/PlanView'));
+const CoachView = lazy(() => import('./views/CoachView'));
+const VideoView = lazy(() => import('./views/VideoView'));
+const WriterView = lazy(() => import('./views/WriterView'));
+
+const LoadingFallback = () => <SkeletonLoader />;
 
 function AppContent() {
     const [currentView, setCurrentView] = useState('dashboard');
@@ -62,9 +69,15 @@ function AppContent() {
             isSplit={isSplit}
             setIsSplit={setIsSplit}
             onOpenSplit={handleOpenSplit}
-            secondaryContent={getViewComponent(secondaryView)}
+            secondaryContent={
+                <Suspense fallback={<LoadingFallback />}>
+                    {getViewComponent(secondaryView)}
+                </Suspense>
+            }
         >
-            {getViewComponent(currentView)}
+            <Suspense fallback={<LoadingFallback />}>
+                {getViewComponent(currentView)}
+            </Suspense>
         </Layout>
     );
 }
@@ -72,7 +85,19 @@ function AppContent() {
 export default function App() {
     return (
         <AppProvider>
-            <AppContent />
+            <Toaster
+                position="top-center"
+                toastOptions={{
+                    style: {
+                        background: '#1e293b',
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                    },
+                }}
+            />
+            <ErrorBoundary>
+                <AppContent />
+            </ErrorBoundary>
         </AppProvider>
     );
 }

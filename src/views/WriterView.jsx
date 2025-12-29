@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
-import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser } from 'lucide-react';
+import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2 } from 'lucide-react';
 import { saveWriting, getWritings, deleteWriting } from '../services/db';
+import toast from 'react-hot-toast';
 
 const WriterView = () => {
     const { settings, toggleChat, setCurrentArticle } = useApp();
@@ -48,6 +49,7 @@ const WriterView = () => {
         if (!title) setTitle(writing.title);
         await loadWritings();
         setTimeout(() => setIsSaving(false), 800);
+        toast.success('Draft saved successfully!');
     };
 
     const handleNew = () => {
@@ -68,6 +70,7 @@ const WriterView = () => {
             await deleteWriting(id);
             if (currentId === id) handleNew();
             loadWritings();
+            toast.success('Draft deleted.');
         }
     };
 
@@ -155,6 +158,7 @@ const WriterView = () => {
                                         setTimeout(() => {
                                             navigator.clipboard.writeText(`Please proofread this essay:\n\n${content}`);
                                             setCurrentArticle(content);
+                                            toast.success('Copied to clipboard! AI Assistant opening...');
                                         }, 100);
                                     }}
                                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-900/20 transition-all"

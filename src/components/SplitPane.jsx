@@ -1,30 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const SplitPane = ({ left, right, initialLeftWidth = 300, minLeftWidth = 200, maxLeftWidth = 600 }) => {
+const SplitPane = ({ left, right, initialLeftWidth = 350, minLeftWidth = 250, maxLeftWidth = 600 }) => {
     const [leftWidth, setLeftWidth] = useState(initialLeftWidth);
     const [isDragging, setIsDragging] = useState(false);
-    const splitPaneRef = useRef(null);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const containerRef = useRef(null);
+
+    // Handle Window Resize
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const handleMouseDown = (e) => {
+        if (isMobile) return; // Disable drag on mobile
         setIsDragging(true);
-        e.preventDefault(); // Prevent text selection
+        e.preventDefault();
     };
 
     useEffect(() => {
         const handleMouseMove = (e) => {
             if (!isDragging) return;
-            if (!splitPaneRef.current) return;
+            if (containerRef.current) {
+                const containerRect = containerRef.current.getBoundingClientRect();
+                let newWidth = e.clientX - containerRect.left;
 
-            const containerRect = splitPaneRef.current.getBoundingClientRect();
-            // Calculate new width relative to container left
-            let newWidth = e.clientX - containerRect.left;
+                if (newWidth < minLeftWidth) newWidth = minLeftWidth;
+                if (newWidth > maxLeftWidth) newWidth = maxLeftWidth;
 
-            // Clamp width
-            if (newWidth < minLeftWidth) newWidth = minLeftWidth;
-            if (newWidth > maxLeftWidth) newWidth = maxLeftWidth;
-            if (newWidth > containerRect.width - 100) newWidth = containerRect.width - 100; // Keep right pane visible
+                // Constraint to container width
+                if (newWidth > containerRect.width - 100) newWidth = containerRect.width - 100;
 
-            setLeftWidth(newWidth);
+                setLeftWidth(newWidth);
+            }
         };
 
         const handleMouseUp = () => {
@@ -35,7 +46,7 @@ const SplitPane = ({ left, right, initialLeftWidth = 300, minLeftWidth = 200, ma
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
             document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none'; // Disable selection globally while dragging
+            document.body.style.userSelect = 'none';
         } else {
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
@@ -50,31 +61,35 @@ const SplitPane = ({ left, right, initialLeftWidth = 300, minLeftWidth = 200, ma
     }, [isDragging, minLeftWidth, maxLeftWidth]);
 
     return (
-        <div ref={splitPaneRef} className="flex h-full w-full overflow-hidden relative">
+        <div
+            ref={containerRef}
+            className={`w-full h-full flex ${isMobile ? 'flex-col' : 'flex-row'} overflow-hidden relative`}
+        >
             {/* Left Pane */}
             <div
-                style={{ width: leftWidth }}
-                className="h-full shrink-0 overflow-hidden relative border-r border-white/5 bg-slate-900/40 backdrop-blur-md transition-none"
+                style={{ width: isMobile ? '100%' : leftWidth, height: isMobile ? 'auto' : '100%' }}
+                className={`shrink-0 overflow-hidden ${isMobile ? 'border-b max-h-[40vh]' : 'border-r'} border-white/5 relative z-10 transition-all duration-75 bg-slate-900/40 backdrop-blur-md`}
             >
                 {left}
             </div>
 
             {/* Resizer Handle */}
-            <div
-                onMouseDown={handleMouseDown}
-                className={`w-1.5 hover:w-2 -ml-0.5 z-50 cursor-col-resize flex items-center justify-center transition-colors group
-                    ${isDragging ? 'bg-violet-600' : 'bg-transparent hover:bg-violet-500/50'}`}
-            >
-                {/* Visual Handle Line */}
-                <div className={`w-0.5 h-8 rounded-full transition-colors ${isDragging ? 'bg-violet-300' : 'bg-slate-700 group-hover:bg-violet-400'}`} />
-            </div>
+            {!isMobile && (
+                <div
+                    onMouseDown={handleMouseDown}
+                    className={`w-1.5 hover:w-2 -ml-0.5 z-50 cursor-col-resize flex items-center justify-center transition-colors group
+                        ${isDragging ? 'bg-violet-600' : 'bg-transparent hover:bg-violet-500/50'}`}
+                >
+                    <div className={`w-0.5 h-8 rounded-full transition-colors ${isDragging ? 'bg-violet-300' : 'bg-slate-700 group-hover:bg-violet-400'}`} />
+                </div>
+            )}
 
             {/* Right Pane */}
-            <div className="flex-1 h-full overflow-hidden min-w-0 bg-transparent">
+            <div className="flex-1 min-w-0 h-full overflow-hidden relative bg-slate-900/10">
                 {right}
             </div>
 
-            {/* Drag Overlay to prevent iframe capturing if any */}
+            {/* Drag Overlay */}
             {isDragging && <div className="absolute inset-0 z-[9999] cursor-col-resize" />}
         </div>
     );
