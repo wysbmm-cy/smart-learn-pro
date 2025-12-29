@@ -250,15 +250,14 @@ export const transcribeAudio = async (file, settings) => {
 };
 
 export const synthesizeSpeech = async (text, settings) => {
-  const apiKey = settings.audioApiKey || settings.apiKey;
-  const apiBaseUrl = settings.audioApiBaseUrl || settings.apiBaseUrl;
+  const apiKey = settings.ttsApiKey || settings.audioApiKey || settings.apiKey;
+  const apiBaseUrl = settings.ttsApiBaseUrl || settings.audioApiBaseUrl || settings.apiBaseUrl;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
 
-  // Default to standard OpenAI model or a SiliconFlow equivalent if detected
-  const modelName = settings.audioTtsModelName || "tts-1";
-  const voice = settings.audioVoice || "alloy";
+  const modelName = settings.ttsModelName || "tts-1";
+  const voice = settings.ttsVoice || "alloy";
 
-  if (!apiKey) throw new Error("Missing Audio API Key");
+  if (!apiKey) throw new Error("Missing AI/TTS API Key");
 
   try {
     const response = await fetch(`${cleanUrl}/audio/speech`, {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock } from 'lucide-react';
+import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection } from '../services/ai';
 
@@ -210,6 +210,84 @@ const SettingsView = () => {
                                 )}
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+
+            {/* TTS API Card (Output) */}
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                        <Volume2 size={20} />
+                    </div>
+                    <h3 className="text-lg">配置语音合成 API (TTS - Output)</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* TTS Base URL */}
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            TTS Endpoint URL
+                        </label>
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={settings.ttsApiBaseUrl || ''}
+                                onChange={(e) => updateSetting('ttsApiBaseUrl', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium text-slate-700"
+                                placeholder="Same as Chat API usually..."
+                            />
+                            <Wifi size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-purple-500 transition-colors" />
+                        </div>
+                    </div>
+
+                    {/* TTS Model Name */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            TTS Model Name
+                        </label>
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={settings.ttsModelName || 'tts-1'}
+                                onChange={(e) => updateSetting('ttsModelName', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium text-slate-700"
+                            />
+                            <Box size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-purple-500 transition-colors" />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-2 ml-1">e.g. <b>tts-1</b> (OpenAI) or <b>cosyvoice-v1</b> (SiliconFlow)</p>
+                    </div>
+
+                    {/* TTS Voice */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            Voice ID
+                        </label>
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={settings.ttsVoice || 'alloy'}
+                                onChange={(e) => updateSetting('ttsVoice', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium text-slate-700"
+                            />
+                            <Mic size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-purple-500 transition-colors" />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-2 ml-1">e.g. <b>alloy</b>, <b>echo</b>, or custom voice ID</p>
+                    </div>
+
+                    {/* TTS API Key */}
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            TTS Security Key (Optional)
+                        </label>
+                        <input
+                            type="password"
+                            value={settings.ttsApiKey || ''}
+                            onChange={(e) => updateSetting('ttsApiKey', e.target.value)}
+                            placeholder="Leave empty to use main API Key"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium"
+                        />
                     </div>
                 </div>
             </div>
@@ -485,7 +563,7 @@ const SettingsView = () => {
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
