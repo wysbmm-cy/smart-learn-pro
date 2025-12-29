@@ -43,6 +43,11 @@ export const initDB = () => {
                 const chatStore = db.createObjectStore('chat_sessions', { keyPath: 'id' });
                 chatStore.createIndex('updatedAt', 'updatedAt', { unique: false });
             }
+            // Store for Video History (New)
+            if (!db.objectStoreNames.contains('video_history')) {
+                const videoStore = db.createObjectStore('video_history', { keyPath: 'url' });
+                videoStore.createIndex('timestamp', 'timestamp', { unique: false });
+            }
         };
 
         request.onsuccess = (event) => resolve(event.target.result);
@@ -94,6 +99,42 @@ export const saveFile = async (fileObj) => {
         // fileObj should include: id, name, type, blob, timestamp
         const request = store.put(fileObj);
         request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const saveVideoHistory = async (record) => {
+    const db = await initDB();
+    const tx = db.transaction('video_history', 'readwrite');
+    const store = tx.objectStore('video_history');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...record, timestamp: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getVideoHistory = async () => {
+    const db = await initDB();
+    const tx = db.transaction('video_history', 'readonly');
+    const store = tx.objectStore('video_history');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const results = request.result.sort((a, b) => b.timestamp - a.timestamp);
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteVideoHistory = async (url) => {
+    const db = await initDB();
+    const tx = db.transaction('video_history', 'readwrite');
+    const store = tx.objectStore('video_history');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(url);
+        request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
 };
