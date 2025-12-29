@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Volume2, User, Bot, Loader2, Play, Settings, Trash2 } from 'lucide-react';
+import { Mic, Square, Volume2, User, Bot, Loader2, Play, Settings, Trash2, History, X, Calendar } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { transcribeAudio, sendChatMessage, synthesizeSpeech } from '../services/ai';
+import { saveChatSession, getChatSessions, deleteChatSession } from '../services/db';
 
 const personas = [
     { id: 'ielts', name: '雅思考官 (IELTS)', prompt: "You are a strict but fair IELTS examiner. Correct my grammar and vocabulary usage. Maintain a formal yet encouraging tone. Ask follow-up questions." },
@@ -13,7 +14,12 @@ const CoachView = () => {
     const { settings } = useApp();
     const [selectedPersona, setSelectedPersona] = useState(personas[0]);
     const [status, setStatus] = useState('idle'); // idle, recording, processing, speaking
-    const [messages, setMessages] = useState([]); // { role: 'user'|'assistant', text: string }
+    const [messages, setMessages] = useState([]); // { role, content, audioUrl, audioBlob }
+
+    // History State
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [sessions, setSessions] = useState([]);
+    const [currentSessionId, setCurrentSessionId] = useState(null);
 
     // State for analysis modal/result
     const [analysisResult, setAnalysisResult] = useState(null);
@@ -23,6 +29,67 @@ const CoachView = () => {
     const audioChunksRef = useRef([]);
     const audioPlayerRef = useRef(new Audio());
 
+    // Load history list on mount
+    useEffect(() => {
+        loadHistoryList();
+    }, []);
+
+    // Auto-save when messages change (debounce could be better, but simple for now)
+    useEffect(() => {
+        if (messages.length > 0) {
+            saveCurrentSession();
+        }
+    }, [messages]);
+
+    const loadHistoryList = async () => {
+        try {
+            const list = await getChatSessions();
+            setSessions(list);
+        } catch (e) {
+            console.error("Failed to load history", e);
+        }
+    };
+
+    const saveCurrentSession = async () => {
+        const session = {
+            id: currentSessionId || crypto.randomUUID(),
+            title: messages.length > 0 ? messages[0].content.slice(0, 30) + "..." : "Empty Session",
+            personaId: selectedPersona.id,
+            messages: messages, // blobs are stored directly
+            updatedAt: Date.now()
+        };
+
+        if (!currentSessionId) setCurrentSessionId(session.id);
+
+        await saveChatSession(session);
+        loadHistoryList();
+    };
+
+    const loadSession = (session) => {
+        // Hydrate blobs to URLs
+        const hydratedMessages = session.messages.map(msg => ({
+            ...msg,
+            audioUrl: msg.audioBlob ? URL.createObjectURL(msg.audioBlob) : null
+        }));
+
+        setMessages(hydratedMessages);
+        setCurrentSessionId(session.id);
+        setSelectedPersona(personas.find(p => p.id === session.personaId) || personas[0]);
+        setHistoryOpen(false);
+    };
+
+    const handleDeleteSession = async (e, id) => {
+        e.stopPropagation();
+        if (window.confirm("Delete this session?")) {
+            await deleteChatSession(id);
+            if (currentSessionId === id) {
+                setMessages([]);
+                setCurrentSessionId(null);
+            }
+            loadHistoryList();
+        }
+    };
+
     const playAudio = (url) => {
         if (!url) return;
         audioPlayerRef.current.src = url;
@@ -30,8 +97,9 @@ const CoachView = () => {
     };
 
     const handleClear = () => {
-        if (window.confirm("确定要清空所有对话记录和录音缓存吗？")) {
+        if (window.confirm("确定要清空当前对话吗？(已保存的历史记录不会被删除)")) {
             setMessages([]);
+            setCurrentSessionId(null);
             setStatus('idle');
         }
     };
@@ -106,18 +174,19 @@ const CoachView = () => {
                 return;
             }
 
-            // Msg with Audio
+            // Msg with Audio Blob for persistence
             const newMessages = [...messages, {
                 role: 'user',
                 content: transcription,
-                audioUrl: userAudioUrl
+                audioUrl: userAudioUrl,
+                audioBlob: audioBlob
             }];
             setMessages(newMessages);
 
             // 2. Chat (LLM)
             const aiResponseText = await sendChatMessage([
                 { role: 'system', content: selectedPersona.prompt },
-                ...newMessages
+                ...newMessages.map(m => ({ role: m.role, content: m.content })) // Strip blobs for API
             ], settings);
 
             // 3. Speak (TTS)
@@ -127,7 +196,8 @@ const CoachView = () => {
             const updatedMessages = [...newMessages, {
                 role: 'assistant',
                 content: aiResponseText,
-                audioUrl: aiAudioUrl
+                audioUrl: aiAudioUrl,
+                audioBlob: audioData
             }];
             setMessages(updatedMessages);
 
@@ -142,7 +212,7 @@ const CoachView = () => {
 
             let errMsg = error.message;
             if (errMsg.includes("400")) {
-                errMsg += "\n\n(提示: 请检查设置中的 TTS Model Name 是否正确。SiliconFlow/其他服务商通常不支持 'tts-1'，请尝试 'CosyVoice-300M-SFT' 等有效模型名)";
+                errMsg += "\n\n(提示: 请检查设置中的 TTS Model Name 是否正确。)";
             }
 
             alert("对话处理出错: " + errMsg);
@@ -152,6 +222,55 @@ const CoachView = () => {
 
     return (
         <div className="flex flex-col h-full max-w-4xl mx-auto animate-fade-in relative">
+
+            {/* History Sidebar */}
+            {historyOpen && (
+                <>
+                    <div className="absolute inset-0 z-30 bg-black/50 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} />
+                    <div className="absolute top-0 right-0 bottom-0 w-80 bg-slate-900 border-l border-white/10 z-40 p-4 shadow-2xl animate-slide-in-right flex flex-col">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <History size={20} /> 历史记录
+                            </h2>
+                            <button onClick={() => setHistoryOpen(false)} className="p-1 hover:bg-slate-800 rounded">
+                                <X size={20} className="text-slate-400" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+                            {sessions.length === 0 && (
+                                <p className="text-slate-500 text-center mt-10">暂无历史记录</p>
+                            )}
+                            {sessions.map(s => (
+                                <div
+                                    key={s.id}
+                                    className={`p-3 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-colors group ${currentSessionId === s.id ? 'bg-violet-900/20 border-violet-500/30' : 'bg-slate-800/50'}`}
+                                    onClick={() => loadSession(s)}
+                                >
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className="text-xs text-violet-400 font-medium px-1.5 py-0.5 bg-violet-500/10 rounded">
+                                            {personas.find(p => p.id === s.personaId)?.name || 'Unknown'}
+                                        </span>
+                                        <button
+                                            onClick={(e) => handleDeleteSession(e, s.id)}
+                                            className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    <h4 className="text-slate-200 text-sm font-medium line-clamp-2 leading-snug mb-2">
+                                        {s.title}
+                                    </h4>
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <Calendar size={12} />
+                                        {new Date(s.updatedAt).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
 
             {/* Header: Persona Selector */}
             <div className="flex justify-between items-center mb-6">
@@ -164,9 +283,16 @@ const CoachView = () => {
 
                 <div className="flex items-center gap-3">
                     <button
+                        onClick={() => setHistoryOpen(true)}
+                        className="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
+                        title="历史记录"
+                    >
+                        <History size={20} />
+                    </button>
+                    <button
                         onClick={handleClear}
                         className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                        title="清空对话"
+                        title="清空当前对话"
                     >
                         <Trash2 size={20} />
                     </button>
