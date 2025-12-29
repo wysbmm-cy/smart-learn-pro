@@ -63,7 +63,8 @@ const CoachView = () => {
                 return;
             }
 
-            const newMessages = [...messages, { role: 'user', text: transcription }];
+            // FIX: Use 'content' instead of 'text' for OpenAI API compatibility
+            const newMessages = [...messages, { role: 'user', content: transcription }];
             setMessages(newMessages);
 
             // 2. Chat (LLM)
@@ -72,7 +73,7 @@ const CoachView = () => {
                 ...newMessages
             ], settings);
 
-            const updatedMessages = [...newMessages, { role: 'assistant', text: aiResponseText }];
+            const updatedMessages = [...newMessages, { role: 'assistant', content: aiResponseText }];
             setMessages(updatedMessages);
 
             // 3. Speak (TTS)
