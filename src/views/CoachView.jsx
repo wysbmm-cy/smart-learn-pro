@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Volume2, User, Bot, Loader2, Play, Settings } from 'lucide-react';
+import { Mic, Square, Volume2, User, Bot, Loader2, Play, Settings, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { transcribeAudio, sendChatMessage, synthesizeSpeech } from '../services/ai';
 
@@ -29,14 +29,25 @@ const CoachView = () => {
         audioPlayerRef.current.play();
     };
 
+    const handleClear = () => {
+        if (window.confirm("确定要清空所有对话记录和录音缓存吗？")) {
+            setMessages([]);
+            setStatus('idle');
+        }
+    };
+
     const handleAnalyze = async (text) => {
         setStatus('processing');
         try {
-            const prompt = `Please analyze the following English sentence spoken by a student. Point out any grammar mistakes or unnatural phrasing, and suggest a better version.
+            const prompt = `Please analyze the following English sentence spoken by a student. 
             
             Sentence: "${text}"
             
-            Keep the feedback concise and encouraging. usage Chinese for explanation.`;
+            Please provide feedback in the following format (Markdown):
+            1. **Grammar & Phrasing**: Correct any mistakes and suggest a more natural version.
+            2. **Pronunciation Tips**: List difficult words in this sentence with their IPA phonetic symbols and tips on how to pronounce them correctly (e.g. linking sounds, silent letters).
+            
+            Keep the explanation in Chinese.`;
 
             const feedback = await sendChatMessage([
                 { role: 'system', content: "You are a helpful English teacher." },
@@ -152,6 +163,13 @@ const CoachView = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleClear}
+                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        title="清空对话"
+                    >
+                        <Trash2 size={20} />
+                    </button>
                     <span className="text-slate-400 text-sm hidden sm:inline">当前模式:</span>
                     <select
                         value={selectedPersona.id}
