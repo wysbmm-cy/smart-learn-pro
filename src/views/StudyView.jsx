@@ -34,13 +34,20 @@ const StudyView = ({ onNavigate }) => {
         const text = window.getSelection().toString().trim();
         if (text && text.length > 0) {
             const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+
+            // If selecting NEW text, ensure we reset any existing translation state to avoid confusing jumps
+            if (selection?.text !== text) {
+                setTranslationState({ status: 'idle', result: null });
+            }
+
             setSelection({
                 text: text,
                 x: rect.left + (rect.width / 2),
                 y: rect.top
             });
         } else {
-            setSelection(null);
+            // Keep selection if clicking inside a bubble? No, global click handles that.
+            // Just let global click clear it if it wasn't a text selection.
         }
     };
 
@@ -228,7 +235,8 @@ const StudyView = ({ onNavigate }) => {
 
                     {selection && translationState.status !== 'idle' && (
                         <TranslationBubble
-                            position={{ x: selection.x, y: selection.y }}
+                            key={selection.text} // Force remount on new text to reset position
+                            initialPosition={{ x: selection.x, y: selection.y }}
                             status={translationState.status}
                             result={translationState.result}
                             onClose={() => {
