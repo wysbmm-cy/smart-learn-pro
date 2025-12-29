@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -9,46 +9,56 @@ export const initDB = () => {
 
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
-            // Store for Analysis History
+            // Analysis History
             if (!db.objectStoreNames.contains('history')) {
                 const historyStore = db.createObjectStore('history', { keyPath: 'id' });
                 historyStore.createIndex('timestamp', 'timestamp', { unique: false });
             }
-            // Store for Files (PDFs, Media)
+            // Files
             if (!db.objectStoreNames.contains('files')) {
                 const fileStore = db.createObjectStore('files', { keyPath: 'id' });
                 fileStore.createIndex('type', 'type', { unique: false });
             }
-            // Store for Markdown Notes
+            // Notes
             if (!db.objectStoreNames.contains('notes')) {
                 const noteStore = db.createObjectStore('notes', { keyPath: 'id' });
-                // We might want to search by title or date
                 noteStore.createIndex('updatedAt', 'updatedAt', { unique: false });
                 noteStore.createIndex('title', 'title', { unique: false });
             }
-            // Store for Flashcards
+            // Flashcards (Updated)
             if (!db.objectStoreNames.contains('flashcards')) {
                 const flashcardStore = db.createObjectStore('flashcards', { keyPath: 'id' });
                 flashcardStore.createIndex('createdAt', 'createdAt', { unique: false });
                 flashcardStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+                flashcardStore.createIndex('folderId', 'folderId', { unique: false }); // New index
+            } else {
+                const store = request.transaction.objectStore('flashcards');
+                if (!store.indexNames.contains('folderId')) {
+                    store.createIndex('folderId', 'folderId', { unique: false });
+                }
             }
-            // Store for Learning Tasks (New in v4)
+            // Folders (New in v7)
+            if (!db.objectStoreNames.contains('folders')) {
+                const folderStore = db.createObjectStore('folders', { keyPath: 'id' });
+                folderStore.createIndex('createdAt', 'createdAt', { unique: false });
+            }
+            // Tasks
             if (!db.objectStoreNames.contains('tasks')) {
                 const taskStore = db.createObjectStore('tasks', { keyPath: 'id' });
-                taskStore.createIndex('type', 'type', { unique: false }); // 'long' or 'short'
+                taskStore.createIndex('type', 'type', { unique: false });
                 taskStore.createIndex('completed', 'completed', { unique: false });
             }
-            // Store for Chat Sessions (New in v5)
+            // Chat Sessions
             if (!db.objectStoreNames.contains('chat_sessions')) {
                 const chatStore = db.createObjectStore('chat_sessions', { keyPath: 'id' });
                 chatStore.createIndex('updatedAt', 'updatedAt', { unique: false });
             }
-            // Store for Video History (New)
+            // Video History
             if (!db.objectStoreNames.contains('video_history')) {
                 const videoStore = db.createObjectStore('video_history', { keyPath: 'url' });
                 videoStore.createIndex('timestamp', 'timestamp', { unique: false });
             }
-            // Store for Writings (New in v6)
+            // Writings
             if (!db.objectStoreNames.contains('writings')) {
                 const writingStore = db.createObjectStore('writings', { keyPath: 'id' });
                 writingStore.createIndex('updatedAt', 'updatedAt', { unique: false });
@@ -367,9 +377,46 @@ export const deleteChatSession = async (id) => {
     });
 };
 
+// Folders CRUD
+export const saveFolder = async (folder) => {
+    const db = await initDB();
+    const tx = db.transaction('folders', 'readwrite');
+    const store = tx.objectStore('folders');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...folder, createdAt: folder.createdAt || Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getFolders = async () => {
+    const db = await initDB();
+    const tx = db.transaction('folders', 'readonly');
+    const store = tx.objectStore('folders');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const results = request.result.sort((a, b) => b.createdAt - a.createdAt);
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteFolder = async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('folders', 'readwrite');
+    const store = tx.objectStore('folders');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
 export const getAllData = async () => {
     const db = await initDB();
-    const tx = db.transaction(['history', 'notes', 'files', 'flashcards', 'chat_sessions'], 'readonly');
+    const tx = db.transaction(['history', 'notes', 'files', 'flashcards', 'chat_sessions', 'folders'], 'readonly');
 
     // Helper to promisify store.getAll
     const getAll = (storeName) => new Promise((resolve, reject) => {
@@ -383,6 +430,7 @@ export const getAllData = async () => {
         const notes = await getAll('notes');
         const flashcards = await getAll('flashcards');
         const files = await getAll('files');
+        const folders = await getAll('folders');
         // We can include sessions if we want
         const chatSessions = await getAll('chat_sessions');
 
@@ -395,7 +443,7 @@ export const getAllData = async () => {
             size: f.blob?.size || 0
         }));
 
-        return { history, notes, flashcards, chat_sessions: chatSessions, files: fileMetadata };
+        return { history, notes, flashcards, chat_sessions: chatSessions, files: fileMetadata, folders };
     } catch (err) {
         throw err;
     }

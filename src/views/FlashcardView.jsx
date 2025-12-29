@@ -1,44 +1,99 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices } from 'lucide-react';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import SplitPane from '../components/SplitPane';
+import { saveFolder, getFolders, deleteFolder, saveFlashcard } from '../services/db';
 
 const FlashcardView = () => {
     const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress } = useApp();
-    const [cards, setCards] = useState([]);
+
+    // Data State
+    const [allCards, setAllCards] = useState([]);
+    const [folders, setFolders] = useState([]);
+
+    // UI State
     const [mode, setMode] = useState('manage'); // 'manage' | 'study'
+    const [selectedFolderId, setSelectedFolderId] = useState('all'); // 'all', 'today', or folder UUID
+    const [isAddingFolder, setIsAddingFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState("");
 
     // Manage State
     const [newFront, setNewFront] = useState("");
     const [newBack, setNewBack] = useState("");
-    const [isAdding, setIsAdding] = useState(false);
-    const [drawCount, setDrawCount] = useState(10); // Lottery Count
+    const [isAddingCard, setIsAddingCard] = useState(false);
 
-    // Student Picker State
-    const [showStudentPicker, setShowStudentPicker] = useState(false);
-    const [studentCount, setStudentCount] = useState(30); // Default class size
-    const [pickedStudent, setPickedStudent] = useState(null);
-    const [isRolling, setIsRolling] = useState(false);
+    // Study Setup State
+    const [studySelection, setStudySelection] = useState(['all']); // Array of folder IDs to study
+    const [drawCount, setDrawCount] = useState(10);
 
-    // Study State
+    // Study Active State
     const [studyQueue, setStudyQueue] = useState([]);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [sessionStats, setSessionStats] = useState({ reviewed: 0, correct: 0 });
 
+    // Lottery State
+    const [showStudentPicker, setShowStudentPicker] = useState(false);
+    const [studentCount, setStudentCount] = useState(30);
+    const [pickedStudent, setPickedStudent] = useState(null);
+    const [isRolling, setIsRolling] = useState(false);
+
     useEffect(() => {
-        loadCards();
+        loadData();
     }, []);
 
-    const loadCards = async () => {
-        const data = await loadUserFlashcards();
-        setCards(data);
+    const loadData = async () => {
+        const [cards, folderList] = await Promise.all([
+            loadUserFlashcards(),
+            getFolders()
+        ]);
+        setAllCards(cards);
+        setFolders(folderList);
     };
+
+    // --- Folder Logic ---
+    const handleAddFolder = async () => {
+        if (!newFolderName.trim()) return;
+        const id = crypto.randomUUID();
+        await saveFolder({ id, name: newFolderName, type: 'user' });
+        setNewFolderName("");
+        setIsAddingFolder(false);
+        loadData();
+    };
+
+    const handleDeleteFolder = async (e, id) => {
+        e.stopPropagation();
+        if (confirm("Delete this folder? Cards inside will remain in 'All Cards'.")) {
+            await deleteFolder(id);
+            if (selectedFolderId === id) setSelectedFolderId('all');
+            loadData();
+        }
+    };
+
+    // --- Card Logic ---
+    const getFilteredCards = () => {
+        if (selectedFolderId === 'all') return allCards;
+        if (selectedFolderId === 'today') {
+            const todayStr = new Date().toDateString(); // Crude approximation
+            // Better: use timestamp check. 24h? Or just 'Created Today'?
+            // Let's use 'Due Today' actually
+            const now = Date.now();
+            return allCards.filter(c => !c.nextReview || c.nextReview <= now);
+        }
+        return allCards.filter(c => c.folderId === selectedFolderId);
+    };
+
+    const displayCards = getFilteredCards();
 
     const handleAddCard = async () => {
         if (!newFront.trim() || !newBack.trim()) return;
+
+        const folderId = (selectedFolderId !== 'all' && selectedFolderId !== 'today') ? selectedFolderId : undefined;
+
         await addFlashcard({
             front: newFront,
             back: newBack,
+            folderId,
             tags: [],
             createdAt: Date.now(),
             nextReview: Date.now(),
@@ -47,43 +102,87 @@ const FlashcardView = () => {
         });
         setNewFront("");
         setNewBack("");
-        setIsAdding(false);
-        loadCards();
+        setIsAddingCard(false);
+        loadData();
     };
 
-    const handleDelete = async (id) => {
-        if (confirm("确定要删除这张卡片吗?")) {
+    const handleDeleteCard = async (id) => {
+        if (confirm("Delete card?")) {
             await removeFlashcard(id);
-            loadCards();
+            loadData();
         }
+    };
+
+    // --- Study Logic ---
+    const toggleStudyFolder = (id) => {
+        setStudySelection(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(x => x !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
     };
 
     const startSession = () => {
+        // Gather candidates
+        let candidates = [];
         const now = Date.now();
-        // 1. Filter Due Cards
-        const due = cards.filter(c => !c.nextReview || c.nextReview <= now);
-        // 2. Filter New Cards (if not many due)
-        const newCards = cards.filter(c => c.repetitions === 0 && !due.includes(c));
 
-        // Combine: Priority Due -> New -> Random Others
+        if (studySelection.includes('all')) {
+            candidates = allCards;
+        } else {
+            // Filter by folder selection
+            candidates = allCards.filter(c => {
+                if (studySelection.includes('today') && (!c.nextReview || c.nextReview <= now)) return true;
+                if (c.folderId && studySelection.includes(c.folderId)) return true;
+                return false;
+            });
+        }
+
+        if (candidates.length === 0) {
+            alert("No cards match your selection!");
+            return;
+        }
+
+        // Algo: Prioritize Due -> New -> Random
+        const due = candidates.filter(c => !c.nextReview || c.nextReview <= now);
+        const newCards = candidates.filter(c => c.repetitions === 0 && !due.includes(c));
+
         let queue = [...due, ...newCards];
-
-        // If not enough, fill with others (Review ahead)
         if (queue.length < drawCount) {
-            const others = cards.filter(c => !queue.includes(c));
+            const others = candidates.filter(c => !queue.includes(c));
+            // Shuffle others
+            others.sort(() => Math.random() - 0.5);
             queue = [...queue, ...others];
         }
 
-        // Slice to draw count
-        const selected = queue.slice(0, drawCount);
-
-        setStudyQueue(selected);
+        const sessionCards = queue.slice(0, drawCount);
+        setStudyQueue(sessionCards);
         setCurrentCardIndex(0);
         setIsFlipped(false);
         setSessionStats({ reviewed: 0, correct: 0 });
         setMode('study');
     };
 
+    const handleNextCard = async (known) => {
+        const currentCard = studyQueue[currentCardIndex];
+        await updateFlashcardProgress(currentCard.id, known ? 1 : 0);
+
+        if (known) setSessionStats(s => ({ ...s, correct: s.correct + 1 }));
+        setSessionStats(s => ({ ...s, reviewed: s.reviewed + 1 }));
+
+        if (currentCardIndex < studyQueue.length - 1) {
+            setCurrentCardIndex(prev => prev + 1);
+            setIsFlipped(false);
+        } else {
+            alert(`Session Complete! Reviewed: ${sessionStats.reviewed + 1}`);
+            setMode('manage');
+            loadData();
+        }
+    };
+
+    // --- Student Picker ---
     const handlePickStudent = () => {
         if (isRolling) return;
         setIsRolling(true);
@@ -91,251 +190,267 @@ const FlashcardView = () => {
         const interval = setInterval(() => {
             setPickedStudent(Math.floor(Math.random() * studentCount) + 1);
             duration += 50;
-            if (duration > 1500) { // 1.5s roll
+            if (duration > 1500) {
                 clearInterval(interval);
                 setIsRolling(false);
             }
         }, 50);
     };
 
-    const handleNextCard = async (known) => {
-        const currentCard = studyQueue[currentCardIndex];
+    // --- JSX Sub-components ---
+    const Sidebar = (
+        <div className="h-full flex flex-col bg-slate-50">
+            <div className="p-4 border-b border-slate-200">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <Layers className="text-amber-500" />
+                    Library
+                </h2>
+            </div>
 
-        // Update SRS Progress
-        await updateFlashcardProgress(currentCard.id, known ? 1 : 0);
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {/* System Folders */}
+                <button
+                    onClick={() => setSelectedFolderId('all')}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'all' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                    <LayoutGrid size={18} />
+                    All Cards
+                    <span className="ml-auto text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">{allCards.length}</span>
+                </button>
 
-        if (known) {
-            setSessionStats(prev => ({ ...prev, correct: prev.correct + 1 }));
-        }
-        setSessionStats(prev => ({ ...prev, reviewed: prev.reviewed + 1 }));
+                <button
+                    onClick={() => setSelectedFolderId('today')}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'today' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                    <RefreshCw size={18} />
+                    Due Today
+                </button>
 
-        if (currentCardIndex < studyQueue.length - 1) {
-            setCurrentCardIndex(prev => prev + 1);
-            setIsFlipped(false);
-        } else {
-            alert(`学习完成！ 本次共复习 ${sessionStats.reviewed + 1} 张卡片。`);
-            setMode('manage');
-            loadCards(); // Reload to update dates
-        }
-    };
-
-    return (
-        <div className="h-full flex flex-col animate-fade-in space-y-6">
-
-            {/* Header */}
-            <div className="flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="p-3 bg-amber-100 text-amber-600 rounded-xl">
-                        <Layers size={24} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800">抽记卡 (Flashcards)</h1>
-                        <p className="text-slate-500 text-sm">间隔重复记忆系统</p>
-                    </div>
+                <div className="pt-4 pb-2 px-3 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>My Folders</span>
+                    <button onClick={() => setIsAddingFolder(true)} className="hover:text-blue-600"><Plus size={14} /></button>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setShowStudentPicker(true)}
-                        className="p-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors tooltip"
-                        title="班级抽号 (Class Lottery)"
-                    >
-                        <Dices size={20} />
-                    </button>
-                    <button
-                        onClick={() => setMode('manage')}
-                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${mode === 'manage' ? 'bg-white shadow-md text-amber-600' : 'text-slate-500 hover:bg-slate-100'}`}
-                    >
-                        管理卡片 ({cards.length})
-                    </button>
-                    <div className="flex items-center bg-slate-100 rounded-xl px-2">
-                        <span className="text-xs font-bold text-slate-400 pl-2 pr-1">抽取:</span>
+                {isAddingFolder && (
+                    <div className="px-2 mb-2 animate-fade-in">
                         <input
-                            type="number"
-                            min="1"
-                            max={cards.length}
-                            value={drawCount}
-                            onChange={(e) => setDrawCount(Math.max(1, Math.min(cards.length, parseInt(e.target.value) || 1)))}
-                            className="w-12 bg-transparent border-none text-center font-bold text-slate-600 outline-none text-sm py-2"
+                            autoFocus
+                            className="w-full bg-white border border-blue-200 rounded-lg px-2 py-1.5 text-sm outline-none"
+                            placeholder="Type Name..."
+                            value={newFolderName}
+                            onChange={(e) => setNewFolderName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleAddFolder();
+                                if (e.key === 'Escape') setIsAddingFolder(false);
+                            }}
+                            onBlur={() => newFolderName ? handleAddFolder() : setIsAddingFolder(false)}
                         />
                     </div>
+                )}
+
+                {folders.map(folder => (
                     <button
-                        onClick={startSession}
-                        disabled={cards.length === 0}
-                        className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${mode === 'study' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'bg-slate-800 text-white hover:bg-slate-700 shadow-lg'}`}
+                        key={folder.id}
+                        onClick={() => setSelectedFolderId(folder.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors group ${selectedFolderId === folder.id ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}
                     >
-                        <RotateCw size={16} />
-                        开始抽背
+                        <Folder size={18} className={selectedFolderId === folder.id ? 'fill-indigo-100' : ''} />
+                        <span className="truncate flex-1">{folder.name}</span>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDeleteFolder(e, folder.id)}>
+                            <Trash2 size={14} className="text-slate-300 hover:text-red-500" />
+                        </div>
                     </button>
-                </div>
+                ))}
             </div>
 
-            {/* Content */}
-            <div className="flex-1 bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden relative">
+            <div className="p-4 border-t border-slate-200 bg-slate-100/50">
+                <button
+                    onClick={() => setShowStudentPicker(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-slate-200 text-slate-600 text-sm font-bold shadow-sm hover:text-indigo-600 hover:border-indigo-100 transition-colors"
+                >
+                    <Dices size={16} />
+                    Class Lottery
+                </button>
+            </div>
+        </div>
+    );
 
-                {/* Mode: Manage */}
-                {mode === 'manage' && (
-                    <div className="h-full flex flex-col">
-                        {/* Add Bar */}
-                        <div className="p-6 border-b border-slate-100 bg-slate-50">
-                            {isAdding ? (
-                                <div className="flex flex-col gap-4 animate-fade-in">
-                                    <div className="flex gap-4">
+    return (
+        <div className="h-[calc(100vh-100px)] animate-fade-in bg-white border border-slate-100 rounded-[2rem] shadow-sm overflow-hidden">
+
+            {mode === 'manage' ? (
+                <SplitPane
+                    left={Sidebar}
+                    right={
+                        <div className="h-full flex flex-col bg-white">
+                            {/* Toolbar */}
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white/80 backdrop-blur sticky top-0 z-10">
+                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    {selectedFolderId === 'all' ? 'All Cards' :
+                                        selectedFolderId === 'today' ? 'Due for Review' :
+                                            folders.find(f => f.id === selectedFolderId)?.name || 'Folder'}
+                                    <span className="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full text-xs">{displayCards.length}</span>
+                                </h3>
+
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center bg-slate-100 rounded-lg px-2 py-1">
+                                        <span className="text-xs font-bold text-slate-400 pr-2">Draw:</span>
                                         <input
-                                            value={newFront}
-                                            onChange={e => setNewFront(e.target.value)}
-                                            placeholder="正面 (单词/问题)"
-                                            className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none"
-                                        />
-                                        <input
-                                            value={newBack}
-                                            onChange={e => setNewBack(e.target.value)}
-                                            placeholder="背面 (释义/答案)"
-                                            className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none"
+                                            type="number"
+                                            className="w-10 bg-transparent text-center font-bold text-slate-600 text-sm outline-none"
+                                            value={drawCount}
+                                            onChange={(e) => setDrawCount(parseInt(e.target.value) || 10)}
                                         />
                                     </div>
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => setIsAdding(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-lg text-sm font-bold">取消</button>
-                                        <button onClick={handleAddCard} className="px-6 py-2 bg-amber-500 text-white rounded-lg text-sm font-bold shadow-md shadow-amber-200 hover:bg-amber-600 transition-colors">保存卡片</button>
-                                    </div>
+                                    <button
+                                        onClick={startSession}
+                                        className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg flex items-center gap-2"
+                                    >
+                                        <RotateCw size={16} /> Start Study
+                                    </button>
                                 </div>
-                            ) : (
-                                <button
-                                    onClick={() => setIsAdding(true)}
-                                    className="w-full py-4 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:border-amber-400 hover:text-amber-500 hover:bg-amber-50 transition-all flex items-center justify-center gap-2 font-bold"
-                                >
-                                    <Plus size={20} />
-                                    添加新卡片
-                                </button>
-                            )}
-                        </div>
+                            </div>
 
-                        {/* List */}
-                        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {cards.map(card => {
-                                const isDue = !card.nextReview || card.nextReview <= Date.now();
-                                const daysUntil = card.nextReview ? Math.ceil((card.nextReview - Date.now()) / (1000 * 60 * 60 * 24)) : 0;
-
-                                return (
-                                    <div key={card.id} className={`relative bg-white border rounded-2xl p-6 hover:shadow-lg transition-all group ${isDue ? 'border-amber-200 shadow-amber-100' : 'border-slate-100'}`}>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <h3 className="font-bold text-lg text-slate-800 truncate flex-1" title={card.front}>{card.front}</h3>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDue ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
-                                                {isDue ? '待复习' : `${daysUntil}天后`}
-                                            </span>
+                            {/* Card Grid */}
+                            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+                                {/* Add Input */}
+                                <div className="mb-6 bg-white border border-slate-200 shadow-sm rounded-xl p-4 transition-all focus-within:ring-2 ring-blue-500/10">
+                                    {isAddingCard ? (
+                                        <div className="flex flex-col gap-3">
+                                            <div className="flex gap-3">
+                                                <input value={newFront} onChange={e => setNewFront(e.target.value)} placeholder="Front" className="flex-1 p-2 bg-slate-50 rounded border-none outline-none font-medium" autoFocus />
+                                                <input value={newBack} onChange={e => setNewBack(e.target.value)} placeholder="Back" className="flex-1 p-2 bg-slate-50 rounded border-none outline-none" />
+                                            </div>
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => setIsAddingCard(false)} className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:bg-slate-100 rounded">Cancel</button>
+                                                <button onClick={handleAddCard} className="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+                                            </div>
                                         </div>
-                                        <div className="w-full h-px bg-slate-100 my-3" />
-                                        <p className="text-slate-500 text-sm line-clamp-3">{card.back}</p>
-
-                                        <button
-                                            onClick={() => handleDelete(card.id)}
-                                            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                            style={{ top: 'auto', bottom: '1rem' }} // Move delete button to bottom right to avoid conflict with tag
-                                        >
-                                            <Trash2 size={16} />
+                                    ) : (
+                                        <button onClick={() => setIsAddingCard(true)} className="w-full py-2 text-slate-400 text-sm font-bold border-2 border-dashed border-slate-100 rounded-lg hover:border-blue-200 hover:text-blue-500 flex items-center justify-center gap-2">
+                                            <Plus size={16} /> Add Card to '{selectedFolderId === 'all' ? 'Uncategorized' : (folders.find(f => f.id === selectedFolderId)?.name || 'Current')}'
                                         </button>
-                                    </div>
-                                )
-                            })}
-                            {cards.length === 0 && !isAdding && (
-                                <div className="col-span-full text-center py-20 text-slate-400">
-                                    暂无卡片，添加一张开始吧！
+                                    )}
                                 </div>
-                            )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {displayCards.map(card => {
+                                        const isDue = !card.nextReview || card.nextReview <= Date.now();
+                                        return (
+                                            <div key={card.id} className="group bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-all relative">
+                                                <div className="font-bold text-slate-800 mb-2 truncate" title={card.front}>{card.front}</div>
+                                                <div className="text-sm text-slate-500 line-clamp-3 mb-4 h-12">{card.back}</div>
+                                                <div className="flex justify-between items-center">
+                                                    <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDue ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                                        {isDue ? 'Due' : 'Review Soon'}
+                                                    </div>
+                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {/* Could add Edit here */}
+                                                        <button onClick={() => handleDeleteCard(card.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
                         </div>
+                    }
+                    leftClassName="bg-white border-r border-slate-100" // Light theme override
+                    rightClassName="bg-white"
+                />
+            ) : (
+                // Study Mode (Full Screen Overlay)
+                <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-50 relative">
+                    <button onClick={() => { setMode('manage'); loadData(); }} className="absolute top-6 left-6 p-2 rounded-full bg-white shadow-sm text-slate-500 hover:text-slate-800">
+                        <ChevronLeft />
+                    </button>
+
+                    <div className="w-full max-w-2xl text-center mb-6">
+                        <span className="text-slate-400 text-sm font-mono">
+                            Progress: {currentCardIndex + 1} / {studyQueue.length}
+                        </span>
                     </div>
-                )}
 
-                {/* Mode: Study */}
-                {mode === 'study' && studyQueue.length > 0 && (
-                    <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-50">
-                        <div className="w-full max-w-2xl text-center mb-6">
-                            <span className="text-slate-400 text-sm font-mono">
-                                进度: {currentCardIndex + 1} / {studyQueue.length}
-                            </span>
-                        </div>
-
-                        {/* Card Flip Container */}
-                        <div
-                            className="relative w-full max-w-2xl aspect-[3/2] cursor-pointer perspective-1000 group"
-                            onClick={() => setIsFlipped(!isFlipped)}
+                    {/* Card Flip Container */}
+                    <div
+                        className="relative w-full max-w-2xl aspect-[3/2] cursor-pointer perspective-1000 group"
+                        onClick={() => setIsFlipped(!isFlipped)}
+                    >
+                        <div className={`relative w-full h-full text-center transition-transform duration-500 transform-style-3d shadow-xl rounded-3xl bg-white border border-slate-200 ${isFlipped ? 'rotate-y-180' : ''}`}
+                            style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
                         >
-                            <div className={`relative w-full h-full text-center transition-transform duration-500 transform-style-3d shadow-xl rounded-3xl bg-white border border-slate-200 ${isFlipped ? 'rotate-y-180' : ''}`}
-                                style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
-                            >
-                                {/* Front */}
-                                <div className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-10">
-                                    <span className="text-slate-300 text-xs uppercase tracking-widest font-bold mb-4">问题 (Question)</span>
-                                    <h2 className="text-4xl font-bold text-slate-800 break-words max-w-full">
-                                        {studyQueue[currentCardIndex].front}
-                                    </h2>
-                                    <p className="text-slate-400 text-sm mt-8 animate-bounce">点击翻转 (Click to Flip)</p>
-                                </div>
+                            {/* Front */}
+                            <div className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-10">
+                                <span className="text-slate-300 text-xs uppercase tracking-widest font-bold mb-4">Question</span>
+                                <h2 className="text-4xl font-bold text-slate-800 break-words max-w-full">
+                                    {studyQueue[currentCardIndex].front}
+                                </h2>
+                                <p className="text-slate-400 text-sm mt-8 animate-bounce">Click to Flip</p>
+                            </div>
 
-                                {/* Back */}
-                                <div
-                                    className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-10 bg-amber-50 rounded-3xl border border-amber-100"
-                                    style={{ transform: 'rotateY(180deg)', backfaceVisibility: 'hidden' }}
-                                >
-                                    <span className="text-amber-300 text-xs uppercase tracking-widest font-bold mb-4">答案 (Answer)</span>
-                                    <p className="text-2xl text-slate-700 leading-relaxed break-words whitespace-pre-wrap">
-                                        {studyQueue[currentCardIndex].back}
-                                    </p>
-                                </div>
+                            {/* Back */}
+                            <div
+                                className="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-10 bg-amber-50 rounded-3xl border border-amber-100"
+                                style={{ transform: 'rotateY(180deg)', backfaceVisibility: 'hidden' }}
+                            >
+                                <span className="text-amber-300 text-xs uppercase tracking-widest font-bold mb-4">Answer</span>
+                                <p className="text-2xl text-slate-700 leading-relaxed break-words whitespace-pre-wrap">
+                                    {studyQueue[currentCardIndex].back}
+                                </p>
                             </div>
                         </div>
-
-                        {/* Controls */}
-                        {isFlipped && (
-                            <div className="flex gap-6 mt-10 animate-fade-in">
-                                <button
-                                    onClick={() => handleNextCard(false)}
-                                    className="flex flex-col items-center gap-2 text-red-400 hover:text-red-500 transition-colors group"
-                                >
-                                    <div className="w-14 h-14 rounded-full bg-white border-2 border-red-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                                        <XCircle size={28} />
-                                    </div>
-                                    <span className="text-xs font-bold">忘记了</span>
-                                </button>
-
-                                <button
-                                    onClick={() => handleNextCard(true)}
-                                    className="flex flex-col items-center gap-2 text-green-500 hover:text-green-600 transition-colors group"
-                                >
-                                    <div className="w-14 h-14 rounded-full bg-white border-2 border-green-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                                        <CheckCircle size={28} />
-                                    </div>
-                                    <span className="text-xs font-bold">记住了</span>
-                                </button>
-                            </div>
-                        )}
                     </div>
-                )}
-            </div>
-            {/* Student Picker Modal */}
+
+                    {/* Controls */}
+                    {isFlipped && (
+                        <div className="flex gap-6 mt-10 animate-fade-in">
+                            <button
+                                onClick={() => handleNextCard(false)}
+                                className="flex flex-col items-center gap-2 text-red-400 hover:text-red-500 transition-colors group"
+                            >
+                                <div className="w-14 h-14 rounded-full bg-white border-2 border-red-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                    <XCircle size={28} />
+                                </div>
+                                <span className="text-xs font-bold">Again</span>
+                            </button>
+
+                            <button
+                                onClick={() => handleNextCard(true)}
+                                className="flex flex-col items-center gap-2 text-green-500 hover:text-green-600 transition-colors group"
+                            >
+                                <div className="w-14 h-14 rounded-full bg-white border-2 border-green-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                    <CheckCircle size={28} />
+                                </div>
+                                <span className="text-xs font-bold">Easy</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Student Picker Modal (Kept same as before) */}
             {showStudentPicker && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white rounded-3xl shadow-2xl p-8 w-96 text-center border-4 border-white ring-4 ring-indigo-50 scale-100 animate-in fade-in zoom-in duration-300">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                 <Dices className="text-indigo-500" />
-                                班级抽号
+                                Class Lottery
                             </h2>
                             <button onClick={() => setShowStudentPicker(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
                                 <XCircle size={24} />
                             </button>
                         </div>
-
                         <div className="mb-8">
-                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">中奖号码</div>
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Selected Student</div>
                             <div className={`text-8xl font-black text-indigo-600 font-mono transition-transform ${isRolling ? 'scale-110' : 'scale-100'}`}>
                                 {pickedStudent !== null ? pickedStudent : '?'}
                             </div>
                         </div>
-
                         <div className="flex flex-col gap-4">
                             <div className="flex items-center justify-center gap-3 bg-slate-50 p-3 rounded-xl">
-                                <span className="text-sm font-bold text-slate-500">学生总数:</span>
+                                <span className="text-sm font-bold text-slate-500">Total Students:</span>
                                 <input
                                     type="number"
                                     min="1"
@@ -345,13 +460,12 @@ const FlashcardView = () => {
                                     className="w-16 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg py-1 outline-indigo-500"
                                 />
                             </div>
-
                             <button
                                 onClick={handlePickStudent}
                                 disabled={isRolling}
                                 className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-indigo-200 transition-all active:scale-95 ${isRolling ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                             >
-                                {isRolling ? '抽取中...' : '开始抽号! (Start Roll)'}
+                                {isRolling ? 'Rolling...' : 'Start Roll'}
                             </button>
                         </div>
                     </div>

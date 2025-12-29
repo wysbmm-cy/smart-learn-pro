@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const SplitPane = ({ left, right, initialLeftWidth = 350, minLeftWidth = 250, maxLeftWidth = 600 }) => {
+const SplitPane = ({
+    left,
+    right,
+    initialLeftWidth = 350,
+    minLeftWidth = 250,
+    maxLeftWidth = 600,
+    leftClassName = "bg-slate-900/40 backdrop-blur-md border-r border-white/5",
+    rightClassName = "bg-slate-900/10"
+}) => {
     const [leftWidth, setLeftWidth] = useState(initialLeftWidth);
     const [isDragging, setIsDragging] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -68,7 +76,7 @@ const SplitPane = ({ left, right, initialLeftWidth = 350, minLeftWidth = 250, ma
             {/* Left Pane */}
             <div
                 style={{ width: isMobile ? '100%' : leftWidth, height: isMobile ? 'auto' : '100%' }}
-                className={`shrink-0 overflow-hidden ${isMobile ? 'border-b max-h-[40vh]' : 'border-r'} border-white/5 relative z-10 transition-all duration-75 bg-slate-900/40 backdrop-blur-md`}
+                className={`shrink-0 overflow-hidden relative z-10 transition-all duration-75 ${leftClassName} ${isMobile ? 'border-b max-h-[40vh]' : ''}`}
             >
                 {left}
             </div>
@@ -80,12 +88,12 @@ const SplitPane = ({ left, right, initialLeftWidth = 350, minLeftWidth = 250, ma
                     className={`w-1.5 hover:w-2 -ml-0.5 z-50 cursor-col-resize flex items-center justify-center transition-colors group
                         ${isDragging ? 'bg-violet-600' : 'bg-transparent hover:bg-violet-500/50'}`}
                 >
-                    <div className={`w-0.5 h-8 rounded-full transition-colors ${isDragging ? 'bg-violet-300' : 'bg-slate-700 group-hover:bg-violet-400'}`} />
+                    <div className={`w-0.5 h-8 rounded-full transition-colors ${isDragging ? 'bg-violet-300' : 'bg-slate-400/50 group-hover:bg-violet-400'}`} />
                 </div>
             )}
 
             {/* Right Pane */}
-            <div className="flex-1 min-w-0 h-full overflow-hidden relative bg-slate-900/10">
+            <div className={`flex-1 min-w-0 h-full overflow-hidden relative ${rightClassName}`}>
                 {right}
             </div>
 
