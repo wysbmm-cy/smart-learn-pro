@@ -46,6 +46,12 @@ const DEFAULT_SETTINGS = {
     audioApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
     audioModelName: 'TeleAI/TeleSpeechASR',
 
+    // TTS Settings (SiliconFlow / MOSS)
+    ttsApiBaseUrl: 'https://api.siliconflow.cn/v1',
+    ttsApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr', // Same as audioApiKey
+    ttsModelName: 'fnlp/MOSS-TTSD-v0.5',
+    ttsVoice: 'fnlp/MOSS-TTSD-v0.5:alex',
+
     // Appearance (Zen Mode)
     backgroundImage: 'https://images.unsplash.com/photo-1497436072909-60f360e1d4b0?q=80&w=2560&auto=format&fit=crop', // Nature by default
     glassBlur: 'md', // sm, md, lg, xl
