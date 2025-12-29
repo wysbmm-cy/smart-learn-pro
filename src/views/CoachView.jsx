@@ -15,10 +15,41 @@ const CoachView = () => {
     const [status, setStatus] = useState('idle'); // idle, recording, processing, speaking
     const [messages, setMessages] = useState([]); // { role: 'user'|'assistant', text: string }
 
+    // State for analysis modal/result
+    const [analysisResult, setAnalysisResult] = useState(null);
+
     // Audio Refs
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const audioPlayerRef = useRef(new Audio());
+
+    const playAudio = (url) => {
+        if (!url) return;
+        audioPlayerRef.current.src = url;
+        audioPlayerRef.current.play();
+    };
+
+    const handleAnalyze = async (text) => {
+        setStatus('processing');
+        try {
+            const prompt = `Please analyze the following English sentence spoken by a student. Point out any grammar mistakes or unnatural phrasing, and suggest a better version.
+            
+            Sentence: "${text}"
+            
+            Keep the feedback concise and encouraging. usage Chinese for explanation.`;
+
+            const feedback = await sendChatMessage([
+                { role: 'system', content: "You are a helpful English teacher." },
+                { role: 'user', content: prompt }
+            ], settings);
+
+            setAnalysisResult({ target: text, feedback });
+        } catch (e) {
+            alert("Analysis failed: " + e.message);
+        } finally {
+            setStatus('idle');
+        }
+    };
 
     const startRecording = async () => {
         try {
@@ -54,6 +85,7 @@ const CoachView = () => {
     const handleRecordingStop = async () => {
         setStatus('processing');
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const userAudioUrl = URL.createObjectURL(audioBlob); // Create URL for playback
 
         try {
             // 1. Transcribe (STT)
@@ -63,8 +95,12 @@ const CoachView = () => {
                 return;
             }
 
-            // FIX: Use 'content' instead of 'text' for OpenAI API compatibility
-            const newMessages = [...messages, { role: 'user', content: transcription }];
+            // Msg with Audio
+            const newMessages = [...messages, {
+                role: 'user',
+                content: transcription,
+                audioUrl: userAudioUrl
+            }];
             setMessages(newMessages);
 
             // 2. Chat (LLM)
@@ -73,14 +109,19 @@ const CoachView = () => {
                 ...newMessages
             ], settings);
 
-            const updatedMessages = [...newMessages, { role: 'assistant', content: aiResponseText }];
-            setMessages(updatedMessages);
-
             // 3. Speak (TTS)
             const audioData = await synthesizeSpeech(aiResponseText, settings);
-            const audioUrl = URL.createObjectURL(audioData);
+            const aiAudioUrl = URL.createObjectURL(audioData);
 
-            audioPlayerRef.current.src = audioUrl;
+            const updatedMessages = [...newMessages, {
+                role: 'assistant',
+                content: aiResponseText,
+                audioUrl: aiAudioUrl
+            }];
+            setMessages(updatedMessages);
+
+            // Auto-play AI response
+            audioPlayerRef.current.src = aiAudioUrl;
             audioPlayerRef.current.onended = () => setStatus('idle');
             setStatus('speaking');
             audioPlayerRef.current.play();
@@ -127,6 +168,27 @@ const CoachView = () => {
             {/* Main Interaction Area */}
             <div className="flex-1 bg-slate-900/40 backdrop-blur-md rounded-3xl border border-white/5 overflow-hidden flex flex-col relative">
 
+                {/* Analysis Result Overlay */}
+                {analysisResult && (
+                    <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                        <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl max-w-lg w-full shadow-2xl">
+                            <h3 className="text-xl font-bold text-violet-400 mb-2">口语点评</h3>
+                            <div className="bg-slate-800/50 p-3 rounded-lg text-slate-300 text-sm mb-4 italic">
+                                "{analysisResult.target}"
+                            </div>
+                            <div className="prose prose-invert prose-sm max-h-60 overflow-y-auto mb-6 leading-relaxed">
+                                <p className="whitespace-pre-wrap">{analysisResult.feedback}</p>
+                            </div>
+                            <button
+                                onClick={() => setAnalysisResult(null)}
+                                className="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold transition-colors"
+                            >
+                                明白了
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Visualizer / Status Indicator */}
                 <div className="h-64 flex flex-col items-center justify-center border-b border-white/5 bg-gradient-to-b from-slate-900/0 to-slate-900/50">
                     <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${status === 'recording' ? 'bg-red-500/20 shadow-[0_0_50px_rgba(239,68,68,0.3)] scale-110' :
@@ -162,11 +224,31 @@ const CoachView = () => {
                                 }`}>
                                 {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                             </div>
-                            <div className={`px-4 py-3 rounded-2xl max-w-[80%] leading-relaxed ${msg.role === 'user'
-                                ? 'bg-slate-800 text-slate-200 rounded-tr-none'
-                                : 'bg-indigo-900/30 text-indigo-100 border border-indigo-500/20 rounded-tl-none'
-                                }`}>
-                                {msg.text}
+                            <div className={`flex flex-col gap-2 max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                <div className={`px-4 py-3 rounded-2xl leading-relaxed ${msg.role === 'user'
+                                    ? 'bg-slate-800 text-slate-200 rounded-tr-none'
+                                    : 'bg-indigo-900/30 text-indigo-100 border border-indigo-500/20 rounded-tl-none'
+                                    }`}>
+                                    {msg.content}
+                                </div>
+                                <div className="flex gap-2">
+                                    {msg.audioUrl && (
+                                        <button
+                                            onClick={() => playAudio(msg.audioUrl)}
+                                            className="text-xs flex items-center gap-1 text-slate-400 hover:text-violet-400 transition-colors bg-slate-900/50 px-2 py-1 rounded-md"
+                                        >
+                                            <Play size={12} /> {msg.role === 'user' ? '回听我的' : '重播'}
+                                        </button>
+                                    )}
+                                    {msg.role === 'user' && (
+                                        <button
+                                            onClick={() => handleAnalyze(msg.content)}
+                                            className="text-xs flex items-center gap-1 text-slate-400 hover:text-pink-400 transition-colors bg-slate-900/50 px-2 py-1 rounded-md"
+                                        >
+                                            <Settings size={12} /> AI 点评
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}
