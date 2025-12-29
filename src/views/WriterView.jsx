@@ -164,7 +164,7 @@ const WriterView = () => {
                 right={
                     <div className="flex h-full bg-slate-950/30 relative overflow-hidden">
                         {/* Main Editor Area */}
-                        <div className={`flex flex-col h-full transition-all duration-300 ${analysis ? 'w-1/2 border-r border-white/5 hidden md:flex' : 'w-full'}`}>
+                        <div className={`flex flex-col h-full transition-all duration-300 ${analysis ? 'hidden md:flex md:w-1/2 border-r border-white/5' : 'w-full'}`}>
                             {/* Editor Toolbar */}
                             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
                                 <input
@@ -181,7 +181,7 @@ const WriterView = () => {
                                     <button
                                         onClick={handleSave}
                                         className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
-                                        title="Save"
+                                        title="Save Draft (Ctrl+S)"
                                     >
                                         {isSaving ? <CheckCircle size={20} className="text-emerald-500" /> : <Save size={20} />}
                                     </button>
@@ -213,18 +213,21 @@ const WriterView = () => {
 
                         {/* Analysis Result Panel */}
                         {analysis && (
-                            <div className="flex-1 h-full bg-slate-900/80 overflow-y-auto custom-scrollbar animate-in slide-in-from-right duration-300 absolute md:static inset-0 z-20 md:z-0 w-full md:w-auto">
+                            <div className="flex-1 h-full bg-slate-900/40 backdrop-blur-xl overflow-y-auto custom-scrollbar animate-in slide-in-from-right duration-300 absolute md:static inset-0 z-20 md:z-0 w-full md:w-auto border-l border-white/5">
                                 <div className="p-6 space-y-6">
-                                    <div className="flex justify-between items-start">
-                                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                            <CheckCircle className="text-emerald-400" />
-                                            Analysis Report
-                                        </h3>
+                                    <div className="flex justify-between items-start sticky top-0 bg-slate-900/95 backdrop-blur z-30 pb-4 border-b border-white/5 -mt-6 pt-6 -mx-6 px-6 shadow-sm">
+                                        <div>
+                                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                                <CheckCircle className="text-emerald-400" />
+                                                Analysis Report
+                                            </h3>
+                                            <p className="text-xs text-slate-400 mt-1">Based on CET-4/6 Standards</p>
+                                        </div>
                                         <button
                                             onClick={() => setAnalysis(null)}
-                                            className="p-1 hover:bg-white/10 rounded-full text-slate-400 transition-colors"
+                                            className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs font-bold"
                                         >
-                                            <X size={24} />
+                                            <X size={16} /> Close
                                         </button>
                                     </div>
 

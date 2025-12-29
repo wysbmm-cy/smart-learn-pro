@@ -3,11 +3,19 @@ import { Tv, AlertCircle } from 'lucide-react';
 
 const BilibiliPlayer = ({ url }) => {
     // Extract BV ID from URL (Standard: BV1xx411c7X7)
-    const bvid = useMemo(() => {
+    // Extract BV ID and Page (p) from URL
+    const videoData = useMemo(() => {
         if (!url) return null;
-        const match = url.match(/(BV[a-zA-Z0-9]+)/);
-        return match ? match[1] : null;
+        const bvidMatch = url.match(/(BV[a-zA-Z0-9]+)/);
+        const pageMatch = url.match(/[?&]p=(\d+)/);
+
+        return {
+            bvid: bvidMatch ? bvidMatch[1] : null,
+            page: pageMatch ? pageMatch[1] : 1
+        };
     }, [url]);
+
+    const { bvid, page } = videoData || {};
 
     if (!url) {
         return (
@@ -36,11 +44,22 @@ const BilibiliPlayer = ({ url }) => {
     return (
         <div className="w-full h-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 relative group">
             <iframe
-                src={`//player.bilibili.com/player.html?bvid=${bvid}&page=1&high_quality=1&danmaku=0&autoplay=0`}
+                src={`//player.bilibili.com/player.html?bvid=${bvid}&page=${page}&high_quality=1&danmaku=0&autoplay=0`}
                 className="w-full h-full border-0 absolute inset-0"
                 allowFullScreen="true"
-                sandbox="allow-top-navigation allow-same-origin allow-forms allow-scripts allow-popups"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
             ></iframe>
+
+            {/* HD Fallback Link */}
+            <a
+                href={`https://www.bilibili.com/video/${bvid}?p=${page}`}
+                target="_blank"
+                rel="noreferrer"
+                className="absolute top-4 right-4 z-10 bg-black/60 hover:bg-pink-600/90 text-white/80 hover:text-white px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-sm transition-all flex items-center gap-1 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+                title="Open in Bilibili for 1080p/4K Quality"
+            >
+                <Tv size={14} /> Watch in HD ↗
+            </a>
         </div>
     );
 };

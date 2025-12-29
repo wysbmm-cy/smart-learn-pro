@@ -124,10 +124,15 @@ const extractJSON = (str) => {
 export const analyzeWriting = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
+  const level = settings.writingLevel || "CET-4/6";
+  const customInstruction = settings.writingPrompt || "Standard strict grading.";
+
   const systemPrompt = `
-  Role: Strict English Examiner for Chinese College English Test (CET-4/6).
+  Role: Professional English Examiner (Target Level: ${level}).
   
-  Task: Grade and polish the student's essay based on the 15-Point Grading Scale.
+  Task: Grade and polish the student's essay based on ${level} standards.
+
+  User Custom Instruction: ${customInstruction}
   
   Grading Standards (15 Points Max):
   - 14-15 (Excellent): Relevant, articulate, diverse vocabulary, advanced grammar, effective cohesion.

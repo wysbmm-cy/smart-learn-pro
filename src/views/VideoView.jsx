@@ -80,7 +80,20 @@ const VideoView = () => {
 
     const startRecording = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Prefer system audio (screen share audio) for clearer pickup, fallback to mic if needed
+            let stream;
+            try {
+                // Ask for system audio (display media) - User must select the tab or screen and check "Share Audio"
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true, // Required to get audio in most browsers
+                    audio: true
+                });
+            } catch (err) {
+                // Fallback to mic if user cancels screen share
+                console.warn("System audio capture cancelled, falling back to mic...", err);
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
@@ -95,15 +108,15 @@ const VideoView = () => {
             mediaRecorder.start();
             setIsRecording(true);
         } catch (err) {
-            console.error("Mic Error:", err);
-            alert("Could not access microphone. Please check permissions.");
+            console.error("Audio Error:", err);
+            toast.error("Could not capture audio. Please allow microphone or system audio access.");
         }
     };
 
     const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
             mediaRecorderRef.current.stop();
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop()); // Stop screen share
             setIsRecording(false);
         }
     };

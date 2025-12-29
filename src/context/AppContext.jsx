@@ -15,6 +15,8 @@ const DEFAULT_SETTINGS = {
     showCollocations: true,
     showEtymology: false,
     preloadAll: true, // Default to "Fast Mode" (Preload All)
+    writingLevel: "CET-6", // Default Writing Level
+    writingPrompt: "Strict examiner mode. Find all errors.", // Default Custom Prompt
     vocabCount: "10-15", // Default vocabulary range
     systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
     vocabAnalysisPrompt: `
