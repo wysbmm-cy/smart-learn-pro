@@ -11,6 +11,7 @@ import FlashcardView from './views/FlashcardView';
 import SettingsView from './views/SettingsView';
 import PlanView from './views/PlanView';
 import CoachView from './views/CoachView';
+import VideoView from './views/VideoView';
 
 function AppContent() {
     const [currentView, setCurrentView] = useState('dashboard');
@@ -39,6 +40,8 @@ function AppContent() {
                 return <PlanView />;
             case 'coach':
                 return <CoachView />;
+            case 'video':
+                return <VideoView />;
             default:
                 return <Dashboard onNavigate={setCurrentView} />;
         }
