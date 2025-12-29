@@ -145,11 +145,15 @@ export const checkAudioConnection = async (settings) => {
 export const sendChatMessage = async (messages, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
-  // Use fetchFromAI with jsonRequired=false for free-form chat
-  const content = await fetchFromAI([
+  // Check if messages already have a system prompt (e.g. from CoachView)
+  const hasSystem = messages.some(m => m.role === 'system');
+  const finalMessages = hasSystem ? messages : [
     { role: "system", content: settings.systemPrompt || "You are a helpful English tutor." },
     ...messages
-  ], settings, false);
+  ];
+
+  // Use fetchFromAI with jsonRequired=false for free-form chat
+  const content = await fetchFromAI(finalMessages, settings, false);
 
   return content;
 };
@@ -158,6 +162,13 @@ export const streamChatMessage = async (messages, settings, onDelta) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
   const { apiKey, apiBaseUrl, modelName } = settings;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+
+  // Check if messages already have a system prompt
+  const hasSystem = messages.some(m => m.role === 'system');
+  const finalMessages = hasSystem ? messages : [
+    { role: "system", content: settings.systemPrompt || "You are a helpful English tutor." },
+    ...messages
+  ];
 
   try {
     const response = await fetch(`${cleanUrl}/chat/completions`, {
@@ -168,10 +179,7 @@ export const streamChatMessage = async (messages, settings, onDelta) => {
       },
       body: JSON.stringify({
         model: modelName || "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: settings.systemPrompt || "You are a helpful English tutor." },
-          ...messages
-        ],
+        messages: finalMessages,
         stream: true,
         temperature: 0.7
       })
