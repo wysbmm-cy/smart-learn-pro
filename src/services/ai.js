@@ -493,3 +493,53 @@ export const generatePlanInsight = async (settings, goal, stats) => {
     return null;
   }
 };
+
+export const extractVocabulary = async (text, settings) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const prompt = `
+  Role: Expert Language Teacher.
+  Task: Extract 10-20 most important/challenging vocabulary words from the text below.
+  Output Format: JSON Array of "Flashcards".
+  [
+     { "front": "English Word", "back": "Chinese Meaning + Example Sentence (En/Cn)" }
+  ]
+  Requirements:
+  - "front": The word or short phrase.
+  - "back": Concise definition (CN) followed by a short example.
+  - Filter: CEFR B2-C2 level words. Skip very simple words (like 'the', 'is', 'happy').
+  - Count: Return at least 10, max 30.
+  `;
+
+  const safeText = text.substring(0, 4000);
+
+  try {
+    const jsonStr = await fetchFromAI([
+      { role: "system", content: prompt },
+      { role: "user", content: safeText }
+    ], settings, true);
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      // Handle if AI wraps in wrapper object key
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed.flashcards && Array.isArray(parsed.flashcards)) return parsed.flashcards;
+      if (parsed.vocabulary && Array.isArray(parsed.vocabulary)) return parsed.vocabulary;
+
+      // Fallback: Check for array in keys
+      const values = Object.values(parsed);
+      const arr = values.find(v => Array.isArray(v));
+      if (arr) return arr;
+
+      throw new Error("Invalid Array Format");
+    } catch (e) {
+      // Fallback Regex
+      const match = jsonStr.match(/\[[\s\S]*\]/);
+      if (match) return JSON.parse(match[0]);
+      throw e;
+    }
+  } catch (error) {
+    console.error("Vocab Extraction Error:", error);
+    throw error;
+  }
+};

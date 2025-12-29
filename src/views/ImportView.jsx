@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FastForward, Sparkles, Loader2, AlertCircle, Mic, CheckCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { analyzeText, transcribeAudio } from '../services/ai';
+import { analyzeText, transcribeAudio, extractVocabulary } from '../services/ai';
 import { extractTextFromPDF } from '../services/pdf';
+import { saveFlashcard, saveFolder as dbSaveFolder, getFolders } from '../services/db';
 
 const ImportView = ({ onAnalyzeSuccess }) => {
     const {
@@ -13,13 +14,11 @@ const ImportView = ({ onAnalyzeSuccess }) => {
         // DB
         saveToHistory, saveToFileLibrary, saveToNotes,
         // Flashcards
-        addFlashcard, saveFolder, loadFolders // Assuming these are exposed in context or we import directly
+        loadFolders // Assuming these are exposed in context or we import directly
     } = useApp();
 
-    // Direct imports for things not in context yet
-    // Note: In a real app we'd move this to context, but for now we mix
-    import { saveFlashcard, saveFolder as dbSaveFolder, getFolders } from '../services/db';
-    import { extractVocabulary } from '../services/ai';
+    // Direct imports needed for this view
+
 
     const [mode, setMode] = useState('article'); // 'article' | 'vocab'
     const [errorMsg, setErrorMsg] = useState("");

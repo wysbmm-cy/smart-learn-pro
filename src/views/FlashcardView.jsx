@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
-import { saveFolder, getFolders, deleteFolder, saveFlashcard } from '../services/db';
+import { saveFolder, getFolders, deleteFolder } from '../services/db';
 
 const FlashcardView = () => {
     const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress } = useApp();
