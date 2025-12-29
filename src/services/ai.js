@@ -223,7 +223,8 @@ export const transcribeAudio = async (file, settings) => {
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
 
   const formData = new FormData();
-  formData.append("file", file);
+  // IMPORTANT: Filename with extension is often required by Whisper APIs (OpenAI/SiliconFlow) to detect format
+  formData.append("file", file, "recording.webm");
   formData.append("model", modelName);
 
   try {
@@ -284,6 +285,19 @@ export const synthesizeSpeech = async (text, settings) => {
   } catch (error) {
     console.error("TTS Error:", error);
     throw error;
+  }
+};
+
+export const checkTTSConnection = async (settings) => {
+  const apiKey = settings.ttsApiKey || settings.audioApiKey || settings.apiKey;
+  const apiBaseUrl = settings.ttsApiBaseUrl || settings.audioApiBaseUrl || settings.apiBaseUrl;
+
+  // Simple "Hello" test
+  try {
+    await synthesizeSpeech("Hello", settings);
+    return true;
+  } catch (e) {
+    throw new Error("TTS Test Failed: " + e.message);
   }
 };
 // ... existing exports
