@@ -48,6 +48,11 @@ export const initDB = () => {
                 const videoStore = db.createObjectStore('video_history', { keyPath: 'url' });
                 videoStore.createIndex('timestamp', 'timestamp', { unique: false });
             }
+            // Store for Writings (New in v6)
+            if (!db.objectStoreNames.contains('writings')) {
+                const writingStore = db.createObjectStore('writings', { keyPath: 'id' });
+                writingStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+            }
         };
 
         request.onsuccess = (event) => resolve(event.target.result);
@@ -134,6 +139,43 @@ export const deleteVideoHistory = async (url) => {
     const store = tx.objectStore('video_history');
     return new Promise((resolve, reject) => {
         const request = store.delete(url);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Writings CRUD
+export const saveWriting = async (writing) => {
+    const db = await initDB();
+    const tx = db.transaction('writings', 'readwrite');
+    const store = tx.objectStore('writings');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...writing, updatedAt: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getWritings = async () => {
+    const db = await initDB();
+    const tx = db.transaction('writings', 'readonly');
+    const store = tx.objectStore('writings');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const results = request.result.sort((a, b) => b.updatedAt - a.updatedAt);
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteWriting = async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('writings', 'readwrite');
+    const store = tx.objectStore('writings');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(id);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
