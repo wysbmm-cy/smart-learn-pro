@@ -281,13 +281,33 @@ const SettingsView = () => {
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                             TTS Security Key (Optional)
                         </label>
-                        <input
-                            type="password"
-                            value={settings.ttsApiKey || ''}
-                            onChange={(e) => updateSetting('ttsApiKey', e.target.value)}
-                            placeholder="Leave empty to use main API Key"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium"
-                        />
+                        <div className="flex gap-3">
+                            <input
+                                type="password"
+                                value={settings.ttsApiKey || ''}
+                                onChange={(e) => updateSetting('ttsApiKey', e.target.value)}
+                                placeholder="Leave empty to use main API Key"
+                                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium"
+                            />
+                            <button
+                                onClick={handleTTSTest}
+                                disabled={ttsConnectionStatus === 'testing'}
+                                className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 min-w-[140px] justify-center ${ttsConnectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
+                                    ttsConnectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
+                                        'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-200'
+                                    }`}
+                            >
+                                {ttsConnectionStatus === 'testing' ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : ttsConnectionStatus === 'success' ? (
+                                    <><CheckCircle size={16} /> 已验证</>
+                                ) : ttsConnectionStatus === 'error' ? (
+                                    <><X size={16} /> 失败</>
+                                ) : (
+                                    '测试 TTS'
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
