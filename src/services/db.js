@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
