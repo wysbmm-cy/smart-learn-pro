@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import WordCard from '../components/WordCard';
 import { generateDeepWordAnalysis, sendChatMessage } from '../services/ai';
 import ArticleActionMenu from '../components/ArticleActionMenu';
+import TranslationBubble from '../components/TranslationBubble';
 
 const StudyView = ({ onNavigate }) => {
     const { currentArticle, analysisResult, saveToNotes, addFlashcard, settings } = useApp();
@@ -16,10 +17,14 @@ const StudyView = ({ onNavigate }) => {
 
     // Text Selection State
     const [selection, setSelection] = useState(null); // { text, x, y }
+    const [translationState, setTranslationState] = useState({ status: 'idle', result: null }); // status: idle, loading, success
 
     // Clear selection when clicking elsewhere
     useEffect(() => {
-        const handleClick = () => setSelection(null);
+        const handleClick = () => {
+            setSelection(null);
+            setTranslationState({ status: 'idle', result: null });
+        };
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
     }, []);
@@ -41,17 +46,20 @@ const StudyView = ({ onNavigate }) => {
 
     const handleTranslateSelection = async () => {
         if (!selection) return;
-        const text = selection.text;
+
+        // Switch to loading state immediately
+        setTranslationState({ status: 'loading', result: null });
+
         try {
-            alert(`Translating...`);
             const result = await sendChatMessage([
-                { role: "user", content: `Translate this to Chinese (Direct translation only): "${text}"` }
+                { role: "user", content: `Translate this to Chinese (Direct translation only, concise): "${selection.text}"` }
             ], settings);
-            alert(`翻译结果:\n\n${result}`);
+
+            setTranslationState({ status: 'success', result: result });
         } catch (e) {
-            alert("Translation failed: " + e.message);
+            setTranslationState({ status: 'success', result: "翻译失败: " + e.message });
         }
-        setSelection(null);
+        // Do NOT clear selection here, so bubble stays open
     };
 
     const handleSaveSelectionWord = async () => {
@@ -208,13 +216,25 @@ const StudyView = ({ onNavigate }) => {
                 >
                     {currentArticle || "暂无内容。"}
 
-                    {selection && (
+                    {selection && translationState.status === 'idle' && (
                         <ArticleActionMenu
                             position={{ x: selection.x, y: selection.y }}
                             text={selection.text}
                             onTranslate={handleTranslateSelection}
                             onSave={handleSaveSelectionWord}
                             onClose={() => setSelection(null)}
+                        />
+                    )}
+
+                    {selection && translationState.status !== 'idle' && (
+                        <TranslationBubble
+                            position={{ x: selection.x, y: selection.y }}
+                            status={translationState.status}
+                            result={translationState.result}
+                            onClose={() => {
+                                setTranslationState({ status: 'idle', result: null });
+                                setSelection(null);
+                            }}
                         />
                     )}
                 </div>
