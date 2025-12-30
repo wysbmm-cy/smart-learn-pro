@@ -57,7 +57,19 @@ const WriterView = () => {
         toast.success('草稿保存成功！');
     };
 
-    // ...
+    const handleNew = () => {
+        setContent('');
+        setTitle('');
+        setCurrentId(null);
+        setAnalysis(null);
+    };
+
+    const handleLoad = (w) => {
+        setContent(w.content);
+        setTitle(w.title);
+        setCurrentId(w.id);
+        setAnalysis(null);
+    };
 
     const handleDelete = async (e, id) => {
         e.stopPropagation();
@@ -88,7 +100,13 @@ const WriterView = () => {
         }
     };
 
-    // ...
+    // Score Badge Color Helper
+    const getScoreColor = (score) => {
+        if (score >= 13) return 'bg-emerald-500 shadow-emerald-500/50'; // Excellent
+        if (score >= 10) return 'bg-blue-500 shadow-blue-500/50';       // Good
+        if (score >= 7) return 'bg-amber-500 shadow-amber-500/50';      // Fair
+        return 'bg-red-500 shadow-red-500/50';                         // Poor
+    };
 
     const SidebarContent = (
         <div className="h-full flex flex-col p-4 text-slate-200 bg-slate-900/40">
