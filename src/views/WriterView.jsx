@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
-import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, GitCompare, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History } from 'lucide-react';
-import { saveWriting, getWritings, deleteWriting } from '../services/db';
+import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, GitCompare, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen } from 'lucide-react';
+import { saveWriting, getWritings, deleteWriting, saveNote } from '../services/db';
 import { analyzeWriting } from '../services/ai';
 import { writingTemplates } from '../data/writingTemplates';
 import DiffViewer from '../components/DiffViewer';
+import PolishChatModal from '../components/PolishChatModal';
 import toast from 'react-hot-toast';
 
 const WriterView = () => {
@@ -23,7 +24,12 @@ const WriterView = () => {
     // V2.0 New States
     const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [isFocusMode, setIsFocusMode] = useState(false);
-    const [viewMode, setViewMode] = useState('report'); // 'report' | 'diff' | 'heatmap'
+    const [viewMode, setViewMode] = useState('report'); // 'report' | 'diff' | 'heatmap' | 'note'
+
+    // Sentence Polish State
+    const [selection, setSelection] = useState(null); // { text: string }
+    const [showPolishModal, setShowPolishModal] = useState(false);
+    const textareaRef = useRef(null);
 
     // Persist draft
     useEffect(() => {
@@ -133,6 +139,39 @@ const WriterView = () => {
         } finally {
             setIsAnalyzing(false);
         }
+    };
+
+    const handleSelectionChange = (e) => {
+        const start = e.target.selectionStart;
+        const end = e.target.selectionEnd;
+        if (start !== end) {
+            const text = content.substring(start, end);
+            if (text.trim().length > 0) {
+                setSelection({ text, start, end });
+            } else {
+                setSelection(null);
+            }
+        } else {
+            setSelection(null);
+        }
+    };
+
+    const openPolishModal = () => {
+        if (selection) {
+            setShowPolishModal(true);
+        }
+    };
+
+    const handleSaveNote = async () => {
+        if (!analysis?.knowledge_summary) return;
+        const note = {
+            id: crypto.randomUUID(),
+            title: `写作笔记: ${title || '无标题'} - ${new Date().toLocaleDateString()}`,
+            content: analysis.knowledge_summary,
+            updatedAt: Date.now()
+        };
+        await saveNote(note);
+        toast.success("已保存到学习笔记！");
     };
 
     // Score Badge Color Helper
@@ -297,6 +336,12 @@ const WriterView = () => {
         <div className={`w-full h-full overflow-hidden transition-all duration-300 relative ${isFocusMode ? 'fixed inset-0 z-50 bg-slate-950' : 'rounded-3xl border border-white/5 shadow-2xl bg-slate-900/20 backdrop-blur-sm'}`}>
 
             {showTemplateModal && <TemplatePicker />}
+            {showPolishModal && selection && (
+                <PolishChatModal
+                    selectedText={selection.text}
+                    onClose={() => setShowPolishModal(false)}
+                />
+            )}
 
             {/* If Focus Mode, we don't show split pane sidebar, just the editor */}
             {isFocusMode ? (
@@ -317,8 +362,10 @@ const WriterView = () => {
                             className="bg-transparent text-4xl font-black text-slate-800 mb-8 placeholder-slate-800 focus:outline-none w-full text-center"
                         />
                         <textarea
+                            ref={textareaRef}
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
+                            onSelect={handleSelectionChange}
                             placeholder="Just write..."
                             className="w-full h-full min-h-[80vh] bg-transparent text-xl leading-relaxed text-slate-400 focus:text-slate-200 focus:outline-none resize-none font-serif text-center md:px-20 placeholder:text-slate-800"
                             spellCheck="false"
@@ -371,6 +418,15 @@ const WriterView = () => {
 
                                         <div className="w-px h-6 bg-white/10 mx-1"></div>
 
+                                        {selection && (
+                                            <button
+                                                onClick={openPolishModal}
+                                                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold bg-purple-600 text-white shadow-lg shadow-purple-500/20 animate-in zoom-in duration-200 mr-2"
+                                            >
+                                                <Sparkles size={16} /> 单句精修
+                                            </button>
+                                        )}
+
                                         <button
                                             onClick={handleAnalyze}
                                             disabled={isAnalyzing}
@@ -386,8 +442,10 @@ const WriterView = () => {
                                 </div>
 
                                 <textarea
+                                    ref={textareaRef}
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
+                                    onSelect={handleSelectionChange}
                                     placeholder="在此开始写作..."
                                     className="flex-1 w-full bg-transparent p-8 text-lg leading-relaxed text-slate-200 focus:outline-none resize-none custom-scrollbar font-sans"
                                     spellCheck="false"
@@ -423,6 +481,12 @@ const WriterView = () => {
                                                         className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${viewMode === 'diff' ? 'bg-white/20 text-white' : 'text-slate-500 hover:bg-white/5'}`}
                                                     >
                                                         <GitCompare size={10} /> 对比模式
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setViewMode('note')}
+                                                        className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${viewMode === 'note' ? 'bg-white/20 text-white' : 'text-slate-500 hover:bg-white/5'}`}
+                                                    >
+                                                        <BookOpen size={10} /> 学习笔记
                                                     </button>
                                                 </div>
                                             </div>
@@ -522,6 +586,33 @@ const WriterView = () => {
                                                     ) : (
                                                         <div className="text-center py-10 text-slate-500">
                                                             无对应范文，无法进行全文比对。
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {viewMode === 'note' && (
+                                            <div className="animate-in fade-in slide-in-from-right-2 duration-300">
+                                                <div className="bg-amber-50/5 rounded-xl p-6 border border-amber-200/20">
+                                                    <div className="flex justify-between items-center mb-4 border-b border-amber-200/10 pb-2">
+                                                        <h4 className="text-amber-200 font-bold flex items-center gap-2">
+                                                            <BookOpen size={16} /> 知识点总结
+                                                        </h4>
+                                                        <button
+                                                            onClick={handleSaveNote}
+                                                            className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-900 px-3 py-1 rounded-full font-bold flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <Save size={10} /> 保存到笔记
+                                                        </button>
+                                                    </div>
+                                                    {analysis.knowledge_summary ? (
+                                                        <div className="prose prose-invert prose-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                            {analysis.knowledge_summary}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-center py-10 text-slate-500">
+                                                            本次分析未生成知识点总结。主要针对长文章或全面润色模式。
                                                         </div>
                                                     )}
                                                 </div>

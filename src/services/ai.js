@@ -7,6 +7,10 @@
 // Helper for delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+export const sendChat = async (messages, settings, jsonRequired = false) => {
+  return await fetchFromAI(messages, settings, jsonRequired);
+};
+
 const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3) => {
   const { apiKey, apiBaseUrl, modelName } = settings;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
@@ -162,7 +166,8 @@ export const analyzeWriting = async (text, settings) => {
         "level": "String (B2/C1/C2 or 'Basic' if it should be improved)",
         "suggestion": "String (Optional better synonym)"
       }
-    ]
+    ],
+    "knowledge_summary": "String (A generic markdown note summarizing key grammar points, vocabulary usage, and better expressions from this essay. Format it as a study note.)"
   }
   `;
 
