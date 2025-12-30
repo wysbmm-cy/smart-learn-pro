@@ -81,7 +81,7 @@ const SettingsView = () => {
                     {/* Base URL */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                            API Endpoint URL
+                            API 接口地址 (URL)
                         </label>
                         <div className="relative group">
                             <input
@@ -98,7 +98,7 @@ const SettingsView = () => {
                     {/* Model Name */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                            Model Name
+                            模型名称 (Model)
                         </label>
                         <div className="relative group">
                             <input
@@ -114,7 +114,7 @@ const SettingsView = () => {
                     {/* API Key */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                            Security Key (API Key)
+                            API 密钥 (Key)
                         </label>
                         <div className="flex gap-3">
                             <input
@@ -339,7 +339,7 @@ const SettingsView = () => {
                 <div>
                     <div>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                            System Instruction (Role Definition)
+                            系统预设指令 (System Instruction)
                         </label>
                         <textarea
                             value={settings.systemPrompt}
@@ -466,7 +466,7 @@ const SettingsView = () => {
                     <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
                         <Box size={20} />
                     </div>
-                    <h3 className="text-lg">General & Performance</h3>
+                    <h3 className="text-lg">通用与性能 (General)</h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Toggle
@@ -490,7 +490,7 @@ const SettingsView = () => {
                     {/* Background Image URL or Upload */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                            Background Image
+                            背景图片 URL
                         </label>
 
                         {/* URL Input */}
@@ -510,7 +510,7 @@ const SettingsView = () => {
                         <div className="flex gap-3">
                             <label className="cursor-pointer bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2">
                                 <Upload size={16} />
-                                Upload Local Image
+                                上传本地图片
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -548,7 +548,7 @@ const SettingsView = () => {
                                     className="bg-white border border-red-100 hover:bg-red-50 text-red-500 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2"
                                 >
                                     <Trash2 size={16} />
-                                    Clear / Reset
+                                    清除背景 / 重置
                                 </button>
                             )}
                         </div>
@@ -560,7 +560,7 @@ const SettingsView = () => {
                     {/* Glass Opacity */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                            Mist / Fog Opacity ({Math.round((settings.glassOpacity || 0.7) * 100)}%)
+                            磨砂层浓度 ({Math.round((settings.glassOpacity || 0.7) * 100)}%)
                         </label>
                         <input
                             type="range"
@@ -586,10 +586,10 @@ const SettingsView = () => {
 
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="text-slate-600 text-sm leading-relaxed">
-                        <p className="font-bold mb-1">Backup your learning data</p>
+                        <p className="font-bold mb-1">备份您的学习数据</p>
                         <p className="text-slate-500">
-                            Export your history, notes, and records to a JSON file.
-                            (Large media files are excluded to keep the backup lightweight).
+                            将历史记录、笔记和设置导出为 JSON 文件。
+                            (包含纯文本数据，不包含大型媒体文件)。
                         </p>
                     </div>
                     <button
@@ -612,7 +612,7 @@ const SettingsView = () => {
                         className="px-6 py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all flex items-center gap-2 whitespace-nowrap"
                     >
                         <Download size={18} />
-                        Export Data (JSON)
+                        导出数据 (JSON)
                     </button>
                 </div>
             </div>
