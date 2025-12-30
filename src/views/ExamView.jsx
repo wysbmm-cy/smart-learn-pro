@@ -11,6 +11,7 @@ const ExamView = ({ onNavigate }) => {
     const [isParsing, setIsParsing] = useState(false);
     const [examData, setExamData] = useState(null);
     const [userAnswers, setUserAnswers] = useState({}); // { qId: 'A' }
+    const [drillType, setDrillType] = useState('full'); // 'full' | 'reading' | 'matching' | 'cloze' | 'writing'
 
     // Reusing logic (simplified)
     const handleFileUpload = async (e) => {
@@ -39,8 +40,11 @@ const ExamView = ({ onNavigate }) => {
 
     const startDigitalization = async (text) => {
         try {
-            toast.loading("正在生成试卷... (AI Digitizing)", { id: 'exam_gen' });
-            const data = await digitalizeExam(text, settings);
+            const drillLabel = drillType !== 'full' ? `(${drillType.toUpperCase()} Drill)` : '';
+            toast.loading(`正在生成试卷 ${drillLabel}...`, { id: 'exam_gen' });
+            // Pass drillType if not 'full'
+            const type = drillType === 'full' ? null : drillType;
+            const data = await digitalizeExam(text, settings, type);
             setExamData(data);
             toast.success("试卷生成完毕!", { id: 'exam_gen' });
         } catch (e) {
@@ -65,6 +69,41 @@ const ExamView = ({ onNavigate }) => {
         }
     };
 
+    const handleSaveToNotes = async () => {
+        if (!examData) return;
+        try {
+            const noteContent = `
+# ${examData.title}
+*Date: ${new Date().toLocaleString()}*
+
+${examData.sections.map(s => `
+## ${s.type.toUpperCase()} Section
+${s.instructions || ''}
+
+${s.content || ''}
+
+${s.questions.map((q, i) => `
+**Q${i + 1}. ${q.text}**
+${q.options.join('\n')}
+-------------------
+`).join('\n')}
+`).join('\n---\n')}
+`;
+            // Dynamic import to avoid circular dependency issues if any
+            const { saveNote } = await import('../services/db');
+            await saveNote({
+                id: crypto.randomUUID(),
+                title: `Exam Note: ${examData.title}`,
+                content: noteContent,
+                updatedAt: Date.now()
+            });
+            toast.success("已保存到笔记本 (Notes)");
+        } catch (e) {
+            console.error(e);
+            toast.error("保存失败");
+        }
+    };
+
     if (!examData) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8 animate-in fade-in duration-500">
@@ -76,6 +115,22 @@ const ExamView = ({ onNavigate }) => {
                     <p className="text-slate-500 leading-relaxed">
                         上传您的 PDF 试卷 (如四六级真题)，AI 将自动将其转化为在线交互式试卷。<br />支持选择题自动批改、阅读分屏、作文一键润色。
                     </p>
+
+                    {/* Drill Mode Selector */}
+                    <div className="flex justify-center gap-2 mb-4 mt-6">
+                        <span className="text-sm font-bold text-slate-400 self-center">模式选择:</span>
+                        <select
+                            value={drillType}
+                            onChange={(e) => setDrillType(e.target.value)}
+                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-bold"
+                        >
+                            <option value="full">🏆 完整试卷 Parsing (Full Mode)</option>
+                            <option value="reading">📖 仅阅读理解 (Reading Drill)</option>
+                            <option value="matching">🧩 仅段落匹配 (Matching Drill)</option>
+                            <option value="cloze">🔤 仅完形填空 (Cloze Drill)</option>
+                            <option value="writing">✍️ 仅写作 (Writing Drill)</option>
+                        </select>
+                    </div>
 
                     <div className="mt-8 border-2 border-dashed border-slate-300 rounded-2xl p-8 hover:bg-slate-50 transition-colors cursor-pointer relative group">
                         <input
@@ -112,6 +167,12 @@ const ExamView = ({ onNavigate }) => {
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-bold">AI Generated</span>
                 </div>
                 <div className="flex gap-3">
+                    <button
+                        onClick={handleSaveToNotes}
+                        className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                        <Layout size={16} /> 保存到笔记
+                    </button>
                     <button
                         onClick={() => setExamData(null)}
                         className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"

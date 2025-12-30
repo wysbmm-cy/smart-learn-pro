@@ -51,43 +51,88 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3)
   }
 };
 
-export const digitalizeExam = async (text, settings) => {
+export const digitalizeExam = async (text, settings, drillType = null) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
-  const systemPrompt = `
-  Role: Professional Exam Digitizer.
-  Task: Convert the provided raw exam text (often OCR'd from PDF) into a structured JSON Exam Paper for an interactive web app.
-  
-  Input Text: Raw text which may contain Reading Passages, Multiple Choice Questions (A,B,C,D), and Writing Prompts.
-  
-  Requirements:
-  1. Identify sections: Reading, Listening (if transcripts exist), Writing, or General MCQ parts.
-  2. For MCQs: Cleanly separate question text from options. Identify the correct answer only if explicitly marked (e.g. "Answer: A"), otherwise null.
-  3. For Reading: Isolate the passage text from the questions.
-  4. For Writing: Isolate the topic/prompt.
-  
-  Output JSON Schema:
-  {
-    "title": "Exam Paper",
-    "sections": [
-      {
-        "type": "reading" | "listening" | "writing" | "mcq",
-        "instructions": "String (e.g. 'Read the passage and answer questions 1-5')",
-        "content": "String (The reading passage or listening transcript... Null for pure MCQ sections)",
-        "questions": [
-           {
-              "id": Number,
-              "text": "String (Question stem)",
-              "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
-              "answer": "A" | "B" | "C" | "D" | null
-           }
-        ]
+  // 🚄 Optimization: Auto-Splitting for Long Exams (Parallel Processing)
+  // Only apply if text is long enough AND logic is 'full' (drill modes are usually targeted/short)
+  const shouldChunk = (!drillType || drillType === 'full') && text.length > 3000;
+
+  if (shouldChunk) {
+    // Attempt to split by common Exam Headers (Part I, Section A, Module 1...)
+    // Regex looks for "Part X" or "Section X" alone on a line or start of line
+    const chunkRegex = /(?:^|\n)(Part\s+(?:I+V?|V?I+|One|Two|Three|Four|Five)|Section\s+(?:[A-Z]|[0-9]+)|Module\s+[0-9]+)/i;
+    const parts = text.split(chunkRegex).filter(t => t.trim().length > 100); // Filter out small noise
+
+    // If we successfully split into 2+ substantial parts, process in parallel
+    if (parts.length >= 2) {
+      console.log(`🚀 Accelerated Mode: Split exam into ${parts.length} chunks.`);
+
+      const chunkPromises = parts.map((chunk, idx) => {
+        // Add a small delay to stagger requests slightly (avoid instant 429 spike)
+        return delay(idx * 500).then(() => digitalizeExam(chunk, settings, drillType));
+      });
+
+      try {
+        const results = await Promise.all(chunkPromises);
+        // Merge Results
+        const merged = {
+          title: results[0]?.title || "Exam Paper",
+          sections: results.flatMap(r => r.sections || [])
+        };
+        return merged;
+      } catch (e) {
+        console.warn("Chunking failed, falling back to full text:", e);
+        // Fallback to flow below
       }
-    ]
+    }
   }
 
-  IMPORTANT: Return ONLY valid JSON. No markdown fences. If text is too long, prioritize capturing the structure over every single word of the passage (but try to keep passsages intact).
-  `;
+  // --- Standard or Drill Processing Logic ---
+  let systemPrompt = '';
+
+  if (drillType && drillType !== 'full') {
+    // 🚀 Drill Mode logic...
+    const drillPrompts = {
+      'reading': `Task: Extract Reading Comprehension only. Ignore everything else.\nSchema: { "title": "Reading Drill", "sections": [{ "type": "reading", "content": "Passage...", "questions": [{ "id": 1, "text": "...", "options": ["A..."], "answer": "A" }] }] }`,
+      'matching': `Task: Extract Paragraph Matching (heading match) only. Ignore everything else.\nSchema: { "title": "Matching Drill", "sections": [{ "type": "matching", "content": "List of paragraphs...", "questions": [{ "id": 1, "text": "Statement...", "answer": "Paragraph Letter" }] }] }`,
+      'cloze': `Task: Extract Cloze Test (Fill in blanks) only. Ignore everything else.\nSchema: { "title": "Cloze Drill", "sections": [{ "type": "cloze", "content": "Text with [1], [2]...", "questions": [{ "id": 1, "options": ["A..."] }] }] }`,
+      'writing': `Task: Extract Writing Prompt only. Ignore everything else.\nSchema: { "title": "Writing Drill", "sections": [{ "type": "writing", "instructions": "...", "content": "Prompt text" }] }`
+    };
+    systemPrompt = (drillPrompts[drillType] || drillPrompts['reading']) + `\nRequirements: Fast processing. Return valid JSON only.`;
+  } else {
+    // 🐢 Full Parsing
+    systemPrompt = `
+    Role: Professional Exam Digitizer.
+    Task: Convert the provided raw exam text (often OCR'd from PDF) into a structured JSON Exam Paper.
+    
+    Requirements:
+    1. Identify sections: Reading, Listening, Writing, MCQ.
+    2. MCQs: Cleanly separate question text from options.
+    3. Reading: Isolate passage from questions.
+    
+    Output JSON Schema:
+    {
+      "title": "Exam Paper",
+      "sections": [
+        {
+          "type": "reading" | "listening" | "writing" | "mcq",
+          "instructions": "String",
+          "content": "String (Passage text. If NULL, it's pure MCQ)",
+          "questions": [
+             {
+                "id": Number,
+                "text": "String",
+                "options": ["A. ...", "B. ..."],
+                "answer": "String (A/B/C/D or null)"
+             }
+          ]
+        }
+      ]
+    }
+    IMPORTANT: Return ONLY valid JSON.
+    `;
+  }
 
   // Use the existing fetch wrapper
   const jsonStr = await fetchFromAI([
@@ -96,10 +141,12 @@ export const digitalizeExam = async (text, settings) => {
   ], settings, true);
 
   try {
-    return JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
+    // Ensure structure is array
+    if (!parsed.sections) parsed.sections = [];
+    return parsed;
   } catch (e) {
     console.warn("JSON Parse Error in Exam:", e);
-    // Try to salvage if it's wrapped in markedown
     const match = jsonStr.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
     throw new Error("AI returned invalid exam format");
@@ -608,5 +655,90 @@ export const extractVocabulary = async (text, settings) => {
   } catch (error) {
     console.error("Vocab Extraction Error:", error);
     throw error;
+  }
+};
+
+export const generateTranslationChallenge = async (vocabList, settings) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  // Pick 3-5 random words if list is long
+  const targets = Array.isArray(vocabList) && vocabList.length > 0
+    ? vocabList.sort(() => 0.5 - Math.random()).slice(0, 5)
+    : [];
+
+  const targetStr = targets.map(v => `${v.front} (${v.back})`).join(', ');
+
+  const systemPrompt = `
+  Role: Creative Examination Question Generator.
+  Task: Create a Chinese sentence that implicitly requires using specific English vocabulary to translate correctly.
+  Target Vocabulary: [${targetStr || "Random Daily Topic"}]
+  
+  Requirements:
+  1. Output a single natural Chinese sentence (or short paragraph 30-50 words).
+  2. The Chinese should strongly hint at the usage of the target words without being a direct dictionary definition.
+  3. Context: Daily life, Academic, or Workplace.
+  4. Output Format: JSON
+  {
+     "chinese": "...",
+     "targetWords": ["word1", "word2"],
+     "hint": "Try to use the target vocabulary!"
+  }
+  `;
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: "Generate a challenge now." }
+  ], settings, true);
+
+  try {
+    const data = JSON.parse(jsonStr);
+    // Ensure targetWords is array
+    if (!data.targetWords) data.targetWords = targets.map(t => t.front);
+    return data;
+  } catch (e) {
+    console.error("Trans Gen Error", e);
+    // Fallback
+    return {
+      chinese: "请尝试使用最近学过的单词造句。",
+      targetWords: targets.map(t => t.front),
+      hint: "AI Generation Failed, free mode."
+    };
+  }
+};
+
+export const gradeTranslation = async (challenge, userEnglish, settings) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const systemPrompt = `
+  Role: Strict Translation Grader.
+  Task: Grade user's English translation of a Chinese sentence.
+  Original Chinese: "${challenge.chinese}"
+  Required Vocabulary: ${JSON.stringify(challenge.targetWords)}
+  
+  Grading Criteria:
+  1. Accuracy (Did they convey the meaning?)
+  2. Vocabulary (Did they use the required words correctly?)
+  3. Grammar.
+  
+  Output JSON:
+  {
+    "score": Number (0-100),
+    "comment": "String (Brief feedback)",
+    "improved_version": "String (Better translation using required words)",
+    "vocab_check": [
+       { "word": "word1", "used": Boolean, "correctly": Boolean }
+    ]
+  }
+  `;
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userEnglish }
+  ], settings, true);
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return { score: 0, comment: "Error parsing grade.", improved_version: "", vocab_check: [] };
   }
 };
