@@ -544,67 +544,82 @@ export const generateDeepWordAnalysis = async (word, context, settings) => {
   }
 };
 
-export const generatePlanInsight = async (settings, goal, stats) => {
-  // stats: { totalWords, dueDay0, dueNext7Days, streak, lastStudyDate }
+// 🚀 Smart Coach 2.0: Advanced Planner
+export const generatePlanInsight = async (history, userGoal = null, recentLogs = [], settings) => {
+  if (!settings.apiKey) return null;
+
+  // Summarize recent activity for AI
+  const activitySummary = recentLogs.length > 0
+    ? recentLogs.map(l => `${l.date}: ${l.type} (${l.count})`).join(', ')
+    : "No recent activity recorded.";
+
+  const goalContext = userGoal
+    ? `User Goal: ${userGoal.examName} on ${userGoal.examDate}. Current Level: ${userGoal.currentLevel || 'Unknown'}.`
+    : "User has not set a specific exam goal yet.";
+
   const prompt = `
-    Role: You are an expert adaptive learning coach (AI SmartCoach).
-    User's Goal: "${goal || 'General English Improvement'}"
-    Current Stats:
-    - Total Vocab Learned: ${stats.totalWords}
-    - Words Due Today: ${stats.dueDay0}
-    - Streak: ${stats.streak} days
-    - Future Load (Next 7 days): ${JSON.stringify(stats.dueNext7Days)}
-
-    Task:
-    1. Analyze the user's progress towards their goal.
-    2. Provide a "Daily Insight" (2-3 sentences, encouraging but data-driven).
-    3. Estimate an ETA or provide a "Pace Comment" based on their current stack.
-    4. Suggest 3 specific "Action Items" for today.
-
-    Output Format (JSON):
-    {
-        "insight": "Master, ...",
-        "paceComment": "At this rate, you are on track to...",
-        "actionItems": ["Review ...", "Read ...", "Learn ..."]
-    }
-    
-    Language: Chinese (Simplified). Keep it professional yet motivating.
-    `;
+  Role: Elite AI Study Coach.
+  Context: Analyze the user's study history and goals to generate a daily tactical plan.
+  ${goalContext}
+  Recent Activity: ${activitySummary}
+  
+  Task:
+  1. Analyze Weaknesses based on history scores (Writing/Reading/Vocab).
+  2. Generate 5-dimension radar data (0-100) for: Reading, Listening, Writing, Vocabulary, Persistence.
+  3. Create 3 specific "Daily Quests" for today.
+  
+  Output Schema (JSON):
+  {
+     "insight": "String (1-2 sentences motivating advice in Chinese)",
+     "radar": [
+         { "subject": "Reading", "A": 65, "fullMark": 100 },
+         { "subject": "Writing", "A": 40, "fullMark": 100 },
+         { "subject": "Listening", "A": 70, "fullMark": 100 },
+         { "subject": "Vocabulary", "A": 85, "fullMark": 100 },
+         { "subject": "Persistence", "A": 90, "fullMark": 100 }
+     ],
+     "daily_quests": [
+        { "id": 1, "title": "Review 20 Flashcards", "type": "vocab", "link": "flashcards", "xp": 50 },
+        { "id": 2, "title": "Complete 1 Reading Drill", "type": "reading", "link": "exam", "xp": 100 },
+        { "id": 3, "title": "Translate 1 Sentence", "type": "writing", "link": "writer", "xp": 80 }
+     ],
+     "schedule_status": "String (e.g., '45 Days to Exam - Phase: Foundation Building' or 'Self-paced Mode')"
+  }
+  
+  Important: Return valid JSON only. Language: Chinese (Simplified).
+  `;
 
   try {
-    const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.apiKey}`
-      },
-      body: JSON.stringify({
-        model: settings.modelName,
-        messages: [
-          { role: "system", content: "You are a helpful JSON-speaking study coach. Always return valid JSON." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7
-      })
-    });
+    const jsonStr = await fetchFromAI([
+      { role: "system", content: prompt },
+      { role: "user", content: `History: ${JSON.stringify(history.slice(0, 5))}` }
+    ], settings, true);
 
-    const data = await response.json();
-    const content = data.choices[0].message.content;
+    const parsed = JSON.parse(jsonStr);
 
-    // Extract JSON
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    return {
-      insight: "AI 连接成功，但无法解析建议。请继续保持学习！",
-      paceComment: "数据分析中...",
-      actionItems: ["复习今日单词", "阅读一篇短文", "输入新词"]
-    };
+    // Normalize Data Structure just in case AI mocks up
+    if (!parsed.radar) parsed.radar = [];
+    if (!parsed.daily_quests) parsed.daily_quests = [];
+
+    return parsed;
 
   } catch (error) {
     console.error("Plan AI Error:", error);
-    return null;
+    // Fallback Data
+    return {
+      insight: "AI 暂时无法连接，但请坚持复习！",
+      radar: [
+        { subject: 'Reading', A: 50, fullMark: 100 },
+        { subject: 'Writing', A: 50, fullMark: 100 },
+        { subject: 'Listening', A: 50, fullMark: 100 },
+        { subject: 'Vocab', A: 50, fullMark: 100 },
+        { subject: 'Persistence', A: 50, fullMark: 100 }
+      ],
+      daily_quests: [
+        { id: 1, title: "Review Flashcards", type: "vocab", link: "flashcards", xp: 50 }
+      ],
+      schedule_status: "Offline Mode"
+    };
   }
 };
 
@@ -616,7 +631,7 @@ export const extractVocabulary = async (text, settings) => {
   Task: Extract 10-20 most important/challenging vocabulary words from the text below.
   Output Format: JSON Array of "Flashcards".
   [
-     { "front": "English Word", "back": "Chinese Meaning + Example Sentence (En/Cn)" }
+    { "front": "English Word", "back": "Chinese Meaning + Example Sentence (En/Cn)" }
   ]
   Requirements:
   - "front": The word or short phrase.
@@ -672,16 +687,16 @@ export const generateTranslationChallenge = async (vocabList, settings) => {
   Role: Creative Examination Question Generator.
   Task: Create a Chinese sentence that implicitly requires using specific English vocabulary to translate correctly.
   Target Vocabulary: [${targetStr || "Random Daily Topic"}]
-  
+
   Requirements:
   1. Output a single natural Chinese sentence (or short paragraph 30-50 words).
   2. The Chinese should strongly hint at the usage of the target words without being a direct dictionary definition.
   3. Context: Daily life, Academic, or Workplace.
   4. Output Format: JSON
   {
-     "chinese": "...",
-     "targetWords": ["word1", "word2"],
-     "hint": "Try to use the target vocabulary!"
+    "chinese": "...",
+    "targetWords": ["word1", "word2"],
+    "hint": "Try to use the target vocabulary!"
   }
   `;
 
@@ -722,11 +737,11 @@ export const gradeTranslation = async (challenge, userEnglish, settings) => {
   
   Output JSON:
   {
-    "score": Number (0-100),
+    "score": Number(0-100),
     "comment": "String (Brief feedback)",
     "improved_version": "String (Better translation using required words)",
     "vocab_check": [
-       { "word": "word1", "used": Boolean, "correctly": Boolean }
+      { "word": "word1", "used": Boolean, "correctly": Boolean }
     ]
   }
   `;

@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 7;
+const DB_VERSION = 8; // Bumped
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -30,7 +30,7 @@ export const initDB = () => {
                 const flashcardStore = db.createObjectStore('flashcards', { keyPath: 'id' });
                 flashcardStore.createIndex('createdAt', 'createdAt', { unique: false });
                 flashcardStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
-                flashcardStore.createIndex('folderId', 'folderId', { unique: false }); // New index
+                flashcardStore.createIndex('folderId', 'folderId', { unique: false });
             } else {
                 const store = request.transaction.objectStore('flashcards');
                 if (!store.indexNames.contains('folderId')) {
@@ -63,11 +63,75 @@ export const initDB = () => {
                 const writingStore = db.createObjectStore('writings', { keyPath: 'id' });
                 writingStore.createIndex('updatedAt', 'updatedAt', { unique: false });
             }
+            // --- NEW V8 STORES ---
+            // User Goals (Stores target exam, date, etc. - usually single record 'main')
+            if (!db.objectStoreNames.contains('user_goals')) {
+                const goalStore = db.createObjectStore('user_goals', { keyPath: 'id' });
+            }
+            // Study Logs (Activity Heatmap Data)
+            if (!db.objectStoreNames.contains('study_logs')) {
+                const logStore = db.createObjectStore('study_logs', { keyPath: 'id' });
+                logStore.createIndex('date', 'date', { unique: false }); // YYYY-MM-DD
+                logStore.createIndex('type', 'type', { unique: false });
+            }
         };
 
         request.onsuccess = (event) => resolve(event.target.result);
     });
 };
+
+// ... (Existing exports: saveHistory, getHistory, deleteHistory, saveFile, saveVideoHistory, getVideoHistory, deleteVideoHistory, saveWriting, getWritings, deleteWriting, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, saveChatSession, getChatSessions, deleteChatSession, saveFolder, getFolders, deleteFolder)
+
+// --- NEW CRUD ---
+
+export const saveUserGoal = async (goal) => {
+    const db = await initDB();
+    const tx = db.transaction('user_goals', 'readwrite');
+    const store = tx.objectStore('user_goals');
+    return new Promise((resolve, reject) => {
+        // Enforce ID='main' for simplicity unless multiple goals needed
+        const request = store.put({ ...goal, id: 'main', updatedAt: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getUserGoal = async () => {
+    const db = await initDB();
+    const tx = db.transaction('user_goals', 'readonly');
+    const store = tx.objectStore('user_goals');
+    return new Promise((resolve, reject) => {
+        const request = store.get('main');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const saveStudyLog = async (log) => {
+    // log: { type: 'reading'|'writing'|'vocab', count: Number, date: 'YYYY-MM-DD' }
+    const db = await initDB();
+    const tx = db.transaction('study_logs', 'readwrite');
+    const store = tx.objectStore('study_logs');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...log, id: crypto.randomUUID(), timestamp: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getStudyLogs = async () => {
+    const db = await initDB();
+    const tx = db.transaction('study_logs', 'readonly');
+    const store = tx.objectStore('study_logs');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// ... (getAllData logic)
+
 
 export const saveHistory = async (record) => {
     const db = await initDB();
