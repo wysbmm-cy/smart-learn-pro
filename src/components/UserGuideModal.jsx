@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, BookOpen, Brain, Zap, Layers, Folder, Shield, Key, FileText, Sparkles, GraduationCap } from 'lucide-react';
+import { X, BookOpen, Brain, Zap, Layers, Folder, Shield, Key, FileText, Sparkles, GraduationCap, Video, PenTool } from 'lucide-react';
 
 const UserGuideModal = ({ onClose }) => {
     const [activeTab, setActiveTab] = useState('start');
@@ -26,10 +26,10 @@ const UserGuideModal = ({ onClose }) => {
                             <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm text-sm text-slate-600 leading-7">
                                 <p>这就好比给汽车加油。我们的软件本身是免费的，但它需要连接到强大的 "AI 大脑" (如 ChatGPT) 才能工作。</p>
                                 <ul className="list-disc pl-5 mt-2 space-y-2 marker:text-blue-400">
-                                    <li>点击左侧菜单底部的 <strong>Settings (设置)</strong>。</li>
+                                    <li>点击左侧菜单底部的 <strong>设置与接口 (Settings)</strong>。</li>
                                     <li>找到 <strong>API Key</strong> 输入框。</li>
                                     <li>如果您没有 Key，我们也提供了获取方式（推荐使用 SiliconFlow 等国内可直连服务，便宜且稳定）。</li>
-                                    <li>粘贴 Key，点击保存。看到 "Connected" 绿灯亮起，您的 AI 导师就上班了！</li>
+                                    <li>粘贴 Key，点击保存。看到 "已验证" 绿灯亮起，您的 AI 导师就上班了！</li>
                                 </ul>
                             </div>
                         </div>
@@ -75,6 +75,53 @@ const UserGuideModal = ({ onClose }) => {
                         </section>
                     </div>
                 );
+            case 'video':
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="bg-pink-50 p-6 rounded-2xl border border-pink-100 mb-6">
+                            <h3 className="text-lg font-bold text-pink-900 mb-2 flex items-center gap-2">
+                                <Video size={20} />
+                                视频学习 (Bilibili + AI)
+                            </h3>
+                            <p className="text-pink-800/80 text-sm leading-relaxed">
+                                不需要下载视频。只需粘贴 B 站视频链接，AI 就能陪您一起看。
+                            </p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm text-sm text-slate-600 leading-7">
+                            <ul className="list-disc pl-5 space-y-2 marker:text-pink-400">
+                                <li><strong>双屏模式:</strong> 左边看视频，右边记笔记。</li>
+                                <li><strong>AI 听力:</strong> 点击右侧的麦克风图标 🎙️，AI 会通过系统音频“听”视频内容，并实时转录成文字。</li>
+                                <li><strong>一键分析:</strong> 听到不懂的段落？点击分析，AI 帮您解释难句和生词。</li>
+                            </ul>
+                        </div>
+                    </div>
+                );
+            case 'writer':
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 mb-6">
+                            <h3 className="text-lg font-bold text-emerald-900 mb-2 flex items-center gap-2">
+                                <PenTool size={20} />
+                                AI 写作工作台
+                            </h3>
+                            <p className="text-emerald-800/80 text-sm leading-relaxed">
+                                这里是您的专属英文写作私教。
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                <div className="font-bold text-slate-700 mb-1">✍️ 实时练笔</div>
+                                <p className="text-xs text-slate-500">支持Markdown格式，实时字数统计，草稿自动保存。</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                <div className="font-bold text-slate-700 mb-1">🤖 AI 润色 (Auto-Polish)</div>
+                                <p className="text-xs text-slate-500">
+                                    写完后点击 "AI 润色"。AI 会基于四六级标准为您打分 (0-15分)，指出语法错误，并提供一篇满分范文供您参考。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                );
             case 'review':
                 return (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -83,14 +130,14 @@ const UserGuideModal = ({ onClose }) => {
                                 <Layers className="text-amber-500" /> 怎么背单词？(智能复习)
                             </h4>
                             <p className="text-slate-600 leading-relaxed mb-6">
-                                别再死记硬背了。我们内置了<strong>记忆算法</strong>，它会计算您大脑的遗忘规律。
+                                别再死记硬背了。我们内置了<strong>间隔重复算法 (Spaced Repetition)</strong>，它会计算您大脑的遗忘规律。
                             </p>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-4 border border-slate-100 rounded-xl bg-green-50/50">
                                     <h5 className="font-bold text-green-700 mb-2">✅ 我记得</h5>
                                     <p className="text-xs text-slate-600">
-                                        如果您选了这个，系统会判断您掌握了，下次复习间隔会变长 (比如 3天后 -> 7天后)。
+                                        如果您选了这个，系统会判断您掌握了，下次复习间隔会变长 (比如 3天后 到 7天后)。
                                     </p>
                                 </div>
                                 <div className="p-4 border border-slate-100 rounded-xl bg-red-50/50">
@@ -101,42 +148,11 @@ const UserGuideModal = ({ onClose }) => {
                                 </div>
                             </div>
 
-                            <div className="mt-6 bg-amber-50 p-4 rounded-xl text-sm text-amber-800 border border-amber-100">
-                                💡 <strong>小贴士：</strong> 每天进软件看一眼首页的 "Daily Goal" (今日目标)，如果有待复习的词，把它清零非常有成就感！
-                            </div>
-                        </section>
-                    </div>
-                );
-            case 'notes':
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <section>
-                            <h4 className="font-bold text-slate-800 text-lg mb-4 flex items-center gap-2">
-                                <Folder className="text-violet-500" /> 笔记怎么整理？
-                            </h4>
-
-                            <div className="space-y-4">
-                                <div className="flex gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 shrink-0">1</div>
-                                    <div>
-                                        <h5 className="font-bold text-slate-800 text-sm">一键保存</h5>
-                                        <p className="text-sm text-slate-600 mt-1">在 AI 分析结果页面，点击 "保存到笔记"。无论是整篇文章的总结，还是某个词的深度解析，都会自动变成一篇排版精美的笔记。</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 shrink-0">2</div>
-                                    <div>
-                                        <h5 className="font-bold text-slate-800 text-sm">自动归档</h5>
-                                        <p className="text-sm text-slate-600 mt-1">不用担心笔记乱放。系统会自动把 AI 生成的笔记放入 <strong>"Smart Analysis"</strong> 文件夹，方便您随时查找。</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 shrink-0">3</div>
-                                    <div>
-                                        <h5 className="font-bold text-slate-800 text-sm">自己写</h5>
-                                        <p className="text-sm text-slate-600 mt-1">您当然也可以创建自己的文件夹，写写随笔或心得。</p>
-                                    </div>
-                                </div>
+                            <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <h5 className="font-bold text-slate-700 mb-2 text-sm">🗂️ 文件夹管理 (新功能)</h5>
+                                <p className="text-xs text-slate-500">
+                                    现在您可以创建自定义文件夹 (如 "六级高频", "每日阅读") 来分类管理您的卡片。在导入单词或阅读时，也可以直接选择存入指定文件夹。
+                                </p>
                             </div>
                         </section>
                     </div>
@@ -166,13 +182,14 @@ const UserGuideModal = ({ onClose }) => {
                 <div className="w-64 bg-slate-50 border-r border-slate-100 p-4 flex flex-col gap-2 shrink-0">
                     <div className="px-4 py-4 mb-2">
                         <h2 className="font-bold text-slate-800 text-xl tracking-tight">新手指南</h2>
-                        <p className="text-xs text-slate-400 mt-1">从零开始，精通 AI 学习</p>
+                        <p className="text-xs text-slate-400 mt-1">SmartLearn Pro v1.0</p>
                     </div>
 
                     <TabButton id="start" icon={Key} label="第一步：启动 AI" />
-                    <TabButton id="study" icon={BookOpen} label="怎么学 (阅读/分析)" />
-                    <TabButton id="review" icon={Layers} label="怎么记 (智能复习)" />
-                    <TabButton id="notes" icon={Folder} label="怎么存 (笔记管理)" />
+                    <TabButton id="study" icon={BookOpen} label="阅读与分析" />
+                    <TabButton id="video" icon={Video} label="视频学习 (New)" />
+                    <TabButton id="writer" icon={PenTool} label="AI 写作 (New)" />
+                    <TabButton id="review" icon={Layers} label="智能背词" />
 
                     <div className="mt-auto px-4 py-4">
                         <div className="flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 p-3 rounded-lg border border-emerald-100">
