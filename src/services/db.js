@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 8; // Bumped
+const DB_VERSION = 9; // Bumped since User complained about re-analysis
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -64,15 +64,20 @@ export const initDB = () => {
                 writingStore.createIndex('updatedAt', 'updatedAt', { unique: false });
             }
             // --- NEW V8 STORES ---
-            // User Goals (Stores target exam, date, etc. - usually single record 'main')
+            // User Goals
             if (!db.objectStoreNames.contains('user_goals')) {
                 const goalStore = db.createObjectStore('user_goals', { keyPath: 'id' });
             }
-            // Study Logs (Activity Heatmap Data)
+            // Study Logs
             if (!db.objectStoreNames.contains('study_logs')) {
                 const logStore = db.createObjectStore('study_logs', { keyPath: 'id' });
-                logStore.createIndex('date', 'date', { unique: false }); // YYYY-MM-DD
+                logStore.createIndex('date', 'date', { unique: false });
                 logStore.createIndex('type', 'type', { unique: false });
+            }
+            // --- NEW V9 STORE ---
+            // Daily Plans (Cache for Smart Coach)
+            if (!db.objectStoreNames.contains('daily_plans')) {
+                const planStore = db.createObjectStore('daily_plans', { keyPath: 'date' }); // Key: YYYY-MM-DD
             }
         };
 
@@ -126,6 +131,29 @@ export const getStudyLogs = async () => {
     return new Promise((resolve, reject) => {
         const request = store.getAll();
         request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Daily Plan Cache
+export const saveDailyPlan = async (date, plan) => {
+    const db = await initDB();
+    const tx = db.transaction('daily_plans', 'readwrite');
+    const store = tx.objectStore('daily_plans');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ date, plan, timestamp: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getDailyPlan = async (date) => {
+    const db = await initDB();
+    const tx = db.transaction('daily_plans', 'readonly');
+    const store = tx.objectStore('daily_plans');
+    return new Promise((resolve, reject) => {
+        const request = store.get(date);
+        request.onsuccess = () => resolve(request.result ? request.result.plan : null);
         request.onerror = () => reject(request.error);
     });
 };

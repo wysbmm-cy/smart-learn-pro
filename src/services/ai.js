@@ -80,7 +80,11 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
           title: results[0]?.title || "Exam Paper",
           sections: results.flatMap(r => r.sections || [])
         };
-        return merged;
+        if (merged.sections.length > 0) {
+          return merged;
+        }
+        console.warn("Chunking returned 0 sections, falling back to full text.");
+        // Fallthrough if sections are empty
       } catch (e) {
         console.warn("Chunking failed, falling back to full text:", e);
         // Fallback to flow below
@@ -94,6 +98,31 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
   if (drillType && drillType !== 'full') {
     // 🚀 Drill Mode logic...
     const drillPrompts = {
+      'fast': `Task: Create a "Mini-Test" from the provided exam text.
+      Requirements:
+      1. Extract ONLY ONE Reading Passage with its questions.
+      2. If no Reading Passage found, extract 5 Vocabulary/Grammar MCQs.
+      3. Extract ONE Writing Prompt if available.
+      4. Ignore the rest.
+
+      Output JSON Schema:
+      {
+        "title": "Mini-Test",
+        "sections": [
+          {
+            "type": "reading", // or "mcq" or "writing"
+            "content": "Passage text (required for reading, null for mcq/writing)",
+            "questions": [
+              {
+                "id": 1,
+                "text": "Question content...",
+                "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+                "answer": "A"
+              }
+            ]
+          }
+        ]
+      }`,
       'reading': `Task: Extract Reading Comprehension only. Ignore everything else.\nSchema: { "title": "Reading Drill", "sections": [{ "type": "reading", "content": "Passage...", "questions": [{ "id": 1, "text": "...", "options": ["A..."], "answer": "A" }] }] }`,
       'matching': `Task: Extract Paragraph Matching (heading match) only. Ignore everything else.\nSchema: { "title": "Matching Drill", "sections": [{ "type": "matching", "content": "List of paragraphs...", "questions": [{ "id": 1, "text": "Statement...", "answer": "Paragraph Letter" }] }] }`,
       'cloze': `Task: Extract Cloze Test (Fill in blanks) only. Ignore everything else.\nSchema: { "title": "Cloze Drill", "sections": [{ "type": "cloze", "content": "Text with [1], [2]...", "questions": [{ "id": 1, "options": ["A..."] }] }] }`,
@@ -607,18 +636,18 @@ export const generatePlanInsight = async (history, userGoal = null, recentLogs =
     console.error("Plan AI Error:", error);
     // Fallback Data
     return {
-      insight: "AI 暂时无法连接，但请坚持复习！",
+      insight: "AI 暂时无法连接，但请坚持复习！保持每天进步一点点。",
       radar: [
-        { subject: 'Reading', A: 50, fullMark: 100 },
-        { subject: 'Writing', A: 50, fullMark: 100 },
-        { subject: 'Listening', A: 50, fullMark: 100 },
-        { subject: 'Vocab', A: 50, fullMark: 100 },
-        { subject: 'Persistence', A: 50, fullMark: 100 }
+        { subject: '阅读', A: 50, fullMark: 100 },
+        { subject: '写作', A: 50, fullMark: 100 },
+        { subject: '听力', A: 50, fullMark: 100 },
+        { subject: '词汇', A: 50, fullMark: 100 },
+        { subject: '毅力', A: 50, fullMark: 100 }
       ],
       daily_quests: [
-        { id: 1, title: "Review Flashcards", type: "vocab", link: "flashcards", xp: 50 }
+        { id: 1, title: "复习单词卡片", type: "vocab", link: "flashcards", xp: 50 }
       ],
-      schedule_status: "Offline Mode"
+      schedule_status: "离线模式"
     };
   }
 };

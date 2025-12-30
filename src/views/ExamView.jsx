@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { digitalizeExam } from '../services/ai';
 import { extractTextFromPDF } from '../services/pdf';
@@ -38,6 +38,35 @@ const ExamView = ({ onNavigate }) => {
         }
     };
 
+    // Persistence Logic
+    useEffect(() => {
+        // Load saved exam on mount
+        const savedExam = localStorage.getItem('current_exam_data');
+        if (savedExam) {
+            try {
+                setExamData(JSON.parse(savedExam));
+                toast.success("已恢复上次未完成的考试", { id: 'exam_restore' });
+            } catch (e) {
+                console.error("Restore failed", e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        // Auto-save exam data when it changes
+        if (examData) {
+            localStorage.setItem('current_exam_data', JSON.stringify(examData));
+        }
+    }, [examData]);
+
+    const handleClearExam = () => {
+        if (window.confirm("确定要放弃当前的考试进度吗？")) {
+            setExamData(null);
+            localStorage.removeItem('current_exam_data');
+            setUserAnswers({});
+        }
+    };
+
     const startDigitalization = async (text) => {
         try {
             const drillLabel = drillType !== 'full' ? `(${drillType.toUpperCase()} Drill)` : '';
@@ -46,7 +75,7 @@ const ExamView = ({ onNavigate }) => {
             const type = drillType === 'full' ? null : drillType;
             const data = await digitalizeExam(text, settings, type);
             setExamData(data);
-            toast.success("试卷生成完毕!", { id: 'exam_gen' });
+            toast.success("试卷生成完毕 (已自动保存)!", { id: 'exam_gen' });
         } catch (e) {
             toast.error("生成失败: " + e.message, { id: 'exam_gen' });
         } finally {
@@ -124,6 +153,7 @@ ${q.options.join('\n')}
                             onChange={(e) => setDrillType(e.target.value)}
                             className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-bold"
                         >
+                            <option value="fast">⚡ 快速测验 (Mini-Test - Faster)</option>
                             <option value="full">🏆 完整试卷 Parsing (Full Mode)</option>
                             <option value="reading">📖 仅阅读理解 (Reading Drill)</option>
                             <option value="matching">🧩 仅段落匹配 (Matching Drill)</option>
@@ -174,10 +204,10 @@ ${q.options.join('\n')}
                         <Layout size={16} /> 保存到笔记
                     </button>
                     <button
-                        onClick={() => setExamData(null)}
+                        onClick={handleClearExam}
                         className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                     >
-                        退出考试
+                        退出/清空
                     </button>
                     <button
                         onClick={() => toast.success("暂未实现在线评分(除作文外)，请自我核对！")}
@@ -190,6 +220,15 @@ ${q.options.join('\n')}
 
             {/* Exam Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                {(!examData.sections || examData.sections.length === 0) && (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4">
+                        <Loader2 size={48} className="text-slate-300 mb-2" />
+                        <h3 className="text-xl font-bold text-slate-600">No Content Found</h3>
+                        <p className="max-w-md text-center">AI 分析完成了，但似乎没有识别出有效题目。</p>
+                        <p className="text-sm">可能是因为 PDF 格式过于复杂，或者文本为空。</p>
+                        <button onClick={handleClearExam} className="text-blue-600 hover:underline">返回重试 (Try Reset)</button>
+                    </div>
+                )}
                 {examData.sections?.map((section, sIdx) => (
                     <div key={sIdx} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                         {/* Section Header */}

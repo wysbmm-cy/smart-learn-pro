@@ -1,376 +1,375 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+    Brain, Layers, Sparkles, X, Loader, FileText,
+    Target, Trophy, Calendar, ChevronRight, Activity, Plus, Trash2, CheckSquare, Square, RefreshCcw, LayoutList, Flag, Clock
+} from 'lucide-react';
+import {
+    Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer
+} from 'recharts';
 import { useApp } from '../context/AppContext';
-import { Target, TrendingUp, Calendar, Zap, Award, ArrowRight, Brain, AlertCircle, Sparkles, Edit2, X } from 'lucide-react';
 import { generatePlanInsight } from '../services/ai';
+import { getHistory, getUserGoal, saveUserGoal, getStudyLogs, getDailyPlan, saveDailyPlan, getTasks, saveTask, deleteTask } from '../services/db';
+import toast from 'react-hot-toast';
 
-const PlanView = () => {
-    const { loadUserFlashcards, settings, stats, updateSetting, saveTask, getTasks, deleteTask } = useApp();
-    const [flashcards, setFlashcards] = useState([]);
-    const [dailyLoad, setDailyLoad] = useState([]);
-    const [projectedDate, setProjectedDate] = useState(null);
+const PlanView = ({ onNavigate }) => {
+    const { settings } = useApp();
 
-    // Custom Goal State
-    const [goal, setGoal] = useState(settings.userGoal || "CET-6 核心词汇");
-    const [isEditingGoal, setIsEditingGoal] = useState(false);
+    // Smart Coach State
+    const [smartPlan, setSmartPlan] = useState(null);
+    const [loadingPlan, setLoadingPlan] = useState(true);
+    const [goalModalOpen, setGoalModalOpen] = useState(false);
+    const [userGoal, setUserGoal] = useState({ examName: '', examDate: '', currentLevel: '' });
 
-    // AI Insight State
-    const [insight, setInsight] = useState(null);
-    const [isLoadingAI, setIsLoadingAI] = useState(false);
-
-    // Task Management State
+    // Tasks State
     const [tasks, setTasks] = useState([]);
-    const [newTaskTitle, setNewTaskTitle] = useState("");
-    const [newTaskType, setNewTaskType] = useState("short"); // 'short' | 'long'
-    const [isAddingTask, setIsAddingTask] = useState(false);
+    const [newTask, setNewTask] = useState('');
+    const [taskType, setTaskType] = useState('short'); // 'short' (今日) or 'long' (长期)
+    const [activeTab, setActiveTab] = useState('short');
 
+    // Load Data
     useEffect(() => {
-        const loadWrapper = async () => {
-            const data = await loadUserFlashcards();
-            setFlashcards(data);
-            calculateMetrics(data);
+        initDashboard();
+        loadTasks();
+    }, [settings.apiKey]);
 
-            // Load Tasks
-            const loadedTasks = await getTasks();
-            setTasks(loadedTasks);
-        };
-        loadWrapper();
-    }, []);
+    const initDashboard = async (forceRefresh = false) => {
+        setLoadingPlan(true);
+        try {
+            // 1. Load Goal
+            const goal = await getUserGoal();
+            if (goal) setUserGoal(goal);
 
-    const calculateMetrics = (cards) => {
-        // 1. Future Load
-        const load = Array(7).fill(0);
-        const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
+            const today = new Date().toISOString().split('T')[0];
 
-        cards.forEach(card => {
-            if (card.nextReview) {
-                const diff = card.nextReview - now;
-                if (diff > 0) {
-                    const dayIndex = Math.floor(diff / oneDay);
-                    if (dayIndex < 7) load[dayIndex]++;
-                } else {
-                    load[0]++;
+            // 2. Check Cache (unless forced)
+            if (!forceRefresh) {
+                const cachedPlan = await getDailyPlan(today);
+                if (cachedPlan) {
+                    setSmartPlan(cachedPlan);
+                    setLoadingPlan(false);
+                    return;
                 }
             }
-        });
-        setDailyLoad(load);
-        return load;
-    };
 
-    const fetchAIInsight = async (currentCards, loadData) => {
-        if (!settings.apiKey) {
-            alert("请先配置 API Key");
-            return;
+            // 3. Generate New Insight
+            if (settings.apiKey) {
+                const history = await getHistory();
+                const logs = await getStudyLogs();
+                const plan = await generatePlanInsight(history || [], goal, logs || [], settings);
+
+                if (plan) {
+                    setSmartPlan(plan);
+                    await saveDailyPlan(today, plan);
+                }
+            }
+        } catch (e) {
+            console.error("Dashboard Init Error", e);
+            toast.error("智能计划加载失败");
+        } finally {
+            setLoadingPlan(false);
         }
-        setIsLoadingAI(true);
-        const aiStats = {
-            totalWords: currentCards.length,
-            dueDay0: loadData[0],
-            dueNext7Days: loadData,
-            streak: stats.streak
-        };
-
-        const result = await generatePlanInsight(settings, goal, aiStats);
-        if (result) {
-            setInsight(result);
-        }
-        setIsLoadingAI(false);
     };
 
-    const handleGoalSave = () => {
-        setIsEditingGoal(false);
-        updateSetting('userGoal', goal);
+    const loadTasks = async () => {
+        const t = await getTasks();
+        setTasks(t || []);
     };
 
-    const handleAddTask = async () => {
-        if (!newTaskTitle.trim()) return;
-        const newTask = {
+    const handleSaveGoal = async () => {
+        await saveUserGoal(userGoal);
+        setGoalModalOpen(false);
+        toast.success("目标已更新! 正在重新生成计划...");
+        initDashboard(true); // Force refresh
+    };
+
+    const handleAddTask = async (e) => {
+        e.preventDefault();
+        if (!newTask.trim()) return;
+
+        const task = {
             id: crypto.randomUUID(),
-            title: newTaskTitle,
-            type: newTaskType,
+            title: newTask,
             completed: false,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            type: 'manual',
+            term: taskType // 'short' or 'long'
         };
-        await saveTask(newTask);
-        setTasks([newTask, ...tasks]);
-        setNewTaskTitle("");
-        setIsAddingTask(false);
+
+        await saveTask(task);
+        setNewTask('');
+        loadTasks();
+        toast.success(taskType === 'short' ? "已添加今日任务" : "已添加长期目标");
     };
 
     const handleToggleTask = async (task) => {
-        const updatedTask = { ...task, completed: !task.completed };
-        await saveTask(updatedTask);
-        setTasks(tasks.map(t => t.id === task.id ? updatedTask : t));
+        await saveTask({ ...task, completed: !task.completed });
+        loadTasks();
     };
 
     const handleDeleteTask = async (id) => {
         await deleteTask(id);
-        setTasks(tasks.filter(t => t.id !== id));
+        loadTasks();
     };
 
-    const maxLoad = Math.max(...dailyLoad, 10);
-    const shortTasks = tasks.filter(t => t.type === 'short');
-    const longTasks = tasks.filter(t => t.type === 'long');
+    const handleRefreshPlan = () => {
+        initDashboard(true);
+        toast.success("正在根据最新数据刷新计划...");
+    };
+
+    // Filter tasks based on active tab
+    const displayedTasks = tasks.filter(t => {
+        const isLong = t.term === 'long';
+        return activeTab === 'long' ? isLong : !isLong;
+    });
 
     return (
-        <div className="space-y-6 animate-fade-in pb-12">
+        <div className="h-[calc(100vh-140px)] animate-fade-in flex flex-col items-center p-6 overflow-y-auto custom-scrollbar">
 
-            {/* 1. AI Insight Card */}
-            <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-500/30 relative overflow-hidden min-h-[160px]">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <Brain size={150} />
+            {/* Header / Intro */}
+            <div className="w-full max-w-6xl flex justify-between items-end mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
+                        <Brain className="text-indigo-500" size={32} />
+                        智能计划 <span className="text-sm font-normal text-slate-400 bg-slate-800 px-2 py-1 rounded-full border border-slate-700">Smart Coach 2.0</span>
+                    </h1>
+                    <p className="text-slate-500 mt-2 text-sm">
+                        {smartPlan?.schedule_status || "您的 AI 专属学习教练，助您科学备考。"}
+                    </p>
                 </div>
-
-                {isLoadingAI ? (
-                    <div className="flex items-center justify-center h-full gap-3">
-                        <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        <span className="font-bold animate-pulse">AI SmartCoach 正在分析您的学习数据...</span>
-                    </div>
-                ) : (
-                    <div className="relative z-10 flex gap-4">
-                        <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center shrink-0 border border-white/20">
-                            <Zap size={24} className="text-yellow-300 fill-current" />
-                        </div>
-                        <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                                <h2 className="text-lg font-bold">AI Daily Insight</h2>
-                                <button
-                                    onClick={() => fetchAIInsight(flashcards, dailyLoad)}
-                                    className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-bold transition-all"
-                                >
-                                    <Sparkles size={14} />
-                                    Generate Analysis
-                                </button>
-                            </div>
-                            <p className="text-indigo-100 text-sm leading-relaxed max-w-xl">
-                                {insight ? insight.insight : `点击右上角 "Generate Analysis" 按钮，获取今日专属 AI 建议。`}
-                            </p>
-                        </div>
-                    </div>
-                )}
+                <div className="flex gap-4">
+                    <button
+                        onClick={handleRefreshPlan}
+                        className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-400 rounded-xl hover:bg-slate-700 flex items-center gap-2 font-medium transition-all text-sm"
+                        title="强制刷新 AI 计划"
+                    >
+                        <RefreshCcw size={16} /> 刷新计划
+                    </button>
+                    <button
+                        onClick={() => setGoalModalOpen(true)}
+                        className="px-4 py-2 bg-indigo-600 border border-indigo-500 text-white rounded-xl hover:bg-indigo-500 flex items-center gap-2 font-bold transition-all shadow-lg shadow-indigo-500/20"
+                    >
+                        <Target size={18} />
+                        {userGoal.examName ? `${userGoal.examName}` : "设置目标"}
+                    </button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {loadingPlan ? (
+                <div className="w-full flex-1 flex flex-col justify-center items-center text-slate-400 gap-4 min-h-[400px]">
+                    <Loader size={40} className="animate-spin text-indigo-500" />
+                    <p>正在分析您的学习数据并生成今日计划...</p>
+                </div>
+            ) : (
+                <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                {/* 2. Left Col: Goal & Load */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Progress Card */}
-                    <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 flex flex-col sm:flex-row items-center gap-8">
-                        {/* Ring */}
-                        <div className="relative w-40 h-40 shrink-0">
-                            <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#f1f5f9" strokeWidth="4" />
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#8b5cf6" strokeWidth="4" strokeDasharray="30, 100" />
-                            </svg>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-700">
-                                <Brain size={32} className="text-violet-400 mb-1" />
+                    {/* Left & Middle: Smart Coach Dashboard */}
+                    <div className="lg:col-span-2 space-y-6">
+                        {/* Insight Card */}
+                        {smartPlan && (
+                            <div className="bg-gradient-to-r from-indigo-900/50 to-violet-900/50 text-white p-6 rounded-2xl border border-indigo-500/30 shadow-lg relative overflow-hidden backdrop-blur-sm">
+                                <div className="absolute top-0 right-0 p-8 opacity-10"><Sparkles size={100} /></div>
+                                <h3 className="font-bold text-indigo-200 flex items-center gap-2 mb-2">
+                                    <Sparkles size={18} /> 每日洞察 (Daily Insight)
+                                </h3>
+                                <p className="text-lg font-medium leading-relaxed max-w-2xl text-slate-100">
+                                    "{smartPlan.insight}"
+                                </p>
                             </div>
-                        </div>
+                        )}
 
-                        {/* Text Info */}
-                        <div className="flex-1 text-center sm:text-left w-full">
-                            <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                                <Target className="text-violet-500" />
-                                {isEditingGoal ? (
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            value={goal}
-                                            onChange={(e) => setGoal(e.target.value)}
-                                            className="border-b-2 border-violet-500 outline-none font-bold text-lg text-slate-800 w-full min-w-[200px]"
-                                            autoFocus
-                                        />
-                                        <button onClick={handleGoalSave} className="text-xs bg-violet-600 text-white px-2 py-1 rounded">Save</button>
-                                    </div>
-                                ) : (
-                                    <h3
-                                        className="text-xl font-bold text-slate-800 cursor-pointer hover:text-violet-600 flex items-center gap-2"
-                                        onClick={() => setIsEditingGoal(true)}
-                                        title="Click to edit goal"
-                                    >
-                                        目标: {goal}
-                                        <Edit2 size={14} className="text-slate-300" />
-                                    </h3>
-                                )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Radar Chart */}
+                            <div className="bg-slate-900/40 rounded-2xl border border-white/5 p-6 flex flex-col relative overflow-hidden backdrop-blur-sm">
+                                <h3 className="font-bold text-slate-300 mb-4 flex items-center gap-2">
+                                    <Activity size={18} className="text-emerald-500" />
+                                    能力雷达 (Skill Radar)
+                                </h3>
+                                <div className="flex-1 min-h-[250px] relative -ml-4">
+                                    {smartPlan && (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RadarChart cx="50%" cy="50%" outerRadius="70%" data={smartPlan.radar}>
+                                                <PolarGrid stroke="#334155" />
+                                                <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                                                <Radar name="My Skills" dataKey="A" stroke="#818cf8" fill="#6366f1" fillOpacity={0.4} />
+                                            </RadarChart>
+                                        </ResponsiveContainer>
+                                    )}
+                                </div>
                             </div>
 
-                            <p className="text-slate-500 text-sm mb-6">
-                                {insight?.paceComment || "手动触发 AI 分析以获取进度预测..."}
-                            </p>
-
-                            <div className="bg-violet-50 rounded-xl p-4 flex items-center gap-4 border border-violet-100">
-                                <div className="p-2 bg-white rounded-lg text-violet-600 shadow-sm">
-                                    <Calendar size={20} />
-                                </div>
-                                <div>
-                                    <div className="text-xs font-bold text-violet-400 uppercase">AI 评估建议 (Coach Says)</div>
-                                    <div className="text-sm font-bold text-violet-700 leading-tight mt-1">
-                                        {insight ? "根据当前进度，请保持每日复习，可按期达成。" : "暂无评估数据"}
+                            {/* Daily Quests */}
+                            <div className="flex flex-col gap-4">
+                                <h3 className="font-bold text-slate-300 flex items-center gap-2">
+                                    <Trophy size={18} className="text-amber-500" />
+                                    今日挑战 (Daily Quests)
+                                </h3>
+                                {smartPlan?.daily_quests?.map((quest, idx) => (
+                                    <div key={idx} className="bg-slate-800/50 p-4 rounded-xl border border-white/10 hover:border-indigo-500/50 hover:bg-slate-800 transition-all group cursor-pointer" onClick={() => onNavigate && onNavigate(quest.link || 'home')}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className={`p-2 rounded-lg ${quest.type === 'vocab' ? 'bg-amber-500/20 text-amber-400' :
+                                                    quest.type === 'reading' ? 'bg-blue-500/20 text-blue-400' :
+                                                        'bg-purple-500/20 text-purple-400'
+                                                }`}>
+                                                {quest.type === 'vocab' ? <Layers size={18} /> :
+                                                    quest.type === 'reading' ? <Brain size={18} /> :
+                                                        <FileText size={18} />}
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-400 bg-slate-900/50 px-2 py-1 rounded-full border border-white/5">
+                                                {quest.xp || 50} XP
+                                            </span>
+                                        </div>
+                                        <h4 className="font-bold text-slate-200 mb-1 group-hover:text-indigo-400 transition-colors">{quest.title}</h4>
+                                        <div className="flex items-center gap-1 text-xs text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                            立即开始 <ChevronRight size={12} />
+                                        </div>
                                     </div>
-                                </div>
+                                ))}
                             </div>
                         </div>
                     </div>
 
-                    {/* Load Chart - UNCHANGED */}
-                    <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                <TrendingUp className="text-orange-500" />
-                                未来 7 天记忆压力 (Memory Load)
+                    {/* Right: Custom Tasks (With Long/Short Term) */}
+                    <div className="bg-slate-900/30 rounded-2xl border border-white/5 p-6 backdrop-blur-sm flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="font-bold text-slate-200 flex items-center gap-2">
+                                <LayoutList size={20} className="text-pink-500" />
+                                我的任务
                             </h3>
-                            <span className="text-xs font-bold bg-orange-50 text-orange-600 px-2 py-1 rounded-lg">Adaptive</span>
+                            {/* Tabs */}
+                            <div className="flex bg-slate-950/50 p-1 rounded-lg">
+                                <button
+                                    onClick={() => setActiveTab('short')}
+                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${activeTab === 'short' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                                >
+                                    今日
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('long')}
+                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${activeTab === 'long' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                                >
+                                    长期
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="flex items-end justify-between h-40 gap-3">
-                            {dailyLoad.map((count, i) => (
-                                <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
-                                    <div className="relative w-full bg-slate-100 rounded-t-xl flex items-end justify-center overflow-hidden hover:bg-slate-200 transition-colors" style={{ height: '100%' }}>
-                                        <div
-                                            className={`w-full transition-all duration-700 ${i === 0 ? 'bg-orange-500' : count > 30 ? 'bg-red-400' : 'bg-blue-400'}`}
-                                            style={{ height: `${(count / maxLoad) * 100}%`, minHeight: '4px' }}
-                                        />
-                                        <div className="absolute top-2 text-[10px] font-bold text-slate-400 group-hover:block hidden">
-                                            {count}
-                                        </div>
-                                    </div>
-                                    <span className="text-xs font-bold text-slate-400">
-                                        {i === 0 ? 'Today' : `+${i}d`}
+                        {/* Task Input */}
+                        <form onSubmit={handleAddTask} className="flex flex-col gap-2 mb-6">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newTask}
+                                    onChange={(e) => setNewTask(e.target.value)}
+                                    placeholder={taskType === 'short' ? "添加今日待办..." : "添加长期目标..."}
+                                    className="flex-1 bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                                />
+                                <button type="submit" className="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-xl transition-colors">
+                                    <Plus size={20} />
+                                </button>
+                            </div>
+                            {/* Task Type Toggle for creation */}
+                            <div className="flex gap-4 px-1">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="taskType"
+                                        checked={taskType === 'short'}
+                                        onChange={() => setTaskType('short')}
+                                        className="accent-indigo-500"
+                                    />
+                                    <span className="text-xs text-slate-400">⚡ 短期/今日</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="taskType"
+                                        checked={taskType === 'long'}
+                                        onChange={() => setTaskType('long')}
+                                        className="accent-indigo-500"
+                                    />
+                                    <span className="text-xs text-slate-400">🚩 长期/阶段</span>
+                                </label>
+                            </div>
+                        </form>
+
+                        {/* Task List */}
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                            {displayedTasks.length === 0 && (
+                                <div className="text-center text-slate-500 py-10 text-sm italic">
+                                    {activeTab === 'short' ? "今日暂无待办任务。" : "暂无长期目标。"}
+                                </div>
+                            )}
+                            {displayedTasks.map(task => (
+                                <div key={task.id} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${task.completed ? 'bg-slate-800/30 opacity-50' : 'bg-slate-800/60 hover:bg-slate-800'}`}>
+                                    <button onClick={() => handleToggleTask(task)} className="text-slate-400 hover:text-indigo-400 transition-colors">
+                                        {task.completed ? <CheckSquare size={20} /> : <Square size={20} />}
+                                    </button>
+                                    <span className={`flex-1 text-sm ${task.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                                        {task.title}
                                     </span>
+                                    {task.term === 'long' && <Flag size={12} className="text-pink-500/50" />}
+                                    <button onClick={() => handleDeleteTask(task.id)} className="text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 hover:opacity-100 p-1">
+                                        <Trash2 size={16} />
+                                    </button>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Task Manager Section - NEW */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Short-term Tasks */}
-                        <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[300px]">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Zap className="text-blue-500" size={18} />
-                                短期任务 (Short-term)
-                            </h3>
-                            <div className="space-y-3">
-                                {shortTasks.length === 0 && <div className="text-slate-400 text-center py-6 text-sm">暂无短期任务</div>}
-                                {shortTasks.map(task => (
-                                    <div key={task.id} className="flex items-start gap-3 group">
-                                        <button
-                                            onClick={() => handleToggleTask(task)}
-                                            className={`mt-1 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${task.completed ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300 hover:border-blue-400'}`}
-                                        >
-                                            {task.completed && <Award size={12} />}
-                                        </button>
-                                        <div className="flex-1">
-                                            <div className={`text-sm font-medium ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                                                {task.title}
-                                            </div>
-                                        </div>
-                                        <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400">
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Long-term Tasks */}
-                        <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 min-h-[300px]">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Target className="text-purple-500" size={18} />
-                                长期规划 (Long-term)
-                            </h3>
-                            <div className="space-y-3">
-                                {longTasks.length === 0 && <div className="text-slate-400 text-center py-6 text-sm">暂无长期规划</div>}
-                                {longTasks.map(task => (
-                                    <div key={task.id} className="flex items-start gap-3 group">
-                                        <button
-                                            onClick={() => handleToggleTask(task)}
-                                            className={`mt-1 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${task.completed ? 'bg-purple-500 border-purple-500 text-white' : 'border-slate-300 hover:border-purple-400'}`}
-                                        >
-                                            {task.completed && <Award size={12} />}
-                                        </button>
-                                        <div className="flex-1">
-                                            <div className={`text-sm font-medium ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                                                {task.title}
-                                            </div>
-                                        </div>
-                                        <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400">
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
                 </div>
+            )}
 
-                {/* 3. Right Col: Action Feed + Add Task */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 flex flex-col h-fit">
-                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                        <Award className="text-emerald-500" />
-                        添加任务 / AI 推荐
-                    </h3>
-
-                    {/* Add Task Input */}
-                    <div className="mb-8 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <input
-                            value={newTaskTitle}
-                            onChange={(e) => setNewTaskTitle(e.target.value)}
-                            placeholder="输入任务名称..."
-                            className="w-full bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none text-sm py-2 mb-3 text-slate-900 placeholder:text-slate-400 font-medium"
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
-                        />
-                        <div className="flex justify-between items-center">
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setNewTaskType('short')}
-                                    className={`text-xs px-2 py-1 rounded-md border transition-all ${newTaskType === 'short' ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-white text-slate-500 border-slate-200'}`}
+            {/* Goal Setting Modal */}
+            {goalModalOpen && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60">
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-slate-100">设置学习目标</h3>
+                            <button onClick={() => setGoalModalOpen(false)}><X size={24} className="text-slate-400 hover:text-white" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-400 mb-1">目标考试 / 预期成果</label>
+                                <input
+                                    type="text"
+                                    value={userGoal.examName}
+                                    onChange={e => setUserGoal({ ...userGoal, examName: e.target.value })}
+                                    placeholder="例如：CET-6, 雅思, 托福, 商务英语"
+                                    className="w-full p-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none text-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-400 mb-1">考试日期 (可选)</label>
+                                <input
+                                    type="date"
+                                    value={userGoal.examDate}
+                                    onChange={e => setUserGoal({ ...userGoal, examDate: e.target.value })}
+                                    className="w-full p-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none text-white placeholder-slate-600"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-400 mb-1">预估当前水平</label>
+                                <select
+                                    value={userGoal.currentLevel}
+                                    onChange={e => setUserGoal({ ...userGoal, currentLevel: e.target.value })}
+                                    className="w-full p-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none text-white"
                                 >
-                                    短期
-                                </button>
-                                <button
-                                    onClick={() => setNewTaskType('long')}
-                                    className={`text-xs px-2 py-1 rounded-md border transition-all ${newTaskType === 'long' ? 'bg-purple-100 text-purple-600 border-purple-200' : 'bg-white text-slate-500 border-slate-200'}`}
-                                >
-                                    长期
-                                </button>
+                                    <option value="">请选择...</option>
+                                    <option value="Beginner">入门 (A1-A2)</option>
+                                    <option value="Intermediate">进阶 (B1-B2)</option>
+                                    <option value="Advanced">高阶 (C1-C2)</option>
+                                </select>
                             </div>
                             <button
-                                onClick={handleAddTask}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-1.5 shadow-sm"
+                                onClick={handleSaveGoal}
+                                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-500 mt-2 shadow-lg shadow-indigo-500/20"
                             >
-                                <ArrowRight size={16} />
+                                保存并生成计划 (Save)
                             </button>
                         </div>
                     </div>
-
-                    <div className="space-y-0 relative">
-                        {/* Vertical Line */}
-                        <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-slate-100"></div>
-
-                        {/* Dynamic Action Items from AI */}
-                        {insight?.actionItems ? (
-                            <>
-                                <div className="text-xs font-bold text-slate-400 mb-4 pl-10 uppercase tracking-wider">AI Suggestions</div>
-                                {insight.actionItems.map((item, idx) => (
-                                    <div key={idx} className="relative pl-10 pb-6 group">
-                                        <div className="absolute left-0 top-0 w-8 h-8 rounded-full bg-indigo-50 border-4 border-white shadow-sm flex items-center justify-center text-indigo-400 z-10 font-bold text-xs ring-1 ring-indigo-500/10">
-                                            AI
-                                        </div>
-                                        <div className="bg-white p-3 rounded-xl border border-slate-100 group-hover:border-indigo-200 shadow-sm">
-                                            <h4 className="text-sm font-medium text-slate-600">{item}</h4>
-                                        </div>
-                                    </div>
-                                ))}
-                            </>
-                        ) : (
-                            <div className="text-center py-4 text-slate-400 italic text-xs">
-                                暂无 AI 推荐，请先生成分析
-                            </div>
-                        )}
-                    </div>
                 </div>
-
-            </div>
+            )}
         </div>
     );
 };

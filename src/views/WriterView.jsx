@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
-import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, GitCompare, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen } from 'lucide-react';
+import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, ArrowRightLeft, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen } from 'lucide-react';
 // ... (Top imports)
 import { saveWriting, getWritings, deleteWriting, saveNote, getFolders } from '../services/db';
 import { analyzeWriting, generateTranslationChallenge, gradeTranslation } from '../services/ai';
@@ -309,8 +309,8 @@ const WriterView = () => {
             <button
                 onClick={handleStartChallenge}
                 className={`w-full py-2 rounded-lg text-sm font-bold mb-4 flex items-center justify-center gap-2 shadow-lg transition-all ${isTranslationMode
-                        ? 'bg-amber-600 text-white shadow-amber-900/20'
-                        : 'bg-slate-800 text-slate-400 hover:text-amber-400 hover:bg-slate-700'
+                    ? 'bg-amber-600 text-white shadow-amber-900/20'
+                    : 'bg-slate-800 text-slate-400 hover:text-amber-400 hover:bg-slate-700'
                     }`}
             >
                 <BookOpen size={16} /> {isTranslationMode ? '退出翻译挑战' : '每日翻译挑战'}
@@ -574,7 +574,7 @@ const WriterView = () => {
                                                         onClick={() => setViewMode('diff')}
                                                         className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${viewMode === 'diff' ? 'bg-white/20 text-white' : 'text-slate-500 hover:bg-white/5'}`}
                                                     >
-                                                        <GitCompare size={10} /> 对比模式
+                                                        <ArrowRightLeft size={10} /> 对比模式
                                                     </button>
                                                     <button
                                                         onClick={() => setViewMode('note')}
