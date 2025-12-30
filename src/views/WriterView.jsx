@@ -65,7 +65,9 @@ const WriterView = () => {
             updatedAt: Date.now(),
             // Save last analysis result stats if available (lightweight)
             lastScore: analysis?.score,
-            lastLevel: analysis?.level
+            lastLevel: analysis?.level,
+            // Full Analysis Data (Persisted)
+            analysisResult: analysis
         };
 
         await saveWriting(writing);
@@ -93,7 +95,7 @@ const WriterView = () => {
         setContent(w.content);
         setTitle(w.title);
         setCurrentId(w.id);
-        setAnalysis(null); // Load fresh, analysis is transient for now unless we persist full json
+        setAnalysis(w.analysisResult || null); // Restore analysis if exists
         if (w.lastScore) {
             // Optional: could show a "Past Score: X" badge somewhere
         }
@@ -124,14 +126,26 @@ const WriterView = () => {
         try {
             const result = await analyzeWriting(content, settings);
             setAnalysis(result);
+            setAnalysis(result);
             toast.success("AI 润色分析完成！");
 
-            // Auto-save the score to the draft if it exists
+            // Auto-save the score/analysis to the draft
             if (currentId) {
-                // Updating local state handles the UI, next save writes to DB. 
-                // Or we could auto-save here too. Let's just prompt user or rely on manual/auto save later.
-                // For V2.0 simplicity, let's trigger a save after analysis if we have an ID
-                // But handleSave relies on state 'content' which is synced.
+                const writing = writings.find(w => w.id === currentId);
+                if (writing) {
+                    const updatedWriting = {
+                        ...writing,
+                        updatedAt: Date.now(),
+                        lastScore: result.score,
+                        lastLevel: result.level,
+                        analysisResult: result,
+                        content: content, // Ensure content is synced
+                        title: title
+                    };
+                    await saveWriting(updatedWriting);
+                    await loadWritings(); // Refresh list to show new score
+                    console.log("Analysis auto-saved to draft");
+                }
             }
         } catch (e) {
             console.error(e);
