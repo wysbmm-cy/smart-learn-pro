@@ -155,7 +155,14 @@ export const analyzeWriting = async (text, settings) => {
         "reason": "String (Brief explanation in Chinese)"
       }
     ],
-    "improvement_tips": ["String", "String", "String"]
+    "improvement_tips": ["String", "String", "String"],
+    "vocabulary_analysis": [
+      {
+        "word": "String (The word in the text)",
+        "level": "String (B2/C1/C2 or 'Basic' if it should be improved)",
+        "suggestion": "String (Optional better synonym)"
+      }
+    ]
   }
   `;
 

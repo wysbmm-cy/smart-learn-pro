@@ -102,22 +102,28 @@ const UserGuideModal = ({ onClose }) => {
                         <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 mb-6">
                             <h3 className="text-lg font-bold text-emerald-900 mb-2 flex items-center gap-2">
                                 <PenTool size={20} />
-                                AI 写作工作台
+                                AI 写作工作台 2.0
                             </h3>
                             <p className="text-emerald-800/80 text-sm leading-relaxed">
-                                这里是您的专属英文写作私教。
+                                全新升级！打造您的专属写作教练。
                             </p>
                         </div>
                         <div className="grid grid-cols-1 gap-3">
                             <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                                <div className="font-bold text-slate-700 mb-1">✍️ 实时练笔</div>
-                                <p className="text-xs text-slate-500">支持Markdown格式，实时字数统计，草稿自动保存。</p>
+                                <div className="font-bold text-slate-700 mb-2">✨ 核心功能</div>
+                                <ul className="text-xs text-slate-500 space-y-2 list-disc pl-4">
+                                    <li><strong>写作模板 (Templates)</strong>: 内置雅思、托福、商务邮件等专业模板，快速搭建文章结构。</li>
+                                    <li><strong>专注模式 (Focus Mode)</strong>: 点击工具栏 "全屏" 图标，进入沉浸式写作环境，告别干扰。</li>
+                                    <li><strong>作品集 (Portfolio)</strong>: 自动保存写作历史与多维评分，见证每一次进步。</li>
+                                </ul>
                             </div>
                             <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                                <div className="font-bold text-slate-700 mb-1">🤖 AI 润色 (Auto-Polish)</div>
-                                <p className="text-xs text-slate-500">
-                                    写完后点击 "AI 润色"。AI 会基于四六级标准为您打分 (0-15分)，指出语法错误，并提供一篇满分范文供您参考。
-                                </p>
+                                <div className="font-bold text-slate-700 mb-2">🤖 AI 深度润色</div>
+                                <ul className="text-xs text-slate-500 space-y-2 list-disc pl-4">
+                                    <li><strong>多维评分</strong>: 基于 CEFR 标准进行 0-15 分打分。</li>
+                                    <li><strong>词汇热力图 (Heatmap)</strong>: <Layers size={10} className="inline" /> 分析完成后，点击报告顶部的 "词汇热力"，AI 会自动高亮文中的高级词汇 (C1/C2 紫色)，助您掌握词汇运用。</li>
+                                    <li><strong>对比视图 (Diff View)</strong>: <GitCompare size={10} className="inline" /> 点击 "对比模式"，直观展示 "修改前/修改后" 的差异。</li>
+                                </ul>
                             </div>
                         </div>
                     </div>
