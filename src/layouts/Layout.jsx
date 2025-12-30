@@ -89,7 +89,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 <div className="h-20 flex items-center px-6">
                     <div className="flex items-center gap-3 text-indigo-400 font-extrabold text-xl tracking-tight drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">
                         <Brain size={28} strokeWidth={2.5} />
-                        <span>AI SmartLearn</span>
+                        <span>AI 智学大师</span>
                     </div>
                 </div>
 
@@ -108,7 +108,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 <div className="p-4 border-t border-white/5">
                     <SidebarItem
                         icon={Settings}
-                        label="设置 & API"
+                        label="设置与接口"
                         active={currentView === 'settings'}
                         onClick={() => setCurrentView('settings')}
                     />
@@ -131,7 +131,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         className="w-full text-left px-4 py-2 hover:bg-violet-600/30 text-indigo-300 hover:text-white border-t border-white/5"
                         onClick={() => onOpenSplit(contextMenu.itemId)}
                     >
-                        分屏打开 (Open in Split)
+                        分屏打开
                     </button>
                 </div>
             )}
@@ -150,7 +150,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         </button>
 
                         <h2 className="text-lg font-bold text-slate-100 tracking-wide">
-                            {navItems.find(i => i.id === currentView)?.label || (currentView === 'settings' ? 'Global Settings' : 'Overview')}
+                            {navItems.find(i => i.id === currentView)?.label || (currentView === 'settings' ? '全局设置' : '总览')}
                         </h2>
                         {/* Split Toggle */}
                         <button
@@ -158,7 +158,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             className={`p-2 rounded-lg transition-all border ${isSplit
                                 ? 'bg-violet-600/20 border-violet-500/50 text-violet-300 shadow-[0_0_10px_rgba(139,92,246,0.2)]'
                                 : 'border-white/10 text-slate-400 hover:text-white hover:bg-white/5'}`}
-                            title="Toggle Split View"
+                            title="切换分屏视图"
                         >
                             {isSplit ? <Columns size={18} /> : <Maximize2 size={18} />}
                         </button>

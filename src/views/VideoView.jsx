@@ -109,7 +109,7 @@ const VideoView = () => {
             setIsRecording(true);
         } catch (err) {
             console.error("Audio Error:", err);
-            toast.error("Could not capture audio. Please allow microphone or system audio access.");
+            toast.error("无法录制音频。请允许麦克风或系统音频访问权限。");
         }
     };
 
@@ -132,7 +132,7 @@ const VideoView = () => {
             }
         } catch (error) {
             console.error("Transcription failed:", error);
-            alert("Transcription failed. Please check your Audio API Key.");
+            alert("转录失败。请检查您的 API Key 设置。");
         } finally {
             setIsTranscribing(false);
         }
@@ -146,14 +146,14 @@ const VideoView = () => {
                 <div className="absolute inset-0 z-10 bg-slate-900/95 backdrop-blur-md p-4 flex flex-col animate-fade-in">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-white flex items-center gap-2">
-                            <History size={16} /> Recent Videos
+                            <History size={16} /> 最近播放
                         </h3>
                         <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-slate-800 rounded">
                             <X size={16} className="text-slate-400" />
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                        {history.length === 0 && <p className="text-slate-500 text-xs text-center mt-4">No history yet.</p>}
+                        {history.length === 0 && <p className="text-slate-500 text-xs text-center mt-4">暂无历史记录。</p>}
                         {history.map((hist) => (
                             <div
                                 key={hist.url}
@@ -184,14 +184,14 @@ const VideoView = () => {
                 <div>
                     <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-1">
                         <PlayCircle className="text-pink-500" />
-                        Video Learning
+                        视频学习
                     </h2>
-                    <p className="text-xs text-slate-400">Watch Bilibili videos with AI assistance.</p>
+                    <p className="text-xs text-slate-400">AI 辅助 Bilibili 视频学习</p>
                 </div>
                 <button
                     onClick={() => setShowHistory(true)}
                     className="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
-                    title="History"
+                    title="历史记录"
                 >
                     <History size={18} />
                 </button>
@@ -200,7 +200,7 @@ const VideoView = () => {
             {/* URL Input */}
             <div className="mb-6">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
-                    Video Source
+                    视频来源
                 </label>
                 <div className="flex gap-2">
                     <div className="relative flex-1">
@@ -208,7 +208,7 @@ const VideoView = () => {
                             type="text"
                             value={inputUrl}
                             onChange={(e) => setInputUrl(e.target.value)}
-                            placeholder="Paste Bilibili URL..."
+                            placeholder="粘贴 Bilibili 视频链接..."
                             className="w-full bg-slate-950/50 border border-white/10 rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:border-pink-500/50 transition-colors"
                             onKeyDown={(e) => e.key === 'Enter' && handleLoadVideo()}
                         />
@@ -226,7 +226,7 @@ const VideoView = () => {
                     onClick={handleLoadVideo}
                     className="w-full mt-2 bg-pink-600 hover:bg-pink-500 text-white py-2 rounded-lg text-xs font-bold transition-all shadow-lg shadow-pink-900/20"
                 >
-                    Load Video
+                    加载视频
                 </button>
             </div>
 
@@ -235,17 +235,17 @@ const VideoView = () => {
             {/* Learning Tools */}
             <div className="flex-1 flex flex-col min-h-0">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex justify-between items-center">
-                    <span>Smart Notes & Audio</span>
+                    <span>智能笔记 & 音频</span>
                     <div className="flex items-center gap-2">
-                        {isTranscribing && <span className="text-[10px] text-blue-400 animate-pulse">Transcribing...</span>}
-                        <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">Not Saved</span>
+                        {isTranscribing && <span className="text-[10px] text-blue-400 animate-pulse">正在转录...</span>}
+                        <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">未保存</span>
                     </div>
                 </label>
 
                 <textarea
                     value={quickNote}
                     onChange={(e) => setQuickNote(e.target.value)}
-                    placeholder={isRecording ? "Listening..." : "Type notes or use the mic to capture video audio..."}
+                    placeholder={isRecording ? "正在聆听..." : "输入笔记或使用麦克风捕捉视频语音..."}
                     className={`flex-1 w-full bg-slate-950/30 border rounded-xl p-3 text-sm text-slate-300 focus:outline-none resize-none mb-3 custom-scrollbar transition-colors ${isRecording ? 'border-red-500/50 bg-red-900/10' : 'border-white/10 focus:border-indigo-500/50'
                         }`}
                 ></textarea>
@@ -259,7 +259,7 @@ const VideoView = () => {
                             ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
                             : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
                             } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="AI Hearing Mode (Record Audio)"
+                        title="AI 听力模式 (录制音频)"
                     >
                         {isTranscribing ? <Loader2 size={18} className="animate-spin" /> : (isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={18} />)}
                     </button>
@@ -277,17 +277,17 @@ const VideoView = () => {
                         className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-xs transition-all"
                     >
                         <Sparkles size={14} />
-                        Analyze
+                        分析
                     </button>
                     <button
                         onClick={async () => {
                             if (quickNote.trim()) {
-                                await saveToNotes({ title: `Video Note: ${new Date().toLocaleString()}`, content: quickNote });
+                                await saveToNotes({ title: `视频笔记: ${new Date().toLocaleString()}`, content: quickNote });
                                 setQuickNote('');
                             }
                         }}
                         className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl font-bold text-xs transition-all"
-                        title="Save to Notes"
+                        title="保存到笔记"
                     >
                         <FileText size={14} />
                     </button>
@@ -295,7 +295,7 @@ const VideoView = () => {
             </div>
 
             <div className="mt-4 text-[10px] text-slate-500 text-center">
-                Tip: Click Mic to let AI "hear" and transcribe the video content.
+                提示: 点击麦克风让 AI “聆听”并转录视频内容。
             </div>
         </div>
     );

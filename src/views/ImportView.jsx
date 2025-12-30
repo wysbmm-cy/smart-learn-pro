@@ -233,13 +233,13 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                             onClick={() => { setMode('article'); setVocabList(null); }}
                             className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'article' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
-                            Article Analysis
+                            文章深度分析
                         </button>
                         <button
                             onClick={() => setMode('vocab')}
                             className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'vocab' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
-                            Batch Vocabulary
+                            批量单词导入
                         </button>
                     </div>
                 </div>
@@ -249,42 +249,42 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                     <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
                         <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                             <CheckCircle className="text-emerald-500" />
-                            Extracted {vocabList.length} Cards
+                            已提取 {vocabList.length} 张卡片
                         </h3>
 
                         {/* Folder Selection */}
                         <div className="flex flex-wrap gap-4 mb-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                             <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Target Folder</label>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">目标文件夹</label>
                                 <select
                                     value={selectedFolderId}
                                     onChange={(e) => setSelectedFolderId(e.target.value)}
                                     className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none w-48 font-medium text-slate-700"
                                 >
-                                    <option value="daily">📅 Daily (Today)</option>
+                                    <option value="daily">📅 每日默认 (今天)</option>
                                     {folders.map(f => (
                                         <option key={f.id} value={f.id}>📁 {f.name}</option>
                                     ))}
-                                    <option value="new">✨ New Folder...</option>
+                                    <option value="new">✨ 新建文件夹...</option>
                                 </select>
                             </div>
                             {selectedFolderId === 'new' && (
                                 <div className="animate-in fade-in slide-in-from-left-2">
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Folder Name</label>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">文件夹名称</label>
                                     <input
                                         type="text"
                                         value={newFolderName}
                                         onChange={(e) => setNewFolderName(e.target.value)}
-                                        placeholder="e.g. TOEFL High Freq"
+                                        placeholder="例如：托福高频词汇"
                                         className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none w-48"
                                     />
                                 </div>
                             )}
                             <div className="flex-1"></div>
                             <div className="flex gap-2">
-                                <button onClick={() => setVocabList(null)} className="px-4 py-2 text-slate-400 hover:bg-slate-200 rounded-lg text-sm font-bold">Back</button>
+                                <button onClick={() => setVocabList(null)} className="px-4 py-2 text-slate-400 hover:bg-slate-200 rounded-lg text-sm font-bold">返回</button>
                                 <button onClick={handleSaveCards} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-emerald-200">
-                                    Confirm Import
+                                    确认导入
                                 </button>
                             </div>
                         </div>
@@ -298,11 +298,11 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
                                         <div>
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold">Front</div>
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold">正面</div>
                                             <div className="font-bold text-slate-800">{card.front}</div>
                                         </div>
                                         <div>
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold">Back</div>
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold">背面</div>
                                             <div className="text-sm text-slate-600 whitespace-pre-wrap">{card.back}</div>
                                         </div>
                                     </div>
@@ -321,7 +321,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                     <>
                         <textarea
                             className="flex-1 w-full bg-slate-50 rounded-xl p-6 border-0 focus:ring-2 focus:ring-blue-500/20 resize-none font-sans text-slate-700 text-lg leading-relaxed mb-6 outline-none transition-all placeholder:text-slate-400"
-                            placeholder={mode === 'article' ? "Paste Article for Deep Analysis..." : "Paste Vocab List / PDF Content to extract Flashcards..."}
+                            placeholder={mode === 'article' ? "在此粘贴文章内容进行深度分析..." : "在此粘贴 单词表 / PDF 内容以批量提取闪卡..."}
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
                         />
@@ -333,14 +333,14 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                                     className="text-slate-500 hover:text-blue-600 flex items-center gap-2 text-sm font-medium transition-colors px-2"
                                 >
                                     <Upload size={18} />
-                                    Upload Doc
+                                    上传文档
                                 </button>
                                 <button
                                     onClick={() => mediaInputRef.current.click()}
                                     className="text-slate-500 hover:text-purple-600 flex items-center gap-2 text-sm font-medium transition-colors px-2"
                                 >
                                     <Mic size={18} />
-                                    Upload Media
+                                    上传音视频
                                 </button>
                             </div>
 
@@ -367,7 +367,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                                     ) : (
                                         <>
                                             <Sparkles size={18} />
-                                            <span>{mode === 'article' ? 'Start Analysis' : 'Extract Cards'}</span>
+                                            <span>{mode === 'article' ? '开始深度分析' : '提取闪卡'}</span>
                                         </>
                                     )}
                                 </button>

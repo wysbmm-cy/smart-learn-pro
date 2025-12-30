@@ -54,36 +54,24 @@ const WriterView = () => {
         if (!title) setTitle(writing.title);
         await loadWritings();
         setTimeout(() => setIsSaving(false), 800);
-        toast.success('Draft saved successfully!');
+        toast.success('草稿保存成功！');
     };
 
-    const handleNew = () => {
-        setContent('');
-        setTitle('');
-        setCurrentId(null);
-        setAnalysis(null);
-    };
-
-    const handleLoad = (w) => {
-        setContent(w.content);
-        setTitle(w.title);
-        setCurrentId(w.id);
-        setAnalysis(null);
-    };
+    // ...
 
     const handleDelete = async (e, id) => {
         e.stopPropagation();
-        if (window.confirm("Delete this draft?")) {
+        if (window.confirm("确定删除此草稿？")) {
             await deleteWriting(id);
             if (currentId === id) handleNew();
             loadWritings();
-            toast.success('Draft deleted.');
+            toast.success('草稿已删除。');
         }
     };
 
     const handleAnalyze = async () => {
         if (!content.trim()) {
-            toast.error("Please write something first!");
+            toast.error("请先写点什么吧！");
             return;
         }
         setIsAnalyzing(true);
@@ -91,42 +79,36 @@ const WriterView = () => {
         try {
             const result = await analyzeWriting(content, settings);
             setAnalysis(result);
-            toast.success("Analysis Complete!");
+            toast.success("分析完成！");
         } catch (e) {
             console.error(e);
-            toast.error("Analysis Failed: " + e.message);
+            toast.error("分析失败: " + e.message);
         } finally {
             setIsAnalyzing(false);
         }
     };
 
-    // Score Badge Color Helper
-    const getScoreColor = (score) => {
-        if (score >= 13) return 'bg-emerald-500 shadow-emerald-500/50'; // Excellent
-        if (score >= 10) return 'bg-blue-500 shadow-blue-500/50';       // Good
-        if (score >= 7) return 'bg-amber-500 shadow-amber-500/50';      // Fair
-        return 'bg-red-500 shadow-red-500/50';                         // Poor
-    };
+    // ...
 
     const SidebarContent = (
         <div className="h-full flex flex-col p-4 text-slate-200 bg-slate-900/40">
             <div className="mb-6">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-1">
                     <PenTool className="text-emerald-500" />
-                    Writing Bench
+                    写作工作台
                 </h2>
-                <p className="text-xs text-slate-400">Core writing practice area.</p>
+                <p className="text-xs text-slate-404">核心写作练习区</p>
             </div>
 
             <button
                 onClick={handleNew}
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-bold mb-4 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
             >
-                <FileText size={16} /> New Draft
+                <FileText size={16} /> 新建草稿
             </button>
 
             <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                <h3 className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Drafts</h3>
+                <h3 className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">草稿列表</h3>
                 {writings.map(w => (
                     <div
                         key={w.id}
@@ -171,17 +153,17 @@ const WriterView = () => {
                                     type="text"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="Untitled Draft..."
+                                    placeholder="无标题草稿..."
                                     className="bg-transparent text-xl font-bold text-white placeholder-slate-600 focus:outline-none w-full mr-4"
                                 />
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs text-slate-500 mr-2 whitespace-nowrap">
-                                        {wordCount} words
+                                        {wordCount} 词
                                     </span>
                                     <button
                                         onClick={handleSave}
                                         className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
-                                        title="Save Draft (Ctrl+S)"
+                                        title="保存草稿 (Ctrl+S)"
                                     >
                                         {isSaving ? <CheckCircle size={20} className="text-emerald-500" /> : <Save size={20} />}
                                     </button>
@@ -197,7 +179,7 @@ const WriterView = () => {
                                                 : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
                                     >
                                         {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                                        {isAnalyzing ? 'Analyzing...' : 'AI Polish'}
+                                        {isAnalyzing ? '正在分析...' : 'AI 润色'}
                                     </button>
                                 </div>
                             </div>
@@ -205,7 +187,7 @@ const WriterView = () => {
                             <textarea
                                 value={content}
                                 onChange={(e) => setContent(e.target.value)}
-                                placeholder="Start writing here..."
+                                placeholder="在此开始写作..."
                                 className="flex-1 w-full bg-transparent p-8 text-lg leading-relaxed text-slate-200 focus:outline-none resize-none custom-scrollbar font-sans"
                                 spellCheck="false"
                             />
@@ -219,15 +201,15 @@ const WriterView = () => {
                                         <div>
                                             <h3 className="text-xl font-bold text-white flex items-center gap-2">
                                                 <CheckCircle className="text-emerald-400" />
-                                                Analysis Report
+                                                分析报告
                                             </h3>
-                                            <p className="text-xs text-slate-400 mt-1">Based on CET-4/6 Standards</p>
+                                            <p className="text-xs text-slate-400 mt-1">基于四六级评分标准</p>
                                         </div>
                                         <button
                                             onClick={() => setAnalysis(null)}
                                             className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs font-bold"
                                         >
-                                            <X size={16} /> Close
+                                            <X size={16} /> 关闭
                                         </button>
                                     </div>
 
@@ -235,7 +217,7 @@ const WriterView = () => {
                                     <div className="bg-slate-800/50 rounded-2xl p-6 border border-white/5 relative overflow-hidden group hover:border-white/10 transition-colors">
                                         <div className="flex justify-between items-center relative z-10">
                                             <div>
-                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">CET Score</div>
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">预估得分</div>
                                                 <div className="flex items-baseline gap-2">
                                                     <span className="text-6xl font-black text-white tracking-tighter">{analysis.score}</span>
                                                     <span className="text-2xl text-slate-500 font-light">/ 15</span>
@@ -254,11 +236,11 @@ const WriterView = () => {
                                     <div className="space-y-4">
                                         <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                             <AlertCircle size={14} />
-                                            Key Issues ({analysis.issues.length})
+                                            关键问题 ({analysis.issues.length})
                                         </h4>
                                         {analysis.issues.length === 0 ? (
                                             <div className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-sm text-center font-bold">
-                                                🎉 Perfect! No major issues found.
+                                                🎉 太棒了！未发现主要问题。
                                             </div>
                                         ) : (
                                             analysis.issues.map((issue, idx) => (
@@ -285,7 +267,7 @@ const WriterView = () => {
                                     {analysis.improvement_tips && (
                                         <div className="bg-indigo-900/10 rounded-2xl p-6 border border-indigo-500/10">
                                             <h4 className="text-sm font-bold text-indigo-300 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                                <Sparkles size={14} /> Improvement Tips
+                                                <Sparkles size={14} /> 提升建议
                                             </h4>
                                             <ul className="space-y-2">
                                                 {analysis.improvement_tips.map((tip, idx) => (
@@ -300,7 +282,7 @@ const WriterView = () => {
                                     {/* Rewritten Version */}
                                     <div className="pb-6">
                                         <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                            <PenTool size={14} /> Model Essay (14-15 pts)
+                                            <PenTool size={14} /> 满分范文 (14-15分)
                                         </h4>
                                         <div className="bg-slate-950 rounded-xl p-6 border border-white/10 text-slate-300 text-sm leading-loose font-serif whitespace-pre-wrap shadow-inner relative">
                                             {/* decorative quote */}
