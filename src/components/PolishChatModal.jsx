@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChat } from '../services/ai';
 import { useApp } from '../context/AppContext';
-import { X, Send, Sparkles, AlertCircle, Copy, Check, MessageSquare } from 'lucide-react';
+import { X, Send, Sparkles, AlertCircle, Copy, Check, MessageSquare, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const PolishChatModal = ({ selectedText, onClose, onApply }) => {
@@ -114,8 +114,8 @@ const PolishChatModal = ({ selectedText, onClose, onApply }) => {
                                 {msg.role === 'user' ? <MessageSquare size={14} className="text-white" /> : <Sparkles size={14} className="text-white" />}
                             </div>
                             <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed ${msg.role === 'user'
-                                    ? 'bg-indigo-600 text-white rounded-tr-none'
-                                    : 'bg-slate-800 text-slate-200 rounded-tl-none border border-white/5'
+                                ? 'bg-indigo-600 text-white rounded-tr-none'
+                                : 'bg-slate-800 text-slate-200 rounded-tl-none border border-white/5'
                                 }`}>
                                 <div className="markdown-body whitespace-pre-wrap font-sans">
                                     {msg.content}
