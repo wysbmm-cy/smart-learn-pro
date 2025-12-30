@@ -51,6 +51,61 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3)
   }
 };
 
+export const digitalizeExam = async (text, settings) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const systemPrompt = `
+  Role: Professional Exam Digitizer.
+  Task: Convert the provided raw exam text (often OCR'd from PDF) into a structured JSON Exam Paper for an interactive web app.
+  
+  Input Text: Raw text which may contain Reading Passages, Multiple Choice Questions (A,B,C,D), and Writing Prompts.
+  
+  Requirements:
+  1. Identify sections: Reading, Listening (if transcripts exist), Writing, or General MCQ parts.
+  2. For MCQs: Cleanly separate question text from options. Identify the correct answer only if explicitly marked (e.g. "Answer: A"), otherwise null.
+  3. For Reading: Isolate the passage text from the questions.
+  4. For Writing: Isolate the topic/prompt.
+  
+  Output JSON Schema:
+  {
+    "title": "Exam Paper",
+    "sections": [
+      {
+        "type": "reading" | "listening" | "writing" | "mcq",
+        "instructions": "String (e.g. 'Read the passage and answer questions 1-5')",
+        "content": "String (The reading passage or listening transcript... Null for pure MCQ sections)",
+        "questions": [
+           {
+              "id": Number,
+              "text": "String (Question stem)",
+              "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
+              "answer": "A" | "B" | "C" | "D" | null
+           }
+        ]
+      }
+    ]
+  }
+
+  IMPORTANT: Return ONLY valid JSON. No markdown fences. If text is too long, prioritize capturing the structure over every single word of the passage (but try to keep passsages intact).
+  `;
+
+  // Use the existing fetch wrapper
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: text }
+  ], settings, true);
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.warn("JSON Parse Error in Exam:", e);
+    // Try to salvage if it's wrapped in markedown
+    const match = jsonStr.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error("AI returned invalid exam format");
+  }
+};
+
 export const analyzeText = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
