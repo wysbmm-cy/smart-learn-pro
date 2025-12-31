@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play } from 'lucide-react';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
 import { saveFolder, getFolders, deleteFolder } from '../services/db';
 
 const FlashcardView = () => {
-    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, flashcardStartupState, setFlashcardStartupState } = useApp();
+    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState } = useApp();
 
     // Data State
     const [allCards, setAllCards] = useState([]);
@@ -98,6 +98,9 @@ const FlashcardView = () => {
             const now = Date.now();
             return allCards.filter(c => !c.nextReview || c.nextReview <= now);
         }
+        if (selectedFolderId === 'flagged') {
+            return allCards.filter(c => c.isFlagged);
+        }
         return allCards.filter(c => c.folderId === selectedFolderId);
     };
 
@@ -161,6 +164,9 @@ const FlashcardView = () => {
         } else if (targetFolder === 'today') {
             const now = Date.now();
             candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
+            candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
+        } else if (targetFolder === 'flagged') {
+            candidates = allCards.filter(c => c.isFlagged);
         } else {
             candidates = allCards.filter(c => c.folderId === targetFolder);
         }
@@ -179,11 +185,46 @@ const FlashcardView = () => {
         setMode('study');
     };
 
+    // Keyboard Shortcuts
+    useEffect(() => {
+        if (mode !== 'study' || !isFlipped) return;
+        const handleKeyDown = (e) => {
+            if (e.key === '1') handleNextCard(1);
+            if (e.key === '2') handleNextCard(2);
+            if (e.key === '3') handleNextCard(3);
+            if (e.key === '4') handleNextCard(4);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [mode, isFlipped, currentCardIndex, studyQueue]);
+
+    const handleToggleFlag = async (e, card) => {
+        e.stopPropagation();
+        const updated = { ...card, isFlagged: !card.isFlagged };
+        // Update specific card in allCards and studyQueue locally
+        setAllCards(prev => prev.map(c => c.id === card.id ? updated : c));
+        setStudyQueue(prev => prev.map(c => c.id === card.id ? updated : c));
+        // Persist
+        await updateFlashcard(updated); // Context function
+    };
+
     const handleNextCard = async (quality) => {
         const currentCard = studyQueue[currentCardIndex];
 
-        // SRS Update: quality 4 (Good) or 1 (Forgot)
+        // SRS Update
+        // Quality: 1=Again, 2=Hard, 3=Good, 4=Easy
         await updateFlashcardProgress(currentCard.id, quality);
+
+        // Queue Logic
+        if (quality === 1) {
+            // Again: Re-queue this card to end of session
+            setStudyQueue(prev => {
+                const newB = [...prev];
+                // Clone card to avoid reference issues, maybe add a marker
+                newB.push({ ...currentCard, _isRetry: true });
+                return newB;
+            });
+        }
 
         setSessionStats(prev => ({
             reviewed: prev.reviewed + 1,
@@ -194,7 +235,19 @@ const FlashcardView = () => {
             setCurrentCardIndex(prev => prev + 1);
             setIsFlipped(false);
         } else {
-            // End of Session
+            // Check if there are any pending retries that were added?
+            // currentCardIndex is incremented.
+            // If we pushed to queue, length increased.
+            // So loop continues naturally.
+
+            // If we are truly at end (index === length - 1 before increment)
+            // But we handled 'Again' by pushing, so length > index+1 if Again was hit.
+
+            // If we are HERE, it means index IS causing termination?
+            // React state update is async.
+            // We need to check if we just finished the LAST card and no 'Again' occurred.
+            // The 'if' block handles moving forward. This 'else' is for "All Done".
+
             // Reload data to reflect new review dates
             await loadData();
             alert(`学习完成！本次复习: ${studyQueue.length} 张`);
@@ -265,6 +318,14 @@ const FlashcardView = () => {
                         >
                             <RefreshCw size={18} />
                             今日需复习
+                        </button>
+
+                        <button
+                            onClick={() => setSelectedFolderId('flagged')}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'flagged' ? 'bg-white shadow-sm text-rose-500' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            <Star size={18} className={selectedFolderId === 'flagged' ? "fill-rose-500" : ""} />
+                            重点标记 (Flagged)
                         </button>
                     </>
                 )}
@@ -343,7 +404,8 @@ const FlashcardView = () => {
                                         ? `多选模式 (${studySelection.length} 个文件夹)`
                                         : (selectedFolderId === 'all' ? '所有卡片' :
                                             selectedFolderId === 'today' ? '今日需复习' :
-                                                folders.find(f => f.id === selectedFolderId)?.name || '文件夹')
+                                                selectedFolderId === 'flagged' ? `重点标记 (${displayCards.length})` :
+                                                    folders.find(f => f.id === selectedFolderId)?.name || '文件夹')
                                     }
                                     <span className="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full text-xs">{displayCards.length}</span>
                                 </h3>
@@ -443,6 +505,22 @@ const FlashcardView = () => {
                             <RotateCw size={12} />
                             {isSwapped ? 'Answer → Question' : 'Question → Answer'}
                         </button>
+
+                        {/* Flag Toggle (Top Bar) */}
+                        {currentCard && (
+                            <button
+                                onClick={(e) => {
+                                    const updated = { ...currentCard, isFlagged: !currentCard.isFlagged };
+                                    setAllCards(prev => prev.map(c => c.id === currentCard.id ? updated : c));
+                                    setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? updated : c));
+                                    updateFlashcard(updated); // Context function
+                                }}
+                                className={`ml-2 p-1.5 rounded-lg border transition-all ${currentCard.isFlagged ? 'bg-amber-50 border-amber-200 text-amber-500 shadow-sm ring-1 ring-amber-100' : 'bg-white border-slate-200 text-slate-300 hover:text-amber-400'}`}
+                                title="Mark as Difficult (Flag)"
+                            >
+                                <Star size={16} fill={currentCard.isFlagged ? "currentColor" : "none"} />
+                            </button>
+                        )}
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-slate-400">SESSION SCORE:</span>
                             <span className="text-sm font-bold text-indigo-600">{sessionStats.correct}/{sessionStats.reviewed}</span>
@@ -484,72 +562,109 @@ const FlashcardView = () => {
                             </div>
                         </div>
 
-                        {/* Control Buttons */}
-                        {isFlipped && (
-                            <div className="mt-8 flex gap-4 w-full max-w-md animate-fade-in-up">
-                                <button
-                                    onClick={() => handleNextCard(1)} // 1 = Forgot
-                                    className="flex-1 bg-white hover:bg-red-50 text-red-500 border border-slate-200 hover:border-red-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
-                                >
-                                    <XCircle size={20} />
-                                    忘记 (Reset)
-                                </button>
-                                <button
-                                    onClick={() => handleNextCard(4)} // 4 = Good
-                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95 flex items-center justify-center gap-2"
-                                >
-                                    <CheckCircle size={20} />
-                                    认识 (Known)
-                                </button>
+                        {/* Stats for Geeks */}
+                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-xs opacity-50">
+                            <div className="bg-white/10 rounded p-2 flex flex-col items-center">
+                                <span className="text-[10px] uppercase font-bold text-indigo-200">Interval</span>
+                                <span className="text-xl font-mono font-bold">{currentCard?.interval || 0}d</span>
                             </div>
-                        )}
+                            <div className="bg-white/10 rounded p-2 flex flex-col items-center">
+                                <span className="text-[10px] uppercase font-bold text-indigo-200">Ease Factor</span>
+                                <span className="text-xl font-mono font-bold">{currentCard?.easeFactor?.toFixed(2) || '2.50'}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* Student Picker Modal */}
-            {showStudentPicker && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-96 text-center border-4 border-white ring-4 ring-indigo-50 scale-100 animate-in fade-in zoom-in duration-300">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <Dices className="text-indigo-500" />
-                                班级抽号
-                            </h2>
-                            <button onClick={() => setShowStudentPicker(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
-                                <XCircle size={24} />
-                            </button>
-                        </div>
-                        <div className="mb-8">
-                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">选中学生</div>
-                            <div className={`text-8xl font-black text-indigo-600 font-mono transition-transform ${isRolling ? 'scale-110' : 'scale-100'}`}>
-                                {pickedStudent !== null ? pickedStudent : '?'}
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-4">
-                            <div className="flex items-center justify-center gap-3 bg-slate-50 p-3 rounded-xl">
-                                <span className="text-sm font-bold text-slate-500">学生总数:</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="100"
-                                    value={studentCount}
-                                    onChange={(e) => setStudentCount(parseInt(e.target.value) || 1)}
-                                    className="w-16 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg py-1 outline-indigo-500"
-                                />
-                            </div>
-                            <button
-                                onClick={handlePickStudent}
-                                disabled={isRolling}
-                                className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-indigo-200 transition-all active:scale-95 ${isRolling ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                            >
-                                {isRolling ? '抽号中...' : '开始抽号'}
-                            </button>
-                        </div>
-                    </div>
+            {/* Control Buttons (4-Level SRS) */}
+            {isFlipped && (
+                <div className="mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4">
+                    <button
+                        onClick={() => handleNextCard(1)}
+                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-rose-50 text-rose-500 border border-slate-200 hover:border-rose-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                    >
+                        <span className="text-xs font-black uppercase tracking-wider text-rose-300 group-hover:text-rose-400">Can't Recall</span>
+                        <span className="text-lg">忘记 (1)</span>
+                        <span className="text-[10px] font-mono text-slate-400">Repeat</span>
+                    </button>
+
+                    <button
+                        onClick={() => handleNextCard(2)}
+                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-orange-50 text-orange-600 border border-slate-200 hover:border-orange-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                    >
+                        <span className="text-xs font-black uppercase tracking-wider text-orange-300 group-hover:text-orange-400">Hard</span>
+                        <span className="text-lg">困难 (2)</span>
+                        <span className="text-[10px] font-mono text-slate-400">1.2x</span>
+                    </button>
+
+                    <button
+                        onClick={() => handleNextCard(3)}
+                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 border border-slate-200 hover:border-emerald-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                    >
+                        <span className="text-xs font-black uppercase tracking-wider text-emerald-300 group-hover:text-emerald-400">Good</span>
+                        <span className="text-lg">一般 (3)</span>
+                        <span className="text-[10px] font-mono text-slate-400">2.5x</span>
+                    </button>
+
+                    <button
+                        onClick={() => handleNextCard(4)}
+                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                    >
+                        <span className="text-xs font-black uppercase tracking-wider text-blue-300 group-hover:text-blue-400">Easy</span>
+                        <span className="text-lg">简单 (4)</span>
+                        <span className="text-[10px] font-mono text-slate-400">3.5x</span>
+                    </button>
                 </div>
             )}
-        </div>
+
+
+
+            {/* Student Picker Modal */}
+            {
+                showStudentPicker && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 w-96 text-center border-4 border-white ring-4 ring-indigo-50 scale-100 animate-in fade-in zoom-in duration-300">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Dices className="text-indigo-500" />
+                                    班级抽号
+                                </h2>
+                                <button onClick={() => setShowStudentPicker(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                                    <XCircle size={24} />
+                                </button>
+                            </div>
+                            <div className="mb-8">
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">选中学生</div>
+                                <div className={`text-8xl font-black text-indigo-600 font-mono transition-transform ${isRolling ? 'scale-110' : 'scale-100'}`}>
+                                    {pickedStudent !== null ? pickedStudent : '?'}
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-4">
+                                <div className="flex items-center justify-center gap-3 bg-slate-50 p-3 rounded-xl">
+                                    <span className="text-sm font-bold text-slate-500">学生总数:</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="100"
+                                        value={studentCount}
+                                        onChange={(e) => setStudentCount(parseInt(e.target.value) || 1)}
+                                        className="w-16 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg py-1 outline-indigo-500"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handlePickStudent}
+                                    disabled={isRolling}
+                                    className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-indigo-200 transition-all active:scale-95 ${isRolling ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                >
+                                    {isRolling ? '抽号中...' : '开始抽号'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 

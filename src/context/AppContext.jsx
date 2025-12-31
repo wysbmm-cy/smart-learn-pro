@@ -126,8 +126,8 @@ export const AppProvider = ({ children }) => {
     };
 
     // --- Core Action Wrappers ---
-    // SRS Algorithm: SuperMemo-2 Simplified
-    // Quality: 5=Perfect, 4=Correct, 3=Pass, 2=Hard, 1=Wrong, 0=Blackout
+    // SRS Algorithm: Enhanced SM-2 (4 Levels)
+    // Quality: 1=Again, 2=Hard, 3=Good, 4=Easy
     const updateFlashcardProgress = async (id, quality) => {
         const cards = await getFlashcards();
         const card = cards.find(c => c.id === id);
@@ -138,28 +138,43 @@ export const AppProvider = ({ children }) => {
         interval = interval || 0;
         repetitions = repetitions || 0;
 
-        if (quality >= 3) {
-            // Correct response
+        // Algorithm Logic
+        if (quality === 1) { // Again (Forgot)
+            repetitions = 0;
+            interval = 0; // Immediate review (or 1 day if strict) - handled by queue usually
+            easeFactor = Math.max(1.3, easeFactor - 0.2); // Punish EF
+        } else {
+            // Success (Hard, Good, Easy)
             if (repetitions === 0) {
                 interval = 1;
             } else if (repetitions === 1) {
                 interval = 6;
             } else {
-                interval = Math.round(interval * easeFactor);
+                // Growth Multiplier based on Quality
+                let modifier = 1;
+                if (quality === 2) modifier = 1.2; // Hard: Slow growth
+                if (quality === 3) modifier = 2.5; // Good: Standard
+                if (quality === 4) modifier = 3.5; // Easy: Fast growth
+
+                interval = Math.round(interval * easeFactor * modifier);
             }
             repetitions += 1;
-        } else {
-            // Incorrect response: Reset
-            repetitions = 0;
-            interval = 1;
+
+            // EF Adjustment
+            // SM-2: EF' = EF + (0.1 - (5-q)*(0.08+(5-q)*0.02))
+            // We simplify slightly for our 4-level system map:
+            // 4 (Easy) -> q=5: +0.1
+            // 3 (Good) -> q=4: +0.0 (Std)
+            // 2 (Hard) -> q=3: -0.14
+            let q_map = quality === 4 ? 5 : (quality === 3 ? 4 : 3);
+            easeFactor = easeFactor + (0.1 - (5 - q_map) * (0.08 + (5 - q_map) * 0.02));
         }
 
-        // Ease Factor Adjustment
-        // EF' = EF + (0.1 - (5-q)*(0.08+(5-q)*0.02))
-        easeFactor = easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
         if (easeFactor < 1.3) easeFactor = 1.3;
 
         // Schedule next review
+        // If interval is 0 (Again), we generally want it 'now', so nextReview <= now.
+        // If interval >= 1, it's future days.
         const nextReview = Date.now() + (interval * 24 * 60 * 60 * 1000);
 
         const updatedCard = {
@@ -175,9 +190,6 @@ export const AppProvider = ({ children }) => {
 
         // Log Activity for Heatmap
         logActivity('flashcard', 1);
-
-        // Don't full reload to avoid UI flicker, but we should update cache if we had one.
-        // For now, views usually reload data on specific triggers.
     };
 
     // --- Session State ---
