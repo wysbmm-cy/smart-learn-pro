@@ -474,6 +474,15 @@ export const AppProvider = ({ children }) => {
         await deleteFlashcard(id);
     };
 
+
+
+    // Missing function: loadChatSessions
+    const loadChatSessions = async () => {
+        const sessions = await getChatSessions();
+        setChatSessions(sessions);
+        return sessions;
+    };
+
     const value = {
         settings,
         updateSetting,
