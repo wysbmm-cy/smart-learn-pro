@@ -73,11 +73,12 @@ const FlashcardView = () => {
 
     // --- Card Logic ---
     const getFilteredCards = () => {
+        if (isMultiSelect) {
+            return allCards.filter(c => studySelection.includes(c.folderId));
+        }
         if (selectedFolderId === 'all') return allCards;
         if (selectedFolderId === 'today') {
-            const todayStr = new Date().toDateString(); // Crude approximation
-            // Better: use timestamp check. 24h? Or just 'Created Today'?
-            // Let's use 'Due Today' actually
+            const todayStr = new Date().toDateString();
             const now = Date.now();
             return allCards.filter(c => !c.nextReview || c.nextReview <= now);
         }
@@ -316,9 +317,12 @@ const FlashcardView = () => {
                             {/* Toolbar */}
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white/80 backdrop-blur sticky top-0 z-10">
                                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    {selectedFolderId === 'all' ? '所有卡片' :
-                                        selectedFolderId === 'today' ? '今日需复习' :
-                                            folders.find(f => f.id === selectedFolderId)?.name || '文件夹'}
+                                    {isMultiSelect
+                                        ? `多选模式 (${studySelection.length} 个文件夹)`
+                                        : (selectedFolderId === 'all' ? '所有卡片' :
+                                            selectedFolderId === 'today' ? '今日需复习' :
+                                                folders.find(f => f.id === selectedFolderId)?.name || '文件夹')
+                                    }
                                     <span className="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full text-xs">{displayCards.length}</span>
                                 </h3>
 
