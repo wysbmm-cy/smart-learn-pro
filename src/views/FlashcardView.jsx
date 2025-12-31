@@ -563,60 +563,64 @@ const FlashcardView = () => {
                         </div>
 
                         {/* Stats for Geeks */}
-                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-xs opacity-50">
-                            <div className="bg-white/10 rounded p-2 flex flex-col items-center">
-                                <span className="text-[10px] uppercase font-bold text-indigo-200">Interval</span>
-                                <span className="text-xl font-mono font-bold">{currentCard?.interval || 0}d</span>
+                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-xs">
+                            <div className="bg-slate-100 rounded-lg p-2 flex flex-col items-center">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Interval</span>
+                                <span className="text-xl font-mono font-bold text-slate-700">{currentCard?.interval || 0}d</span>
                             </div>
-                            <div className="bg-white/10 rounded p-2 flex flex-col items-center">
-                                <span className="text-[10px] uppercase font-bold text-indigo-200">Ease Factor</span>
-                                <span className="text-xl font-mono font-bold">{currentCard?.easeFactor?.toFixed(2) || '2.50'}</span>
+                            <div className="bg-slate-100 rounded-lg p-2 flex flex-col items-center">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Ease Factor</span>
+                                <span className="text-xl font-mono font-bold text-slate-700">{currentCard?.easeFactor?.toFixed(2) || '2.50'}</span>
                             </div>
                         </div>
                     </div>
+
+                    {/* Control Buttons (4-Level SRS) moved inside container */}
+                    {isFlipped && (
+                        <div className="mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4">
+                            <button
+                                onClick={() => handleNextCard(1)}
+                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-rose-50 text-rose-500 border border-slate-200 hover:border-rose-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                            >
+                                <span className="text-xs font-black uppercase tracking-wider text-rose-300 group-hover:text-rose-400">Can't Recall</span>
+                                <span className="text-lg">忘记 (1)</span>
+                                <span className="text-[10px] font-mono text-slate-400">Repeat</span>
+                            </button>
+
+                            <button
+                                onClick={() => handleNextCard(2)}
+                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-orange-50 text-orange-600 border border-slate-200 hover:border-orange-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                            >
+                                <span className="text-xs font-black uppercase tracking-wider text-orange-300 group-hover:text-orange-400">Hard</span>
+                                <span className="text-lg">困难 (2)</span>
+                                <span className="text-[10px] font-mono text-slate-400">1.2x</span>
+                            </button>
+
+                            <button
+                                onClick={() => handleNextCard(3)}
+                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 border border-slate-200 hover:border-emerald-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                            >
+                                <span className="text-xs font-black uppercase tracking-wider text-emerald-300 group-hover:text-emerald-400">Good</span>
+                                <span className="text-lg">一般 (3)</span>
+                                <span className="text-[10px] font-mono text-slate-400">2.5x</span>
+                            </button>
+
+                            <button
+                                onClick={() => handleNextCard(4)}
+                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                            >
+                                <span className="text-xs font-black uppercase tracking-wider text-blue-300 group-hover:text-blue-400">Easy</span>
+                                <span className="text-lg">简单 (4)</span>
+                                <span className="text-[10px] font-mono text-slate-400">3.5x</span>
+                            </button>
+                        </div>
+                    )}
+
                 </div>
             )}
 
             {/* Control Buttons (4-Level SRS) */}
-            {isFlipped && (
-                <div className="mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4">
-                    <button
-                        onClick={() => handleNextCard(1)}
-                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-rose-50 text-rose-500 border border-slate-200 hover:border-rose-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
-                    >
-                        <span className="text-xs font-black uppercase tracking-wider text-rose-300 group-hover:text-rose-400">Can't Recall</span>
-                        <span className="text-lg">忘记 (1)</span>
-                        <span className="text-[10px] font-mono text-slate-400">Repeat</span>
-                    </button>
 
-                    <button
-                        onClick={() => handleNextCard(2)}
-                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-orange-50 text-orange-600 border border-slate-200 hover:border-orange-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
-                    >
-                        <span className="text-xs font-black uppercase tracking-wider text-orange-300 group-hover:text-orange-400">Hard</span>
-                        <span className="text-lg">困难 (2)</span>
-                        <span className="text-[10px] font-mono text-slate-400">1.2x</span>
-                    </button>
-
-                    <button
-                        onClick={() => handleNextCard(3)}
-                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 border border-slate-200 hover:border-emerald-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
-                    >
-                        <span className="text-xs font-black uppercase tracking-wider text-emerald-300 group-hover:text-emerald-400">Good</span>
-                        <span className="text-lg">一般 (3)</span>
-                        <span className="text-[10px] font-mono text-slate-400">2.5x</span>
-                    </button>
-
-                    <button
-                        onClick={() => handleNextCard(4)}
-                        className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
-                    >
-                        <span className="text-xs font-black uppercase tracking-wider text-blue-300 group-hover:text-blue-400">Easy</span>
-                        <span className="text-lg">简单 (4)</span>
-                        <span className="text-[10px] font-mono text-slate-400">3.5x</span>
-                    </button>
-                </div>
-            )}
 
 
 
