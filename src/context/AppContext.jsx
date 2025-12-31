@@ -413,6 +413,7 @@ export const AppProvider = ({ children }) => {
             id: noteObj.id || Date.now().toString(),
             title: noteObj.title || "New Note",
             content: noteObj.content || "",
+            folder: noteObj.folder || "Uncategorized",
             updatedAt: Date.now()
         };
         await saveNote(record);

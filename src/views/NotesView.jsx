@@ -20,7 +20,7 @@ const NotesView = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     // Folder State
-    const [folders, setFolders] = useState(['Uncategorized', 'Smart Analysis']);
+    const [folders, setFolders] = useState(['Uncategorized']);
     const [activeFolder, setActiveFolder] = useState('All');
     const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
 
@@ -36,7 +36,7 @@ const NotesView = () => {
         setNotes(data);
 
         // Extract unique folders
-        const uniqueFolders = new Set(['Uncategorized', 'Smart Analysis']);
+        const uniqueFolders = new Set(['Uncategorized']);
         data.forEach(n => {
             if (n.folder) uniqueFolders.add(n.folder);
             else uniqueFolders.add('Uncategorized');
