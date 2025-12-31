@@ -6,7 +6,7 @@ import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
 
 const Dashboard = ({ onNavigate }) => {
-    const { stats, settings, loadUserFlashcards } = useApp();
+    const { stats, settings, loadUserFlashcards, setFlashcardStartupState } = useApp();
     const hasKey = !!settings.apiKey;
     const [flashcards, setFlashcards] = useState([]);
     const [showGuide, setShowGuide] = useState(false);
@@ -65,7 +65,10 @@ const Dashboard = ({ onNavigate }) => {
             {/* 3. Forgetting Curve & Today's Task */}
             <ForgettingCurveChart
                 flashcards={flashcards}
-                onReviewStart={() => onNavigate('flashcards')}
+                onReviewStart={() => {
+                    setFlashcardStartupState({ mode: 'study', folder: 'today' });
+                    onNavigate('flashcards');
+                }}
             />
 
             {/* 4. Stats Grid - Clean White Cards */}

@@ -5,7 +5,7 @@ import SplitPane from '../components/SplitPane';
 import { saveFolder, getFolders, deleteFolder } from '../services/db';
 
 const FlashcardView = () => {
-    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress } = useApp();
+    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, flashcardStartupState, setFlashcardStartupState } = useApp();
 
     // Data State
     const [allCards, setAllCards] = useState([]);
@@ -51,6 +51,21 @@ const FlashcardView = () => {
         setAllCards(cards);
         setFolders(folderList);
     };
+
+    // Handle Startup Signal (e.g. from Dashboard)
+    useEffect(() => {
+        if (flashcardStartupState && allCards.length > 0) {
+            const { mode, folder } = flashcardStartupState;
+            if (folder) setSelectedFolderId(folder);
+
+            if (mode === 'study') {
+                // Determine candidates immediately
+                // We must pass folder explicitly because state update is async
+                startSession(folder);
+            }
+            setFlashcardStartupState(null); // Consume
+        }
+    }, [flashcardStartupState, allCards]);
 
     // --- Folder Logic ---
     const handleAddFolder = async () => {
@@ -133,18 +148,20 @@ const FlashcardView = () => {
     };
 
     // --- Study Logic ---
-    const startSession = () => {
+    const startSession = (overrideFolderId) => {
+        const targetFolder = overrideFolderId || selectedFolderId;
+
         let candidates = [];
-        if (isMultiSelect) {
+        if (isMultiSelect && !overrideFolderId) {
             // Multi-select mode: filter by included folder IDs
             candidates = allCards.filter(c => studySelection.includes(c.folderId));
-        } else if (selectedFolderId === 'all') {
+        } else if (targetFolder === 'all') {
             candidates = allCards;
-        } else if (selectedFolderId === 'today') {
+        } else if (targetFolder === 'today') {
             const now = Date.now();
             candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
         } else {
-            candidates = allCards.filter(c => c.folderId === selectedFolderId);
+            candidates = allCards.filter(c => c.folderId === targetFolder);
         }
 
         if (candidates.length === 0) {

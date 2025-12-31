@@ -229,6 +229,9 @@ export const AppProvider = ({ children }) => {
 
     const [chatMessages, setChatMessages] = useState([DEFAULT_MSG]);
 
+    // Flashcard Navigation State (Shared)
+    const [flashcardStartupState, setFlashcardStartupState] = useState(null); // { mode: 'study', folder: 'today' }
+
     // Load sessions on mount
     useEffect(() => {
         const loadSessions = async () => {
@@ -507,6 +510,8 @@ export const AppProvider = ({ children }) => {
         chatMessages,
         addChatMessage,
         updateLastChatMessage,
+        // Navigation Signals
+        flashcardStartupState, setFlashcardStartupState,
         // Chat Sessions
         loadChatSessions, createNewChatSession, removeChatSession, loadChatSession,
         logActivity,
