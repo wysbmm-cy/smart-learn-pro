@@ -99,7 +99,8 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
 
   if (drillType && drillType !== 'full') {
     // 🚀 Drill Mode logic...
-    'fast': `Task: Create a "Mini-Test" from the provided exam text.
+    const drillPrompts = {
+      'fast': `Task: Create a "Mini-Test" from the provided exam text.
       
       CRITICAL INSTRUCTIONS:
       1. Extract REAL content from the user text. DO NOT use generic placeholders like "Passage..." or "Question content...".
@@ -131,14 +132,14 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
         ]
       }`,
       'reading': `Task: Extract Reading Comprehension only.\nCRITICAL: Use REAL content from input. DO NOT generate placeholders.\nSchema: { "title": "Reading Drill", "sections": [{ "type": "reading", "content": "(Insert actual passage)", "questions": [{ "id": 1, "text": "(Insert actual question)", "options": ["A. ..."], "answer": "A" }] }] }`,
-        'matching': `Task: Extract Paragraph Matching only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Matching Drill", "sections": [{ "type": "matching", "content": "(Insert actual paragraphs)", "questions": [{ "id": 1, "text": "(Insert statement)", "answer": "A" }] }] }`,
-          'cloze': `Task: Extract Cloze Test only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Cloze Drill", "sections": [{ "type": "cloze", "content": "Text with [1]...", "questions": [{ "id": 1, "options": ["A...", "B..."] }] }] }`,
-            'writing': `Task: Extract Writing Prompt only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Writing Drill", "sections": [{ "type": "writing", "instructions": "(Insert instructions)", "content": "(Insert prompt topic)" }] }`
-  };
-  systemPrompt = (drillPrompts[drillType] || drillPrompts['reading']) + `\nRequirements: Fast processing. Return valid JSON only. NEVER output placeholders like "Passage..." or "Question content...".`;
-} else {
-  // 🐢 Full Parsing
-  systemPrompt = `
+      'matching': `Task: Extract Paragraph Matching only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Matching Drill", "sections": [{ "type": "matching", "content": "(Insert actual paragraphs)", "questions": [{ "id": 1, "text": "(Insert statement)", "answer": "A" }] }] }`,
+      'cloze': `Task: Extract Cloze Test only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Cloze Drill", "sections": [{ "type": "cloze", "content": "Text with [1]...", "questions": [{ "id": 1, "options": ["A...", "B..."] }] }] }`,
+      'writing': `Task: Extract Writing Prompt only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Writing Drill", "sections": [{ "type": "writing", "instructions": "(Insert instructions)", "content": "(Insert prompt topic)" }] }`
+    };
+    systemPrompt = (drillPrompts[drillType] || drillPrompts['reading']) + `\nRequirements: Fast processing. Return valid JSON only. NEVER output placeholders like "Passage..." or "Question content...".`;
+  } else {
+    // 🐢 Full Parsing
+    systemPrompt = `
     Role: Professional Exam Digitizer.
     Task: Convert the provided raw exam text (often OCR'd from PDF) into a structured JSON Exam Paper.
     
@@ -170,23 +171,23 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
     `;
   }
 
-// Use the existing fetch wrapper
-const jsonStr = await fetchFromAI([
-  { role: "system", content: systemPrompt },
-  { role: "user", content: text }
-], settings, true);
+  // Use the existing fetch wrapper
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: text }
+  ], settings, true);
 
-try {
-  const parsed = JSON.parse(jsonStr);
-  // Ensure structure is array
-  if (!parsed.sections) parsed.sections = [];
-  return parsed;
-} catch (e) {
-  console.warn("JSON Parse Error in Exam:", e);
-  const match = jsonStr.match(/\{[\s\S]*\}/);
-  if (match) return JSON.parse(match[0]);
-  throw new Error("AI returned invalid exam format");
-}
+  try {
+    const parsed = JSON.parse(jsonStr);
+    // Ensure structure is array
+    if (!parsed.sections) parsed.sections = [];
+    return parsed;
+  } catch (e) {
+    console.warn("JSON Parse Error in Exam:", e);
+    const match = jsonStr.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error("AI returned invalid exam format");
+  }
 };
 
 export const analyzeText = async (text, settings) => {

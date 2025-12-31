@@ -474,42 +474,6 @@ export const AppProvider = ({ children }) => {
         await deleteFlashcard(id);
     };
 
-    const updateFlashcardProgress = async (id, quality) => {
-        // quality: 1 (Remembered), 0 (Forgot)
-        const cards = await getFlashcards();
-        const card = cards.find(c => c.id === id);
-        if (!card) return;
-
-        let interval = card.interval || 1;
-        let repetitions = card.repetitions || 0;
-        let nextReview = Date.now();
-
-        if (quality === 1) {
-            // Remembered
-            if (repetitions === 0) interval = 1;
-            else if (repetitions === 1) interval = 3;
-            else interval = Math.round(interval * 2.5); // Exponential growth
-
-            repetitions += 1;
-        } else {
-            // Forgot
-            interval = 1;
-            repetitions = 0;
-        }
-
-        nextReview = Date.now() + (interval * 24 * 60 * 60 * 1000);
-
-        const updatedCard = {
-            ...card,
-            interval,
-            repetitions,
-            nextReview,
-            lastReview: Date.now()
-        };
-
-        await saveFlashcard(updatedCard);
-    };
-
     const value = {
         settings,
         updateSetting,
@@ -534,7 +498,6 @@ export const AppProvider = ({ children }) => {
         addChatMessage,
         updateLastChatMessage,
         // Chat Sessions
-        addFlashcard, removeFlashcard, loadUserFlashcards, updateFlashcardProgress,
         loadChatSessions, createNewChatSession, removeChatSession, loadChatSession,
         logActivity,
         // DB Methods
