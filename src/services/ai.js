@@ -56,6 +56,8 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
 
   // 🚄 Optimization: Auto-Splitting for Long Exams (Parallel Processing)
   // Only apply if text is long enough AND logic is 'full' (drill modes are usually targeted/short)
+  // Fix: Sanitize text to remove potential binary or weird control chars that break API
+  text = text.replace(/[\x00-\x09\x0B-\x0C\x0E-\x1F\x7F]/g, '');
   const shouldChunk = (!drillType || drillType === 'full') && text.length > 3000;
 
   if (shouldChunk) {
@@ -97,8 +99,13 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
 
   if (drillType && drillType !== 'full') {
     // 🚀 Drill Mode logic...
-    const drillPrompts = {
-      'fast': `Task: Create a "Mini-Test" from the provided exam text.
+    'fast': `Task: Create a "Mini-Test" from the provided exam text.
+      
+      CRITICAL INSTRUCTIONS:
+      1. Extract REAL content from the user text. DO NOT use generic placeholders like "Passage..." or "Question content...".
+      2. If you cannot find a Reading Passage, fallback to extracting 5 vocabulary/grammar MCQs from the text.
+      3. If the text is empty or illegible, return an empty "sections" array.
+      
       Requirements:
       1. Extract ONLY ONE Reading Passage with its questions.
       2. If no Reading Passage found, extract 5 Vocabulary/Grammar MCQs.
@@ -110,28 +117,28 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
         "title": "Mini-Test",
         "sections": [
           {
-            "type": "reading", // or "mcq" or "writing"
-            "content": "Passage text (required for reading, null for mcq/writing)",
+            "type": "reading",
+            "content": "(Insert actual passage text here)",
             "questions": [
               {
                 "id": 1,
-                "text": "Question content...",
-                "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+                "text": "(Insert actual question text)",
+                "options": ["A. (Option A text)", "B. (Option B text)"],
                 "answer": "A"
               }
             ]
           }
         ]
       }`,
-      'reading': `Task: Extract Reading Comprehension only. Ignore everything else.\nSchema: { "title": "Reading Drill", "sections": [{ "type": "reading", "content": "Passage...", "questions": [{ "id": 1, "text": "...", "options": ["A..."], "answer": "A" }] }] }`,
-      'matching': `Task: Extract Paragraph Matching (heading match) only. Ignore everything else.\nSchema: { "title": "Matching Drill", "sections": [{ "type": "matching", "content": "List of paragraphs...", "questions": [{ "id": 1, "text": "Statement...", "answer": "Paragraph Letter" }] }] }`,
-      'cloze': `Task: Extract Cloze Test (Fill in blanks) only. Ignore everything else.\nSchema: { "title": "Cloze Drill", "sections": [{ "type": "cloze", "content": "Text with [1], [2]...", "questions": [{ "id": 1, "options": ["A..."] }] }] }`,
-      'writing': `Task: Extract Writing Prompt only. Ignore everything else.\nSchema: { "title": "Writing Drill", "sections": [{ "type": "writing", "instructions": "...", "content": "Prompt text" }] }`
-    };
-    systemPrompt = (drillPrompts[drillType] || drillPrompts['reading']) + `\nRequirements: Fast processing. Return valid JSON only.`;
-  } else {
-    // 🐢 Full Parsing
-    systemPrompt = `
+      'reading': `Task: Extract Reading Comprehension only.\nCRITICAL: Use REAL content from input. DO NOT generate placeholders.\nSchema: { "title": "Reading Drill", "sections": [{ "type": "reading", "content": "(Insert actual passage)", "questions": [{ "id": 1, "text": "(Insert actual question)", "options": ["A. ..."], "answer": "A" }] }] }`,
+        'matching': `Task: Extract Paragraph Matching only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Matching Drill", "sections": [{ "type": "matching", "content": "(Insert actual paragraphs)", "questions": [{ "id": 1, "text": "(Insert statement)", "answer": "A" }] }] }`,
+          'cloze': `Task: Extract Cloze Test only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Cloze Drill", "sections": [{ "type": "cloze", "content": "Text with [1]...", "questions": [{ "id": 1, "options": ["A...", "B..."] }] }] }`,
+            'writing': `Task: Extract Writing Prompt only.\nCRITICAL: Use REAL content.\nSchema: { "title": "Writing Drill", "sections": [{ "type": "writing", "instructions": "(Insert instructions)", "content": "(Insert prompt topic)" }] }`
+  };
+  systemPrompt = (drillPrompts[drillType] || drillPrompts['reading']) + `\nRequirements: Fast processing. Return valid JSON only. NEVER output placeholders like "Passage..." or "Question content...".`;
+} else {
+  // 🐢 Full Parsing
+  systemPrompt = `
     Role: Professional Exam Digitizer.
     Task: Convert the provided raw exam text (often OCR'd from PDF) into a structured JSON Exam Paper.
     
@@ -163,23 +170,23 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
     `;
   }
 
-  // Use the existing fetch wrapper
-  const jsonStr = await fetchFromAI([
-    { role: "system", content: systemPrompt },
-    { role: "user", content: text }
-  ], settings, true);
+// Use the existing fetch wrapper
+const jsonStr = await fetchFromAI([
+  { role: "system", content: systemPrompt },
+  { role: "user", content: text }
+], settings, true);
 
-  try {
-    const parsed = JSON.parse(jsonStr);
-    // Ensure structure is array
-    if (!parsed.sections) parsed.sections = [];
-    return parsed;
-  } catch (e) {
-    console.warn("JSON Parse Error in Exam:", e);
-    const match = jsonStr.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error("AI returned invalid exam format");
-  }
+try {
+  const parsed = JSON.parse(jsonStr);
+  // Ensure structure is array
+  if (!parsed.sections) parsed.sections = [];
+  return parsed;
+} catch (e) {
+  console.warn("JSON Parse Error in Exam:", e);
+  const match = jsonStr.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+  throw new Error("AI returned invalid exam format");
+}
 };
 
 export const analyzeText = async (text, settings) => {
