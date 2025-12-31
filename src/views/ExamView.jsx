@@ -145,43 +145,88 @@ ${q.options.join('\n')}
                         上传您的 PDF 试卷 (如四六级真题)，AI 将自动将其转化为在线交互式试卷。<br />支持选择题自动批改、阅读分屏、作文一键润色。
                     </p>
 
+                    {/* Input Method Tabs */}
+                    <div className="flex justify-center gap-4 mb-6 border-b border-slate-100 pb-2">
+                        <button
+                            onClick={() => setFileWork(null)} // Reset (mode switch logic implies simple state toggle, but let's just use renders)
+                            className={`pb-2 px-4 font-bold text-sm transition-all border-b-2 ${!fileWork?.isPasteMode ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <div className="flex items-center gap-2"><Upload size={16} /> 文件上传</div>
+                        </button>
+                        <button
+                            onClick={() => setFileWork({ isPasteMode: true, text: '' })}
+                            className={`pb-2 px-4 font-bold text-sm transition-all border-b-2 ${fileWork?.isPasteMode ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <div className="flex items-center gap-2"><PenTool size={16} /> 粘贴文本</div>
+                        </button>
+                    </div>
+
                     {/* Drill Mode Selector */}
-                    <div className="flex justify-center gap-2 mb-4 mt-6">
+                    <div className="flex justify-center gap-2 mb-4">
                         <span className="text-sm font-bold text-slate-400 self-center">模式选择:</span>
                         <select
                             value={drillType}
                             onChange={(e) => setDrillType(e.target.value)}
-                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-bold"
+                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-bold outline-none"
                         >
-                            <option value="fast">⚡ 快速测验 (Mini-Test - Faster)</option>
-                            <option value="full">🏆 完整试卷 Parsing (Full Mode)</option>
-                            <option value="reading">📖 仅阅读理解 (Reading Drill)</option>
-                            <option value="matching">🧩 仅段落匹配 (Matching Drill)</option>
-                            <option value="cloze">🔤 仅完形填空 (Cloze Drill)</option>
-                            <option value="writing">✍️ 仅写作 (Writing Drill)</option>
+                            <option value="fast">⚡ 快速测验 (Mini-Test)</option>
+                            <option value="full">🏆 完整试卷 (Full Mode)</option>
+                            <option value="reading">📖 仅阅读理解 (Reading Only)</option>
+                            <option value="matching">🧩 仅段落匹配 (Matching Only)</option>
+                            <option value="writing">✍️ 仅写作 (Writing Only)</option>
                         </select>
                     </div>
 
-                    <div className="mt-8 border-2 border-dashed border-slate-300 rounded-2xl p-8 hover:bg-slate-50 transition-colors cursor-pointer relative group">
-                        <input
-                            type="file"
-                            accept=".pdf,.txt"
-                            onChange={handleFileUpload}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            disabled={isParsing}
-                        />
-                        {isParsing ? (
-                            <div className="flex flex-col items-center gap-3 text-blue-600">
-                                <Loader2 size={32} className="animate-spin" />
-                                <span className="font-bold">正在 AI 数字化试卷...</span>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center gap-3 text-slate-400 group-hover:text-blue-500">
-                                <Upload size={32} />
-                                <span className="font-bold">点击上传试卷 (PDF/TXT)</span>
-                            </div>
-                        )}
-                    </div>
+                    {fileWork?.isPasteMode ? (
+                        /* Paste Mode UI */
+                        <div className="mt-4 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
+                            <textarea
+                                className="w-full h-64 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 font-mono text-sm resize-none"
+                                placeholder="请直接在此处粘贴试卷文本（例如：阅读文章 + 题目）..."
+                                value={fileWork.text || ''}
+                                onChange={(e) => setFileWork({ ...fileWork, text: e.target.value })}
+                            />
+                            <button
+                                onClick={() => {
+                                    if (!fileWork.text.trim()) return toast.error("请输入内容");
+                                    setIsParsing(true);
+                                    startDigitalization(fileWork.text);
+                                }}
+                                disabled={isParsing || !fileWork.text.trim()}
+                                className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2 ${isParsing ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                            >
+                                {isParsing ? <Loader2 className="animate-spin" /> : <Play size={20} />}
+                                {isParsing ? '正在分析文本...' : '开始生成试卷 (Start Analysis)'}
+                            </button>
+                        </div>
+                    ) : (
+                        /* Upload Mode UI */
+                        <div className="mt-4 border-2 border-dashed border-slate-300 rounded-2xl p-12 hover:bg-slate-50 transition-colors cursor-pointer relative group flex flex-col items-center justify-center gap-4">
+                            <input
+                                type="file"
+                                accept=".pdf,.txt"
+                                onChange={handleFileUpload}
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                disabled={isParsing}
+                            />
+                            {isParsing ? (
+                                <div className="flex flex-col items-center gap-3 text-blue-600">
+                                    <Loader2 size={40} className="animate-spin" />
+                                    <span className="font-bold">正在 AI 数字化试卷...</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="p-4 bg-slate-100 rounded-full text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-500 transition-colors">
+                                        <Upload size={32} />
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="font-bold text-slate-600 text-lg">点击上传试卷 (PDF/TXT)</div>
+                                        <div className="text-slate-400 text-sm mt-1">支持拖拽上传</div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         );

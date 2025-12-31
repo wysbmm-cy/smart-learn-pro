@@ -39,7 +39,10 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3)
         }
         if (response.status === 404) throw new Error("404 Not Found: Check API Base URL/Model.");
         if (response.status === 401) throw new Error("401 Unauthorized: Invalid API Key.");
-        throw new Error(`API Error: ${response.status}`);
+
+        const errorText = await response.text();
+        console.error("API Error Body:", errorText);
+        throw new Error(`API Error: ${response.status} - ${errorText.substring(0, 200)}`);
       }
 
       const data = await response.json();
