@@ -181,8 +181,6 @@ const FlashcardView = () => {
 
     const handleNextCard = async (quality) => {
         const currentCard = studyQueue[currentCardIndex];
-        const questionText = currentCard ? (isSwapped ? currentCard.back : currentCard.front) : '';
-        const answerText = currentCard ? (isSwapped ? currentCard.front : currentCard.back) : '';
 
         // SRS Update: quality 4 (Good) or 1 (Forgot)
         await updateFlashcardProgress(currentCard.id, quality);
@@ -220,6 +218,10 @@ const FlashcardView = () => {
     };
 
     // --- JSX Sub-components ---
+    const currentCard = studyQueue[currentCardIndex];
+    const questionText = currentCard ? (isSwapped ? currentCard.back : currentCard.front) : '';
+    const answerText = currentCard ? (isSwapped ? currentCard.front : currentCard.back) : '';
+
     const toggleFolderSelection = (id) => {
         setStudySelection(prev =>
             prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
