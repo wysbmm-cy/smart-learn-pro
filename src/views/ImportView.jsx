@@ -90,6 +90,18 @@ const ImportView = ({ onAnalyzeSuccess }) => {
             return;
         }
 
+        // Save to Library Logic
+        try {
+            await saveToFileLibrary({
+                name: file.name,
+                type: file.type || 'audio/webm',
+                blob: file
+            });
+        } catch (e) {
+            console.error("Auto-save to library failed:", e);
+            // Don't block transcription, just log it
+        }
+
         setIsAnalyzing(true);
         setErrorMsg("");
         setProgressMsg("Transcribing audio (Whisper AI)...");
