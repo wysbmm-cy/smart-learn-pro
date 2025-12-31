@@ -797,3 +797,30 @@ export const gradeTranslation = async (challenge, userEnglish, settings) => {
     return { score: 0, comment: "Error parsing grade.", improved_version: "", vocab_check: [] };
   }
 };
+
+export const generateQuickDefinition = async (word, context, settings) => {
+  // If no API key, return a mock definition
+  if (!settings.apiKey) return "AI Definition Unavailable (No Key)";
+
+  const prompt = `
+You are a concise English dictionary.
+Provide a quick definition for the word/phrase: "${word}".
+Context: "${context || 'General Context'}"
+
+Output format (Plain Text, Max 3 lines):
+[Part of Speech] /Phonetic/
+Definition: <Chinese Meaning>
+Example: <Short English Example> (<Chinese Translation>)
+`;
+
+  const messages = [{ role: "user", content: prompt }];
+
+  // Using jsonRequired=false for plain text
+  try {
+    const result = await fetchFromAI(messages, settings, false);
+    return result ? result.trim() : "Definition not found.";
+  } catch (e) {
+    console.error("Quick Def Error:", e);
+    return "Definition extraction failed.";
+  }
+};

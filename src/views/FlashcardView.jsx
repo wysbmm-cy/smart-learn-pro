@@ -16,6 +16,7 @@ const FlashcardView = () => {
     const [selectedFolderId, setSelectedFolderId] = useState('all'); // 'all', 'today', or folder UUID
     const [isAddingFolder, setIsAddingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
+    const [isMultiSelect, setIsMultiSelect] = useState(false); // New: Toggle multi-select mode
 
     // Manage State
     const [newFront, setNewFront] = useState("");
@@ -116,7 +117,10 @@ const FlashcardView = () => {
     // --- Study Logic ---
     const startSession = () => {
         let candidates = [];
-        if (selectedFolderId === 'all') {
+        if (isMultiSelect) {
+            // Multi-select mode: filter by included folder IDs
+            candidates = allCards.filter(c => studySelection.includes(c.folderId));
+        } else if (selectedFolderId === 'all') {
             candidates = allCards;
         } else if (selectedFolderId === 'today') {
             const now = Date.now();
@@ -178,37 +182,56 @@ const FlashcardView = () => {
     };
 
     // --- JSX Sub-components ---
+    const toggleFolderSelection = (id) => {
+        setStudySelection(prev =>
+            prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
+        );
+    };
+
     const Sidebar = (
         <div className="h-full flex flex-col bg-slate-50">
-            <div className="p-4 border-b border-slate-200">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center">
                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                     <Layers className="text-amber-500" />
                     卡片库
                 </h2>
+                <button
+                    onClick={() => {
+                        setIsMultiSelect(!isMultiSelect);
+                        if (!isMultiSelect) setStudySelection([]); // Reset on enter
+                    }}
+                    className={`text-xs px-2 py-1 rounded border ${isMultiSelect ? 'bg-indigo-100 text-indigo-600 border-indigo-200 font-bold' : 'text-slate-400 border-slate-200'}`}
+                >
+                    {isMultiSelect ? 'Finish Select' : 'Multi-Select'}
+                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
                 {/* System Folders */}
-                <button
-                    onClick={() => setSelectedFolderId('all')}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'all' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                    <LayoutGrid size={18} />
-                    所有卡片
-                    <span className="ml-auto text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">{allCards.length}</span>
-                </button>
+                {!isMultiSelect && (
+                    <>
+                        <button
+                            onClick={() => setSelectedFolderId('all')}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'all' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            <LayoutGrid size={18} />
+                            所有卡片
+                            <span className="ml-auto text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">{allCards.length}</span>
+                        </button>
 
-                <button
-                    onClick={() => setSelectedFolderId('today')}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'today' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                    <RefreshCw size={18} />
-                    今日需复习
-                </button>
+                        <button
+                            onClick={() => setSelectedFolderId('today')}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'today' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            <RefreshCw size={18} />
+                            今日需复习
+                        </button>
+                    </>
+                )}
 
                 <div className="pt-4 pb-2 px-3 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    <span>我的文件夹</span>
-                    <button onClick={() => setIsAddingFolder(true)} className="hover:text-blue-600"><Plus size={14} /></button>
+                    <span>{isMultiSelect ? 'Select Folders to Review' : '我的文件夹'}</span>
+                    {!isMultiSelect && <button onClick={() => setIsAddingFolder(true)} className="hover:text-blue-600"><Plus size={14} /></button>}
                 </div>
 
                 {isAddingFolder && (
@@ -228,19 +251,30 @@ const FlashcardView = () => {
                     </div>
                 )}
 
-                {folders.map(folder => (
-                    <button
-                        key={folder.id}
-                        onClick={() => setSelectedFolderId(folder.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors group ${selectedFolderId === folder.id ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}
-                    >
-                        <Folder size={18} className={selectedFolderId === folder.id ? 'fill-indigo-100' : ''} />
-                        <span className="truncate flex-1">{folder.name}</span>
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDeleteFolder(e, folder.id)}>
-                            <Trash2 size={14} className="text-slate-300 hover:text-red-500" />
-                        </div>
-                    </button>
-                ))}
+                {folders.map(folder => {
+                    const isSelected = isMultiSelect ? studySelection.includes(folder.id) : selectedFolderId === folder.id;
+                    return (
+                        <button
+                            key={folder.id}
+                            onClick={() => isMultiSelect ? toggleFolderSelection(folder.id) : setSelectedFolderId(folder.id)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors group ${isSelected ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            {isMultiSelect ? (
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300'}`}>
+                                    {isSelected && <CheckCircle size={10} className="text-white" />}
+                                </div>
+                            ) : (
+                                <Folder size={18} className={isSelected ? 'fill-indigo-100' : ''} />
+                            )}
+                            <span className="truncate flex-1">{folder.name}</span>
+                            {!isMultiSelect && (
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDeleteFolder(e, folder.id)}>
+                                    <Trash2 size={14} className="text-slate-300 hover:text-red-500" />
+                                </div>
+                            )}
+                        </button>
+                    )
+                })}
             </div>
 
             <div className="p-4 border-t border-slate-200 bg-slate-100/50">
@@ -278,12 +312,26 @@ const FlashcardView = () => {
                                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${studyQueue.length === 0 && displayCards.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95'}`}
                                         title={displayCards.length === 0 ? "没有卡片可复习" : "开始复习当前筛选卡片"}
                                         onClickCapture={() => {
-                                            if (mode === 'manage' && displayCards.length > 0) startSession();
+                                            if (mode === 'manage') startSession();
                                         }}
                                     >
                                         <Play size={16} />
                                         开始复习
                                     </button>
+
+                                    {/* Card Count Limit Input */}
+                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 ml-2">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Count</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="500"
+                                            value={drawCount}
+                                            onChange={(e) => setDrawCount(parseInt(e.target.value) || 10)}
+                                            className="w-12 bg-transparent text-sm font-bold text-slate-700 outline-none text-center"
+                                        />
+                                    </div>
+
                                     <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
                                         <Plus size={20} />
                                     </button>

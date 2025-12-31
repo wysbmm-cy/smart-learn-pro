@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Brain, NotebookPen, Layers, Sparkles, X, Loader, FileText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import WordCard from '../components/WordCard';
-import { generateDeepWordAnalysis, sendChatMessage } from '../services/ai';
+import { generateDeepWordAnalysis, sendChatMessage, generateQuickDefinition } from '../services/ai';
+import { getFolders, saveFolder } from '../services/db';
 import ArticleActionMenu from '../components/ArticleActionMenu';
 import TranslationBubble from '../components/TranslationBubble';
 
@@ -68,13 +69,36 @@ const StudyView = ({ onNavigate }) => {
     const handleSaveSelectionWord = async () => {
         if (!selection) return;
         const text = selection.text;
+
+        // 1. Get Definition (Quick)
+        setTranslationState({ status: 'loading', result: null });
+        const definition = await generateQuickDefinition(text, currentArticle.substring(0, 200), settings);
+        setTranslationState({ status: 'idle', result: null });
+
+        // 2. Find/Create Date Folder for Flashcards (e.g. "Context - 2023-10-xx")
+        const dateStr = new Date().toISOString().split('T')[0];
+        const folderName = `Context - ${dateStr}`;
+        let folderId;
+
+        try {
+            const allFolders = await getFolders();
+            const existing = allFolders.find(f => f.name === folderName);
+            if (existing) {
+                folderId = existing.id;
+            } else {
+                folderId = crypto.randomUUID();
+                await saveFolder({ id: folderId, name: folderName, type: 'user' });
+            }
+        } catch (e) { console.error("Folder error", e); }
+
         await addFlashcard({
             front: text,
-            back: "从文章中摘录",
+            back: definition || "从文章中摘录",
+            folderId: folderId,
             tags: ["Contextual"],
             createdAt: Date.now()
         });
-        alert(`Saved "${text}"!`);
+        alert(`Saved "${text}" to folder "${folderName}"!`);
         setSelection(null);
     };
 
@@ -104,12 +128,17 @@ const StudyView = ({ onNavigate }) => {
 
     const handleSaveDeepNote = async () => {
         if (!currentDeepWord || !deepContent) return;
+
+        // Date-based Folder Logic: "Deep Notes - YYYY-MM-DD"
+        const dateStr = new Date().toISOString().split('T')[0];
+        const folderName = `Deep Notes - ${dateStr}`;
+
         await saveToNotes({
-            title: `深度词汇笔记: ${currentDeepWord.word}`,
+            title: `Deep Analysis: ${currentDeepWord.word}`,
             content: deepContent,
-            folder: "Smart Analysis"
+            folder: folderName // NotesView supports folder strings directly
         });
-        alert("已保存深度笔记！");
+        alert(`Saved to Note Folder: ${folderName}`);
         setCurrentDeepWord(null);
     };
 
