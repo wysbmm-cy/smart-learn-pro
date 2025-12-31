@@ -89,7 +89,24 @@ const FlashcardView = () => {
     const handleAddCard = async () => {
         if (!newFront.trim() || !newBack.trim()) return;
 
-        const folderId = (selectedFolderId !== 'all' && selectedFolderId !== 'today') ? selectedFolderId : undefined;
+        let folderId = (selectedFolderId !== 'all' && selectedFolderId !== 'today') ? selectedFolderId : undefined;
+
+        // Auto-Generate Date Folder for Uncategorized manual adds
+        if (!folderId) {
+            const dateStr = new Date().toISOString().split('T')[0];
+            const folderName = `Daily - ${dateStr}`;
+            try {
+                // Check if exists in current list or DB
+                const existing = folders.find(f => f.name === folderName);
+                if (existing) {
+                    folderId = existing.id;
+                } else {
+                    folderId = crypto.randomUUID();
+                    await saveFolder({ id: folderId, name: folderName, type: 'user' });
+                    // We'll reload data below anyway
+                }
+            } catch (e) { console.error("Auto-folder error", e); }
+        }
 
         await addFlashcard({
             front: newFront,
