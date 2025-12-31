@@ -17,6 +17,7 @@ const FlashcardView = () => {
     const [isAddingFolder, setIsAddingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
     const [isMultiSelect, setIsMultiSelect] = useState(false); // New: Toggle multi-select mode
+    const [isSwapped, setIsSwapped] = useState(false); // New: Toggle Q/A sides
 
     // Manage State
     const [newFront, setNewFront] = useState("");
@@ -180,6 +181,8 @@ const FlashcardView = () => {
 
     const handleNextCard = async (quality) => {
         const currentCard = studyQueue[currentCardIndex];
+        const questionText = currentCard ? (isSwapped ? currentCard.back : currentCard.front) : '';
+        const answerText = currentCard ? (isSwapped ? currentCard.front : currentCard.back) : '';
 
         // SRS Update: quality 4 (Good) or 1 (Forgot)
         await updateFlashcardProgress(currentCard.id, quality);
@@ -431,6 +434,13 @@ const FlashcardView = () => {
                             <RotateCw size={20} className="text-indigo-500" />
                             复习模式 ({studyQueue.length - currentCardIndex} left)
                         </h3>
+                        <button
+                            onClick={() => setIsSwapped(!isSwapped)}
+                            className={`ml-4 px-3 py-1 text-xs font-bold border rounded-lg transition-all flex items-center gap-2 ${isSwapped ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-500'}`}
+                        >
+                            <RotateCw size={12} />
+                            {isSwapped ? 'Answer → Question' : 'Question → Answer'}
+                        </button>
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-slate-400">SESSION SCORE:</span>
                             <span className="text-sm font-bold text-indigo-600">{sessionStats.correct}/{sessionStats.reviewed}</span>
@@ -455,7 +465,9 @@ const FlashcardView = () => {
                             >
                                 <div className="backface-hidden w-full h-full flex flex-col items-center justify-center">
                                     <div className="text-xs font-bold text-indigo-200 uppercase mb-4 tracking-widest">Question</div>
-                                    <div className="text-4xl font-black text-slate-800 break-words w-full">{studyQueue[currentCardIndex]?.front}</div>
+                                    <div className={`font-black text-slate-800 break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
+                                        {questionText}
+                                    </div>
                                     <div className="mt-8 text-xs text-slate-400 font-medium flex items-center gap-2">
                                         <RotateCw size={12} /> 点击翻转查看答案
                                     </div>
@@ -463,7 +475,9 @@ const FlashcardView = () => {
 
                                 <div className="absolute inset-0 backface-hidden rotate-y-180 bg-indigo-600 rounded-3xl p-8 flex flex-col items-center justify-center text-white">
                                     <div className="text-xs font-bold text-indigo-300 uppercase mb-4 tracking-widest">Answer</div>
-                                    <div className="text-3xl font-bold break-words w-full">{studyQueue[currentCardIndex]?.back}</div>
+                                    <div className={`font-bold break-words w-full ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
+                                        {answerText}
+                                    </div>
                                 </div>
                             </div>
                         </div>
