@@ -103,13 +103,30 @@ const StudyView = ({ onNavigate }) => {
     };
 
     const handleSaveFlashcard = async (word) => {
+        // Find/Create Date Folder (e.g. "Context - 2023-10-xx")
+        const dateStr = new Date().toISOString().split('T')[0];
+        const folderName = `Context - ${dateStr}`;
+        let folderId;
+
+        try {
+            const allFolders = await getFolders();
+            const existing = allFolders.find(f => f.name === folderName);
+            if (existing) {
+                folderId = existing.id;
+            } else {
+                folderId = crypto.randomUUID();
+                await saveFolder({ id: folderId, name: folderName, type: 'user' });
+            }
+        } catch (e) { console.error("Folder error", e); }
+
         await addFlashcard({
             front: word.word,
             back: `${word.meaning}\n${word.pos || ''} ${word.phonetic || ''}`,
+            folderId: folderId,
             tags: [word.level || 'General'],
             createdAt: Date.now()
         });
-        alert(`已添加 "${word.word}" 到抽记卡!`);
+        alert(`Saved "${word.word}" to folder "${folderName}"!`);
     };
 
     const handleDeepAnalyze = async (word) => {
