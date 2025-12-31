@@ -108,6 +108,78 @@ export const AppProvider = ({ children }) => {
         return saved ? { ...defaultStats, ...JSON.parse(saved) } : defaultStats;
     });
 
+    // --- Stats Helpers ---
+    const logActivity = (type, count = 1) => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        setStats(prev => {
+            const newActivity = { ...prev.dailyActivity };
+            newActivity[todayStr] = (newActivity[todayStr] || 0) + count;
+
+            const newStats = {
+                ...prev,
+                todayLearned: prev.todayLearned + count,
+                dailyActivity: newActivity
+            };
+            localStorage.setItem('smartlearn_stats', JSON.stringify(newStats));
+            return newStats;
+        });
+    };
+
+    // --- Core Action Wrappers ---
+    // SRS Algorithm: SuperMemo-2 Simplified
+    // Quality: 5=Perfect, 4=Correct, 3=Pass, 2=Hard, 1=Wrong, 0=Blackout
+    const updateFlashcardProgress = async (id, quality) => {
+        const cards = await getFlashcards();
+        const card = cards.find(c => c.id === id);
+        if (!card) return;
+
+        let { interval, repetitions, easeFactor } = card;
+        easeFactor = easeFactor || 2.5;
+        interval = interval || 0;
+        repetitions = repetitions || 0;
+
+        if (quality >= 3) {
+            // Correct response
+            if (repetitions === 0) {
+                interval = 1;
+            } else if (repetitions === 1) {
+                interval = 6;
+            } else {
+                interval = Math.round(interval * easeFactor);
+            }
+            repetitions += 1;
+        } else {
+            // Incorrect response: Reset
+            repetitions = 0;
+            interval = 1;
+        }
+
+        // Ease Factor Adjustment
+        // EF' = EF + (0.1 - (5-q)*(0.08+(5-q)*0.02))
+        easeFactor = easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+        if (easeFactor < 1.3) easeFactor = 1.3;
+
+        // Schedule next review
+        const nextReview = Date.now() + (interval * 24 * 60 * 60 * 1000);
+
+        const updatedCard = {
+            ...card,
+            interval,
+            repetitions,
+            easeFactor,
+            nextReview,
+            lastReviewed: Date.now()
+        };
+
+        await saveFlashcard(updatedCard);
+
+        // Log Activity for Heatmap
+        logActivity('flashcard', 1);
+
+        // Don't full reload to avoid UI flicker, but we should update cache if we had one.
+        // For now, views usually reload data on specific triggers.
+    };
+
     // --- Session State ---
     const [currentArticle, setCurrentArticle] = useState("");
     const [analysisResult, setAnalysisResult] = useState(null);
@@ -462,11 +534,9 @@ export const AppProvider = ({ children }) => {
         addChatMessage,
         updateLastChatMessage,
         // Chat Sessions
-        currentSessionId,
-        chatSessions,
-        createNewChatSession,
-        loadChatSession,
-        removeChatSession,
+        addFlashcard, removeFlashcard, loadUserFlashcards, updateFlashcardProgress,
+        loadChatSessions, createNewChatSession, removeChatSession, loadChatSession,
+        logActivity,
         // DB Methods
         saveToHistory,
         loadHistory,
