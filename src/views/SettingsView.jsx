@@ -460,6 +460,73 @@ const SettingsView = () => {
                 </div>
             </div>
 
+            {/* Smart Drill Cards Settings */}
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                        <Box size={20} />
+                    </div>
+                    <h3 className="text-lg">智能强化练习 (Smart Drill Cards)</h3>
+                    <span className="ml-auto text-xs font-normal text-slate-400">为⭐标记的卡片生成高级练习</span>
+                </div>
+
+                <div className="mb-6">
+                    <Toggle
+                        title="🧠 启用智能强化练习 (Enable Smart Drills)"
+                        checked={settings.drillsEnabled !== false}
+                        onChange={(v) => updateSetting('drillsEnabled', v)}
+                    />
+                    <p className="text-xs text-slate-400 mt-2 ml-1">
+                        启用后，被标记(⭐)的卡片将自动生成多种练习题型，提升记忆效果
+                    </p>
+                </div>
+
+                {settings.drillsEnabled !== false && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+                        <Toggle
+                            title="👀 形近词选择 (Similar Words)"
+                            checked={settings.drillTypes?.similar_words !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, similar_words: v })}
+                        />
+                        <Toggle
+                            title="📖 语境释义 (Context)"
+                            checked={settings.drillTypes?.context !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, context: v })}
+                        />
+                        <Toggle
+                            title="✍️ 填空题 (Cloze)"
+                            checked={settings.drillTypes?.cloze !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, cloze: v })}
+                        />
+                        <Toggle
+                            title="🔗 搭配选择 (Collocation)"
+                            checked={settings.drillTypes?.collocation !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, collocation: v })}
+                        />
+                        <Toggle
+                            title="🔄 词性变换 (Word Forms)"
+                            checked={settings.drillTypes?.word_forms !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, word_forms: v })}
+                        />
+                        <Toggle
+                            title="↔️ 同/反义词 (Synonyms)"
+                            checked={settings.drillTypes?.synonyms !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, synonyms: v })}
+                        />
+                        <Toggle
+                            title="🧩 句子排序 (Sentence Order)"
+                            checked={settings.drillTypes?.sentence_order !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, sentence_order: v })}
+                        />
+                        <Toggle
+                            title="🎧 听写模式 (Dictation)"
+                            checked={settings.drillTypes?.dictation !== false}
+                            onChange={(v) => updateSetting('drillTypes', { ...settings.drillTypes, dictation: v })}
+                        />
+                    </div>
+                )}
+            </div>
+
             {/* General Settings */}
             <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
                 <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">

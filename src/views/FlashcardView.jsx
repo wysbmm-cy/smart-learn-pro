@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame } from 'lucide-react';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
 import DifficultyPieChart from '../components/DifficultyPieChart';
 import StudyTrendChart from '../components/StudyTrendChart';
+import DrillCard from '../components/DrillCard';
 import { saveFolder, getFolders, deleteFolder } from '../services/db';
+import { generateDrillCards } from '../services/ai';
 
 const FlashcardView = () => {
-    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState } = useApp();
+    const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState, settings } = useApp();
 
     // Data State
     const [allCards, setAllCards] = useState([]);
@@ -49,6 +51,11 @@ const FlashcardView = () => {
     const [undoTimeout, setUndoTimeout] = useState(null);
     const [studyStreak, setStudyStreak] = useState({ current: 0, longest: 0 });
     const [sessionStartTime, setSessionStartTime] = useState(null);
+
+    // Smart Drill State
+    const [isDrillMode, setIsDrillMode] = useState(false);
+    const [currentDrill, setCurrentDrill] = useState(null);
+    const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -128,6 +135,76 @@ const FlashcardView = () => {
         ]);
         setAllCards(cards);
         setFolders(folderList);
+    };
+
+    // Smart Drill: Load or generate drill for flagged card
+    const loadOrGenerateDrill = async (card) => {
+        // Check if drills are enabled
+        if (settings?.drillsEnabled === false) return null;
+
+        // Check if card has existing drills
+        if (card.drillCards && card.drillCards.length > 0) {
+            // Filter by enabled drill types
+            const enabledTypes = settings?.drillTypes || {};
+            const availableDrills = card.drillCards.filter(d =>
+                enabledTypes[d.type] !== false
+            );
+            if (availableDrills.length > 0) {
+                // Random selection
+                return availableDrills[Math.floor(Math.random() * availableDrills.length)];
+            }
+        }
+
+        // Generate new drills if none exist
+        if (!card.drillCards && settings?.apiKey) {
+            setIsGeneratingDrill(true);
+            try {
+                const drills = await generateDrillCards(card.front, card.back, settings);
+                if (drills && drills.length > 0) {
+                    // Save drills to card
+                    const updatedCard = { ...card, drillCards: drills, drillGeneratedAt: Date.now() };
+                    await updateFlashcard(updatedCard);
+                    setAllCards(prev => prev.map(c => c.id === card.id ? updatedCard : c));
+                    setStudyQueue(prev => prev.map(c => c.id === card.id ? updatedCard : c));
+
+                    // Return a random drill
+                    const enabledTypes = settings?.drillTypes || {};
+                    const availableDrills = drills.filter(d => enabledTypes[d.type] !== false);
+                    if (availableDrills.length > 0) {
+                        return availableDrills[Math.floor(Math.random() * availableDrills.length)];
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to generate drills:', e);
+            } finally {
+                setIsGeneratingDrill(false);
+            }
+        }
+
+        return null;
+    };
+
+    // Handle drill completion
+    const handleDrillComplete = (isCorrect) => {
+        setIsDrillMode(false);
+        setCurrentDrill(null);
+
+        // Update session stats
+        setSessionStats(prev => ({
+            reviewed: prev.reviewed + 1,
+            correct: isCorrect ? prev.correct + 1 : prev.correct
+        }));
+
+        // Move to next card
+        if (currentCardIndex < studyQueue.length - 1) {
+            setCurrentCardIndex(prev => prev + 1);
+            setIsFlipped(false);
+        } else {
+            // Session complete
+            loadData();
+            updateStreak();
+            setShowSessionSummary(true);
+        }
     };
 
     // Handle Startup Signal (e.g. from Dashboard)
@@ -262,6 +339,8 @@ const FlashcardView = () => {
         setSessionStartTime(Date.now());
         setLastAction(null);
         setShowSessionSummary(false);
+        setIsDrillMode(false);
+        setCurrentDrill(null);
         setMode('study');
     };
 
@@ -662,57 +741,102 @@ const FlashcardView = () => {
                         {/* Progress Bar */}
                         <div className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-300" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
 
-                        <div className="w-full max-w-2xl perspective-1000">
-                            <div
-                                className={`relative w-full aspect-video bg-white rounded-3xl shadow-xl border-2 border-indigo-50 p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}
-                                onClick={() => setIsFlipped(!isFlipped)}
-                            >
-                                <div className="backface-hidden w-full h-full flex flex-col items-center justify-center">
-                                    <div className="text-xs font-bold text-indigo-200 uppercase mb-4 tracking-widest">Question</div>
-                                    <div className={`font-black text-slate-800 break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
-                                        {questionText}
-                                    </div>
-                                    <div className="mt-6 flex items-center gap-4">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); speakText(questionText); }}
-                                            className="p-2 bg-indigo-100 hover:bg-indigo-200 rounded-full text-indigo-600 transition-all"
-                                            title="朗读发音"
-                                        >
-                                            <Volume2 size={20} />
-                                        </button>
-                                    </div>
-                                    <div className="mt-4 text-xs text-slate-400 font-medium flex items-center gap-2">
-                                        <RotateCw size={12} /> 点击翻转查看答案 (Space)
-                                    </div>
-                                </div>
+                        {/* Drill Generating Indicator */}
+                        {isGeneratingDrill && (
+                            <div className="absolute top-4 right-4 flex items-center gap-2 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full text-xs font-bold animate-pulse">
+                                <Zap size={14} />
+                                生成智能练习中...
+                            </div>
+                        )}
 
-                                <div className="absolute inset-0 backface-hidden rotate-y-180 bg-indigo-600 rounded-3xl p-8 flex flex-col items-center justify-center text-white">
-                                    <div className="text-xs font-bold text-indigo-300 uppercase mb-4 tracking-widest">Answer</div>
-                                    <div className={`font-bold break-words w-full ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
-                                        {answerText}
-                                    </div>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); speakText(answerText); }}
-                                        className="mt-4 p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-all"
-                                        title="朗读发音"
+                        {/* Flagged Card Indicator */}
+                        {currentCard?.isFlagged && !isDrillMode && (
+                            <div className="absolute top-4 left-4 flex items-center gap-2 bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full text-xs font-bold">
+                                <Star size={14} fill="currentColor" />
+                                重点卡片
+                                {currentCard?.drillCards?.length > 0 && <span className="text-amber-500">• 有智能练习</span>}
+                            </div>
+                        )}
+
+                        {/* Drill Mode UI */}
+                        {isDrillMode && currentDrill ? (
+                            <DrillCard
+                                drill={currentDrill}
+                                onComplete={handleDrillComplete}
+                                speakText={speakText}
+                            />
+                        ) : (
+                            /* Normal Flashcard UI */
+                            <>
+                                <div className="w-full max-w-2xl perspective-1000">
+                                    <div
+                                        className={`relative w-full aspect-video bg-white rounded-3xl shadow-xl border-2 border-indigo-50 p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}
+                                        onClick={async () => {
+                                            if (!isFlipped) {
+                                                // Check if flagged card should trigger drill mode
+                                                if (currentCard?.isFlagged && settings?.drillsEnabled !== false) {
+                                                    const drill = await loadOrGenerateDrill(currentCard);
+                                                    if (drill) {
+                                                        setCurrentDrill(drill);
+                                                        setIsDrillMode(true);
+                                                        return;
+                                                    }
+                                                }
+                                            }
+                                            setIsFlipped(!isFlipped);
+                                        }}
                                     >
-                                        <Volume2 size={20} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                                        <div className="backface-hidden w-full h-full flex flex-col items-center justify-center">
+                                            <div className="text-xs font-bold text-indigo-200 uppercase mb-4 tracking-widest">Question</div>
+                                            <div className={`font-black text-slate-800 break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
+                                                {questionText}
+                                            </div>
+                                            <div className="mt-6 flex items-center gap-4">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); speakText(questionText); }}
+                                                    className="p-2 bg-indigo-100 hover:bg-indigo-200 rounded-full text-indigo-600 transition-all"
+                                                    title="朗读发音"
+                                                >
+                                                    <Volume2 size={20} />
+                                                </button>
+                                            </div>
+                                            <div className="mt-4 text-xs text-slate-400 font-medium flex items-center gap-2">
+                                                <RotateCw size={12} /> 点击翻转查看答案 (Space)
+                                                {currentCard?.isFlagged && settings?.drillsEnabled !== false && (
+                                                    <span className="ml-2 text-emerald-500">⚡ 可能进入智能练习</span>
+                                                )}
+                                            </div>
+                                        </div>
 
-                        {/* Stats for Geeks */}
-                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-xs">
-                            <div className="bg-slate-100 rounded-lg p-2 flex flex-col items-center">
-                                <span className="text-[10px] uppercase font-bold text-slate-400">Interval</span>
-                                <span className="text-xl font-mono font-bold text-slate-700">{currentCard?.interval || 0}d</span>
-                            </div>
-                            <div className="bg-slate-100 rounded-lg p-2 flex flex-col items-center">
-                                <span className="text-[10px] uppercase font-bold text-slate-400">Ease Factor</span>
-                                <span className="text-xl font-mono font-bold text-slate-700">{currentCard?.easeFactor?.toFixed(2) || '2.50'}</span>
-                            </div>
-                        </div>
+                                        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-indigo-600 rounded-3xl p-8 flex flex-col items-center justify-center text-white">
+                                            <div className="text-xs font-bold text-indigo-300 uppercase mb-4 tracking-widest">Answer</div>
+                                            <div className={`font-bold break-words w-full ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
+                                                {answerText}
+                                            </div>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); speakText(answerText); }}
+                                                className="mt-4 p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-all"
+                                                title="朗读发音"
+                                            >
+                                                <Volume2 size={20} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Stats for Geeks */}
+                                <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-xs">
+                                    <div className="bg-slate-100 rounded-lg p-2 flex flex-col items-center">
+                                        <span className="text-[10px] uppercase font-bold text-slate-400">Interval</span>
+                                        <span className="text-xl font-mono font-bold text-slate-700">{currentCard?.interval || 0}d</span>
+                                    </div>
+                                    <div className="bg-slate-100 rounded-lg p-2 flex flex-col items-center">
+                                        <span className="text-[10px] uppercase font-bold text-slate-400">Ease Factor</span>
+                                        <span className="text-xl font-mono font-bold text-slate-700">{currentCard?.easeFactor?.toFixed(2) || '2.50'}</span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {/* Control Buttons (4-Level SRS) moved inside container */}

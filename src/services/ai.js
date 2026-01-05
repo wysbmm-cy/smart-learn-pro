@@ -824,3 +824,117 @@ Example: <Short English Example> (<Chinese Translation>)
     return "Definition extraction failed.";
   }
 };
+
+/**
+ * Generate Smart Drill Cards for flagged vocabulary
+ * Returns an array of 8 different drill types for comprehensive practice
+ */
+export const generateDrillCards = async (word, definition, settings) => {
+  if (!settings.apiKey) {
+    console.warn("No API key for drill generation");
+    return [];
+  }
+
+  const systemPrompt = `You are an expert English vocabulary trainer. Generate practice exercises for vocabulary learning.
+
+Target Word: "${word}"
+Definition: "${definition}"
+
+Generate EXACTLY 8 different exercise types in JSON format. Each exercise must be carefully crafted:
+
+1. similar_words: Multiple choice with visually similar words as distractors
+2. context: Sentence with blank, choose correct meaning for this context
+3. cloze: Given the definition, user types the word (provide hints)
+4. collocation: Choose correct word collocation/phrase
+5. word_forms: Transform between noun/verb/adjective/adverb
+6. synonyms: Choose synonym or antonym
+7. sentence_order: Scrambled sentence to reorder
+8. dictation: Spelling hints for dictation mode
+
+Return JSON:
+{
+  "drills": [
+    {
+      "type": "similar_words",
+      "question": "选择 '${word}' 的正确释义",
+      "options": ["正确释义", "形近词1释义", "形近词2释义", "形近词3释义"],
+      "answer": 0,
+      "explanation": "解释为什么这是正确答案",
+      "distractorWords": ["similar_word1", "similar_word2", "similar_word3"]
+    },
+    {
+      "type": "context",
+      "question": "The politician's _____ statement confused everyone.",
+      "targetBlank": "${word}",
+      "options": ["意思A", "意思B", "意思C", "意思D"],
+      "answer": 0,
+      "explanation": "在这个语境中表示..."
+    },
+    {
+      "type": "cloze",
+      "question": "根据释义填写单词: ${definition}",
+      "answer": "${word}",
+      "hints": ["首字母", "字母数", "词根提示"]
+    },
+    {
+      "type": "collocation",
+      "question": "哪个搭配是正确的?",
+      "options": ["正确搭配", "错误搭配1", "错误搭配2", "错误搭配3"],
+      "answer": 0,
+      "explanation": "常见搭配说明"
+    },
+    {
+      "type": "word_forms",
+      "question": "选择正确的词形变化",
+      "baseWord": "${word}",
+      "targetForm": "形容词/名词/动词/副词",
+      "options": ["正确形式", "错误形式1", "错误形式2", "错误形式3"],
+      "answer": 0,
+      "forms": {"noun": "...", "verb": "...", "adj": "...", "adv": "..."}
+    },
+    {
+      "type": "synonyms",
+      "question": "选择 '${word}' 的同义词/反义词",
+      "mode": "synonym 或 antonym",
+      "options": ["正确答案", "错误1", "错误2", "错误3"],
+      "answer": 0,
+      "explanation": "同/反义关系说明"
+    },
+    {
+      "type": "sentence_order",
+      "question": "把下列单词排列成正确的句子",
+      "scrambled": ["word1", "word2", "word3", "word4", "word5"],
+      "correctOrder": [2, 0, 4, 1, 3],
+      "fullSentence": "完整的正确句子"
+    },
+    {
+      "type": "dictation",
+      "word": "${word}",
+      "phonetic": "/发音/",
+      "syllables": ["音节1", "音节2"],
+      "letterCount": 字母数,
+      "hints": ["提示1", "提示2"]
+    }
+  ]
+}
+
+IMPORTANT:
+- All questions and UI text should be in Chinese
+- Options should be plausible and educational
+- Generate exactly 8 drills, one for each type
+- Distractors should be challenging but fair`;
+
+  try {
+    const jsonStr = await fetchFromAI([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Generate drill cards for: ${word} (${definition})` }
+    ], settings, true);
+
+    const parsed = JSON.parse(jsonStr);
+    return parsed.drills || [];
+  } catch (e) {
+    console.error("Drill generation error:", e);
+    return [];
+  }
+};
+
