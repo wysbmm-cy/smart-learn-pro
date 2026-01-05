@@ -835,94 +835,123 @@ export const generateDrillCards = async (word, definition, settings) => {
     return [];
   }
 
-  const systemPrompt = `You are an expert English vocabulary trainer. Generate practice exercises for vocabulary learning.
+  const systemPrompt = `You are an expert English vocabulary trainer creating HIGH-QUALITY practice exercises.
 
 Target Word: "${word}"
 Definition: "${definition}"
 
-Generate EXACTLY 8 different exercise types in JSON format. Each exercise must be carefully crafted:
+Generate EXACTLY 8 different exercise types. Follow the EXACT specifications below:
 
-1. similar_words: Multiple choice with visually similar words as distractors
-2. context: Sentence with blank, choose correct meaning for this context
-3. cloze: Given the definition, user types the word (provide hints)
-4. collocation: Choose correct word collocation/phrase
-5. word_forms: Transform between noun/verb/adjective/adverb
-6. synonyms: Choose synonym or antonym
-7. sentence_order: Scrambled sentence to reorder
-8. dictation: Spelling hints for dictation mode
+=== TYPE 1: similar_words (形近词辨析) ===
+- Question: 给出3-4个拼写相似的英文单词，让学生选出目标单词的正确释义
+- The distractors must be VISUALLY SIMILAR in spelling (e.g., affect/effect, adapt/adopt, complement/compliment)
+- NOT semantically similar, but SPELLING similar
+- Example: For "complement" → distractors could be "compliment", "complete", "compel"
 
-Return JSON:
+=== TYPE 2: context (语境释义) ===
+- Question: 给出一个包含目标单词的完整英文句子（不要空格），让学生选择该单词在此语境中的中文意思
+- Do NOT use blanks like "_____", show the complete sentence with the word
+- Example: "He is a seasoned politician." → 选择 seasoned 在此句中的意思
+
+=== TYPE 3: cloze (填空题) ===
+- Question: 根据中文释义，填写对应的英文单词
+- Provide helpful hints: first letter, word length, root meaning
+
+=== TYPE 4: collocation (搭配选择) ===
+- Question: 选择正确的词语搭配
+- Use authentic English collocations
+- Example: "make a decision" vs "do a decision"
+
+=== TYPE 5: word_forms (词性变换) ===
+- Question: 根据句子选择正确的词形
+- Include: noun, verb, adjective, adverb forms
+- Context sentence showing which form is needed
+
+=== TYPE 6: synonyms (同义词/反义词) ===
+- Question: 选择目标单词的英文同义词或反义词
+- Options must be ENGLISH words, not Chinese
+- Example: For "seasoned" (经验丰富的) → synonyms: experienced, veteran, skilled
+
+=== TYPE 7: sentence_order (句子排序) ===
+- Provide scrambled words from a sentence using the target word
+- The sentence should demonstrate proper usage
+
+=== TYPE 8: dictation (听写模式) ===
+- Provide phonetic transcription, syllable breakdown, and letter count
+
+Return JSON format:
 {
   "drills": [
     {
       "type": "similar_words",
-      "question": "选择 '${word}' 的正确释义",
-      "options": ["正确释义", "形近词1释义", "形近词2释义", "形近词3释义"],
+      "question": "以下哪个是 '${word}' 的正确释义？注意区分形近词。",
+      "options": ["${definition}", "形近词1的释义", "形近词2的释义", "形近词3的释义"],
       "answer": 0,
-      "explanation": "解释为什么这是正确答案",
-      "distractorWords": ["similar_word1", "similar_word2", "similar_word3"]
+      "explanation": "形近词辨析：${word} vs 形近词1 vs 形近词2 的区别",
+      "distractorWords": ["spelling_similar_word1", "spelling_similar_word2", "spelling_similar_word3"]
     },
     {
       "type": "context",
-      "question": "The politician's _____ statement confused everyone.",
-      "targetBlank": "${word}",
-      "options": ["意思A", "意思B", "意思C", "意思D"],
+      "question": "He is a seasoned politician with decades of experience.",
+      "targetWord": "${word}",
+      "options": ["语境意思A", "语境意思B（不符合语境）", "语境意思C", "语境意思D"],
       "answer": 0,
-      "explanation": "在这个语境中表示..."
+      "explanation": "在这个语境中，seasoned 表示经验丰富的，形容政治家老练"
     },
     {
       "type": "cloze",
       "question": "根据释义填写单词: ${definition}",
       "answer": "${word}",
-      "hints": ["首字母", "字母数", "词根提示"]
+      "hints": ["首字母: ${word.charAt(0).toUpperCase()}", "${word.length} 个字母", "词根/词缀提示"]
     },
     {
       "type": "collocation",
-      "question": "哪个搭配是正确的?",
-      "options": ["正确搭配", "错误搭配1", "错误搭配2", "错误搭配3"],
+      "question": "选择与 '${word}' 搭配正确的短语",
+      "options": ["正确搭配短语", "错误搭配1", "错误搭配2", "错误搭配3"],
       "answer": 0,
-      "explanation": "常见搭配说明"
+      "explanation": "固定搭配/常见用法说明"
     },
     {
       "type": "word_forms",
-      "question": "选择正确的词形变化",
+      "question": "选择句子中应填入的正确词形：The _____ of his argument was convincing.",
       "baseWord": "${word}",
-      "targetForm": "形容词/名词/动词/副词",
-      "options": ["正确形式", "错误形式1", "错误形式2", "错误形式3"],
+      "targetForm": "名词/动词/形容词/副词",
+      "options": ["正确词形", "错误词形1", "错误词形2", "错误词形3"],
       "answer": 0,
-      "forms": {"noun": "...", "verb": "...", "adj": "...", "adv": "..."}
+      "forms": {"noun": "名词形式", "verb": "动词形式", "adj": "形容词形式", "adv": "副词形式"}
     },
     {
       "type": "synonyms",
-      "question": "选择 '${word}' 的同义词/反义词",
-      "mode": "synonym 或 antonym",
-      "options": ["正确答案", "错误1", "错误2", "错误3"],
+      "question": "选择 '${word}' 的英文同义词",
+      "mode": "synonym",
+      "options": ["english_synonym1", "unrelated_word1", "unrelated_word2", "antonym"],
       "answer": 0,
-      "explanation": "同/反义关系说明"
+      "explanation": "${word} 和 synonym1 都表示...；其他选项的含义是..."
     },
     {
       "type": "sentence_order",
-      "question": "把下列单词排列成正确的句子",
-      "scrambled": ["word1", "word2", "word3", "word4", "word5"],
-      "correctOrder": [2, 0, 4, 1, 3],
-      "fullSentence": "完整的正确句子"
+      "question": "将下列单词排列成正确的句子",
+      "scrambled": ["word1", "word2", "${word}", "word4", "word5"],
+      "correctOrder": [0, 1, 2, 3, 4],
+      "fullSentence": "完整的正确句子（包含目标单词）"
     },
     {
       "type": "dictation",
       "word": "${word}",
-      "phonetic": "/发音/",
-      "syllables": ["音节1", "音节2"],
-      "letterCount": 字母数,
-      "hints": ["提示1", "提示2"]
+      "phonetic": "/IPA发音/",
+      "syllables": ["音-", "节-", "划-", "分"],
+      "letterCount": ${word.length},
+      "hints": ["${word.charAt(0).toUpperCase()}开头", "共${word.length}个字母"]
     }
   ]
 }
 
-IMPORTANT:
-- All questions and UI text should be in Chinese
-- Options should be plausible and educational
-- Generate exactly 8 drills, one for each type
-- Distractors should be challenging but fair`;
+CRITICAL REQUIREMENTS:
+1. similar_words: Distractors must be SPELLING-similar, not meaning-similar
+2. context: Show COMPLETE sentence, NO blanks "_____"
+3. synonyms: Options must be ENGLISH WORDS (experienced, veteran), not Chinese
+4. All explanations should be educational and in Chinese
+5. Make distractors challenging but fair - they should be real confusing alternatives`;
 
   try {
     const jsonStr = await fetchFromAI([
