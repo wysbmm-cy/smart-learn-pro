@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
+import DifficultyPieChart from '../components/DifficultyPieChart';
+import StudyTrendChart from '../components/StudyTrendChart';
 import { saveFolder, getFolders, deleteFolder } from '../services/db';
 
 const FlashcardView = () => {
@@ -18,6 +20,7 @@ const FlashcardView = () => {
     const [newFolderName, setNewFolderName] = useState("");
     const [isMultiSelect, setIsMultiSelect] = useState(false); // New: Toggle multi-select mode
     const [isSwapped, setIsSwapped] = useState(false); // New: Toggle Q/A sides
+    const [showStats, setShowStats] = useState(false); // New: Toggle statistics panel
 
     // Manage State
     const [newFront, setNewFront] = useState("");
@@ -437,11 +440,29 @@ const FlashcardView = () => {
                                         />
                                     </div>
 
+                                    <button
+                                        onClick={() => setShowStats(!showStats)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${showStats ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-500'}`}
+                                    >
+                                        <BarChart3 size={14} />
+                                        {showStats ? '隐藏统计' : '查看统计'}
+                                    </button>
+
                                     <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
                                         <Plus size={20} />
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Statistics Panel */}
+                            {showStats && (
+                                <div className="p-6 bg-slate-50/50 border-b border-slate-100">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <DifficultyPieChart flashcards={allCards} />
+                                        <StudyTrendChart days={30} />
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Card Grid */}
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
