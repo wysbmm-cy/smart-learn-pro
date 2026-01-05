@@ -55,6 +55,8 @@ const FlashcardView = () => {
     // Smart Drill State
     const [isDrillMode, setIsDrillMode] = useState(false);
     const [currentDrill, setCurrentDrill] = useState(null);
+    const [drillQueue, setDrillQueue] = useState([]); // Queue of all drills for current card
+    const [drillIndex, setDrillIndex] = useState(0); // Current drill index in queue
     const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
 
     useEffect(() => {
@@ -140,18 +142,18 @@ const FlashcardView = () => {
     // Smart Drill: Load or generate drill for flagged card
     const loadOrGenerateDrill = async (card) => {
         // Check if drills are enabled
-        if (settings?.drillsEnabled === false) return null;
+        if (settings?.drillsEnabled === false) return [];
 
         // Check if card has existing drills
         if (card.drillCards && card.drillCards.length > 0) {
-            // Filter by enabled drill types
+            // Filter by enabled drill types and shuffle
             const enabledTypes = settings?.drillTypes || {};
             const availableDrills = card.drillCards.filter(d =>
                 enabledTypes[d.type] !== false
             );
             if (availableDrills.length > 0) {
-                // Random selection
-                return availableDrills[Math.floor(Math.random() * availableDrills.length)];
+                // Shuffle and return all drills
+                return [...availableDrills].sort(() => Math.random() - 0.5);
             }
         }
 
@@ -167,11 +169,11 @@ const FlashcardView = () => {
                     setAllCards(prev => prev.map(c => c.id === card.id ? updatedCard : c));
                     setStudyQueue(prev => prev.map(c => c.id === card.id ? updatedCard : c));
 
-                    // Return a random drill
+                    // Return all enabled drills shuffled
                     const enabledTypes = settings?.drillTypes || {};
                     const availableDrills = drills.filter(d => enabledTypes[d.type] !== false);
                     if (availableDrills.length > 0) {
-                        return availableDrills[Math.floor(Math.random() * availableDrills.length)];
+                        return [...availableDrills].sort(() => Math.random() - 0.5);
                     }
                 }
             } catch (e) {
@@ -181,29 +183,46 @@ const FlashcardView = () => {
             }
         }
 
-        return null;
+        return [];
     };
 
-    // Handle drill completion
+    // Handle drill completion - advance through drill queue
     const handleDrillComplete = (isCorrect) => {
-        setIsDrillMode(false);
-        setCurrentDrill(null);
-
-        // Update session stats
+        // Update session stats for each drill
         setSessionStats(prev => ({
-            reviewed: prev.reviewed + 1,
+            reviewed: prev.reviewed,
             correct: isCorrect ? prev.correct + 1 : prev.correct
         }));
 
-        // Move to next card
-        if (currentCardIndex < studyQueue.length - 1) {
-            setCurrentCardIndex(prev => prev + 1);
-            setIsFlipped(false);
+        // Check if there are more drills in the queue
+        if (drillIndex < drillQueue.length - 1) {
+            // Move to next drill in queue
+            const nextIndex = drillIndex + 1;
+            setDrillIndex(nextIndex);
+            setCurrentDrill(drillQueue[nextIndex]);
         } else {
-            // Session complete
-            loadData();
-            updateStreak();
-            setShowSessionSummary(true);
+            // All drills completed, exit drill mode
+            setIsDrillMode(false);
+            setCurrentDrill(null);
+            setDrillQueue([]);
+            setDrillIndex(0);
+
+            // Count as one reviewed card
+            setSessionStats(prev => ({
+                reviewed: prev.reviewed + 1,
+                correct: prev.correct
+            }));
+
+            // Move to next card
+            if (currentCardIndex < studyQueue.length - 1) {
+                setCurrentCardIndex(prev => prev + 1);
+                setIsFlipped(false);
+            } else {
+                // Session complete
+                loadData();
+                updateStreak();
+                setShowSessionSummary(true);
+            }
         }
     };
 
@@ -712,14 +731,31 @@ const FlashcardView = () => {
                         {/* Flag Toggle (Top Bar) */}
                         {currentCard && (
                             <button
-                                onClick={(e) => {
-                                    const updated = { ...currentCard, isFlagged: !currentCard.isFlagged };
+                                onClick={async (e) => {
+                                    const newFlagged = !currentCard.isFlagged;
+                                    const updated = { ...currentCard, isFlagged: newFlagged };
                                     setAllCards(prev => prev.map(c => c.id === currentCard.id ? updated : c));
                                     setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? updated : c));
-                                    updateFlashcard(updated); // Context function
+                                    await updateFlashcard(updated);
+
+                                    // Background drill generation when flagging (not unflagging)
+                                    if (newFlagged && !currentCard.drillCards && settings?.drillsEnabled !== false && settings?.apiKey) {
+                                        // Generate drills in background without blocking UI
+                                        generateDrillCards(currentCard.front, currentCard.back, settings)
+                                            .then(drills => {
+                                                if (drills && drills.length > 0) {
+                                                    const cardWithDrills = { ...updated, drillCards: drills, drillGeneratedAt: Date.now() };
+                                                    updateFlashcard(cardWithDrills);
+                                                    setAllCards(prev => prev.map(c => c.id === currentCard.id ? cardWithDrills : c));
+                                                    setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? cardWithDrills : c));
+                                                    console.log('✅ Drills generated in background for:', currentCard.front);
+                                                }
+                                            })
+                                            .catch(err => console.error('Background drill generation failed:', err));
+                                    }
                                 }}
                                 className={`ml-2 p-1.5 rounded-lg border transition-all ${currentCard.isFlagged ? 'bg-amber-50 border-amber-200 text-amber-500 shadow-sm ring-1 ring-amber-100' : 'bg-white border-slate-200 text-slate-300 hover:text-amber-400'}`}
-                                title="Mark as Difficult (Flag)"
+                                title="标记为重点 (S)"
                             >
                                 <Star size={16} fill={currentCard.isFlagged ? "currentColor" : "none"} />
                             </button>
@@ -760,11 +796,31 @@ const FlashcardView = () => {
 
                         {/* Drill Mode UI */}
                         {isDrillMode && currentDrill ? (
-                            <DrillCard
-                                drill={currentDrill}
-                                onComplete={handleDrillComplete}
-                                speakText={speakText}
-                            />
+                            <div className="flex flex-col items-center w-full">
+                                {/* Drill Progress Indicator */}
+                                <div className="w-full max-w-2xl mb-4 flex items-center justify-between">
+                                    <div className="text-sm font-bold text-emerald-600 flex items-center gap-2">
+                                        <Zap size={16} />
+                                        智能练习 {drillIndex + 1} / {drillQueue.length}
+                                    </div>
+                                    <div className="flex gap-1">
+                                        {drillQueue.map((_, idx) => (
+                                            <div
+                                                key={idx}
+                                                className={`w-3 h-3 rounded-full transition-all ${idx < drillIndex ? 'bg-emerald-500' :
+                                                        idx === drillIndex ? 'bg-indigo-500 ring-2 ring-indigo-200' :
+                                                            'bg-slate-200'
+                                                    }`}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                                <DrillCard
+                                    drill={currentDrill}
+                                    onComplete={handleDrillComplete}
+                                    speakText={speakText}
+                                />
+                            </div>
                         ) : (
                             /* Normal Flashcard UI */
                             <>
@@ -775,9 +831,11 @@ const FlashcardView = () => {
                                             if (!isFlipped) {
                                                 // Check if flagged card should trigger drill mode
                                                 if (currentCard?.isFlagged && settings?.drillsEnabled !== false) {
-                                                    const drill = await loadOrGenerateDrill(currentCard);
-                                                    if (drill) {
-                                                        setCurrentDrill(drill);
+                                                    const drills = await loadOrGenerateDrill(currentCard);
+                                                    if (drills && drills.length > 0) {
+                                                        setDrillQueue(drills);
+                                                        setDrillIndex(0);
+                                                        setCurrentDrill(drills[0]);
                                                         setIsDrillMode(true);
                                                         return;
                                                     }
