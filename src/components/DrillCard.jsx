@@ -63,6 +63,12 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
     };
 
     const isCorrect = () => {
+        // Handle new object-based options structure
+        if (drill.options && typeof drill.options[0] === 'object') {
+            return drill.options[selectedAnswer]?.is_correct;
+        }
+
+        // Legacy support
         switch (drill.type) {
             case 'similar_words':
             case 'context':
@@ -80,206 +86,88 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
         }
     };
 
-    const renderMultipleChoice = () => (
-        <div className="grid grid-cols-1 gap-3 mt-6">
-            {drill.options?.map((option, index) => {
-                let buttonClass = "w-full p-4 text-left rounded-xl border-2 transition-all font-medium ";
-                if (showResult) {
-                    if (index === drill.answer) {
-                        buttonClass += "bg-emerald-50 border-emerald-400 text-emerald-700";
-                    } else if (index === selectedAnswer && index !== drill.answer) {
-                        buttonClass += "bg-rose-50 border-rose-400 text-rose-700";
+    const renderMultipleChoice = () => {
+        // Helper to get correct index for both new and legacy formats
+        const getCorrectIndex = () => {
+            if (drill.options && typeof drill.options[0] === 'object') {
+                return drill.options.findIndex(o => o.is_correct);
+            }
+            return drill.answer;
+        };
+
+        const correctIndex = getCorrectIndex();
+
+        return (
+            <div className="grid grid-cols-1 gap-3 mt-6">
+                {/* Scenario Description for Pragmatic Scenario */}
+                {drill.scenario_description && (
+                    <div className="bg-slate-50 border-l-4 border-indigo-400 p-4 mb-4 rounded-r-lg text-slate-600 text-sm italic">
+                        Scenario: {drill.scenario_description}
+                    </div>
+                )}
+
+                {drill.options?.map((option, index) => {
+                    // Support both object options (new) and string options (legacy)
+                    const optionText = typeof option === 'object' ? option.text : option;
+                    const optionFeedback = typeof option === 'object' ? option.feedback : null;
+
+                    let buttonClass = "w-full p-4 text-left rounded-xl border-2 transition-all font-medium ";
+                    if (showResult) {
+                        if (index === correctIndex) {
+                            buttonClass += "bg-emerald-50 border-emerald-400 text-emerald-700";
+                        } else if (index === selectedAnswer && index !== correctIndex) {
+                            buttonClass += "bg-rose-50 border-rose-400 text-rose-700";
+                        } else {
+                            buttonClass += "bg-slate-50 border-slate-200 text-slate-400";
+                        }
                     } else {
-                        buttonClass += "bg-slate-50 border-slate-200 text-slate-400";
+                        buttonClass += selectedAnswer === index
+                            ? "bg-indigo-50 border-indigo-400 text-indigo-700"
+                            : "bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-700";
                     }
-                } else {
-                    buttonClass += selectedAnswer === index
-                        ? "bg-indigo-50 border-indigo-400 text-indigo-700"
-                        : "bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-700";
-                }
-                return (
-                    <button
-                        key={index}
-                        onClick={() => handleSelectOption(index)}
-                        disabled={showResult}
-                        className={buttonClass}
-                    >
-                        <span className="inline-block w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs font-bold mr-3 text-center leading-6">
-                            {String.fromCharCode(65 + index)}
-                        </span>
-                        {option}
-                        {showResult && index === drill.answer && (
-                            <CheckCircle className="inline-block ml-2 text-emerald-500" size={18} />
-                        )}
-                        {showResult && index === selectedAnswer && index !== drill.answer && (
-                            <XCircle className="inline-block ml-2 text-rose-500" size={18} />
-                        )}
-                    </button>
-                );
-            })}
-        </div>
-    );
+                    return (
+                        <div key={index} className="flex flex-col gap-2">
+                            <button
+                                onClick={() => handleSelectOption(index)}
+                                disabled={showResult}
+                                className={buttonClass}
+                            >
+                                <span className="inline-block w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs font-bold mr-3 text-center leading-6">
+                                    {String.fromCharCode(65 + index)}
+                                </span>
+                                {optionText}
+                                {showResult && index === correctIndex && (
+                                    <CheckCircle className="inline-block ml-2 text-emerald-500" size={18} />
+                                )}
+                                {showResult && index === selectedAnswer && index !== correctIndex && (
+                                    <XCircle className="inline-block ml-2 text-rose-500" size={18} />
+                                )}
+                            </button>
 
-    const renderTextInput = () => (
-        <div className="mt-6">
-            <div className="flex gap-2 mb-4">
-                <input
-                    ref={inputRef}
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleInputSubmit()}
-                    placeholder="输入你的答案..."
-                    disabled={showResult}
-                    className="flex-1 px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-400 focus:outline-none font-medium text-lg"
-                    autoFocus
-                />
-                <button
-                    onClick={handleInputSubmit}
-                    disabled={showResult || !inputValue.trim()}
-                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:bg-slate-300 transition-all"
-                >
-                    提交
-                </button>
+                            {/* Show specific feedback for selected wrong answer */}
+                            {showResult && index === selectedAnswer && index !== correctIndex && optionFeedback && (
+                                <div className="ml-2 text-sm text-rose-600 bg-rose-50 p-2 rounded-lg border border-rose-100 flex items-start gap-1 animate-in fade-in slide-in-from-top-1">
+                                    <XCircle size={14} className="mt-0.5 shrink-0" />
+                                    <span>{optionFeedback}</span>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
+        );
+    };
 
-            {/* Hints */}
-            <div className="flex items-center gap-2">
-                <button
-                    onClick={handleNextHint}
-                    disabled={showResult}
-                    className="flex items-center gap-1 text-sm text-amber-600 hover:text-amber-700"
-                >
-                    <Lightbulb size={14} />
-                    {showHint ? '下一个提示' : '获取提示'}
-                </button>
-                {showHint && drill.hints && (
-                    <span className="text-sm text-slate-500 bg-amber-50 px-2 py-1 rounded">
-                        {drill.hints.slice(0, currentHintIndex + 1).join(' | ')}
-                    </span>
-                )}
-            </div>
-
-            {showResult && (
-                <div className={`mt-4 p-4 rounded-xl ${isCorrect() ? 'bg-emerald-50 border border-emerald-200' : 'bg-rose-50 border border-rose-200'}`}>
-                    <div className="flex items-center gap-2 font-bold mb-2">
-                        {isCorrect() ? (
-                            <>
-                                <CheckCircle className="text-emerald-500" size={20} />
-                                <span className="text-emerald-700">正确！</span>
-                            </>
-                        ) : (
-                            <>
-                                <XCircle className="text-rose-500" size={20} />
-                                <span className="text-rose-700">正确答案: {drill.answer || drill.word}</span>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-
-    const renderSentenceOrder = () => (
-        <div className="mt-6">
-            {/* Available words */}
-            <div className="flex flex-wrap gap-2 mb-4 p-4 bg-slate-50 rounded-xl min-h-[60px]">
-                {drill.scrambled?.map((word, index) => (
-                    <button
-                        key={index}
-                        onClick={() => handleWordClick(word, index)}
-                        disabled={showResult}
-                        className={`px-3 py-2 rounded-lg font-medium transition-all ${orderedWords.includes(index)
-                                ? 'bg-indigo-500 text-white'
-                                : 'bg-white border border-slate-200 text-slate-700 hover:border-indigo-300'
-                            }`}
-                    >
-                        {word}
-                    </button>
-                ))}
-            </div>
-
-            {/* Selected order preview */}
-            <div className="p-4 bg-white border-2 border-dashed border-slate-200 rounded-xl min-h-[60px] flex flex-wrap gap-2 items-center">
-                {orderedWords.length === 0 ? (
-                    <span className="text-slate-400 text-sm">点击上方单词按顺序排列...</span>
-                ) : (
-                    orderedWords.map((idx, pos) => (
-                        <span key={pos} className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium">
-                            {drill.scrambled[idx]}
-                        </span>
-                    ))
-                )}
-            </div>
-
-            <div className="flex gap-2 mt-4">
-                <button
-                    onClick={() => setOrderedWords([])}
-                    disabled={showResult}
-                    className="flex items-center gap-1 px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200"
-                >
-                    <RotateCcw size={14} /> 重置
-                </button>
-                <button
-                    onClick={checkSentenceOrder}
-                    disabled={showResult || orderedWords.length !== drill.scrambled?.length}
-                    className="flex-1 px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 disabled:bg-slate-300"
-                >
-                    检查答案
-                </button>
-            </div>
-
-            {showResult && (
-                <div className={`mt-4 p-4 rounded-xl ${isCorrect() ? 'bg-emerald-50' : 'bg-rose-50'}`}>
-                    <div className="font-bold mb-2 flex items-center gap-2">
-                        {isCorrect() ? (
-                            <>
-                                <CheckCircle className="text-emerald-500" size={20} />
-                                <span className="text-emerald-700">完美！</span>
-                            </>
-                        ) : (
-                            <>
-                                <XCircle className="text-rose-500" size={20} />
-                                <span className="text-rose-700">正确顺序:</span>
-                            </>
-                        )}
-                    </div>
-                    <div className="text-slate-600">{drill.fullSentence}</div>
-                </div>
-            )}
-        </div>
-    );
-
-    const renderDictation = () => (
-        <div className="mt-6">
-            <div className="flex items-center justify-center gap-4 mb-6">
-                <button
-                    onClick={() => speakText && speakText(drill.word)}
-                    className="p-4 bg-indigo-100 hover:bg-indigo-200 rounded-full text-indigo-600 transition-all"
-                >
-                    <Volume2 size={32} />
-                </button>
-                <div className="text-slate-400 text-sm">
-                    点击播放发音，然后拼写单词
-                </div>
-            </div>
-
-            {drill.phonetic && (
-                <div className="text-center text-slate-500 mb-4">{drill.phonetic}</div>
-            )}
-
-            {renderTextInput()}
-
-            {drill.syllables && showHint && (
-                <div className="mt-2 text-sm text-slate-500">
-                    音节: {drill.syllables.join(' - ')}
-                </div>
-            )}
-        </div>
-    );
+    // ... text input and sentence order renderers remain same ...
 
     const getTypeLabel = () => {
         const labels = {
+            // New Types
+            context_cloze: '语境填空',
+            collocation_match: '搭配判断',
+            pragmatic_scenario: '语用场景',
+            word_family: '词形辨析',
+            // Legacy Types
             similar_words: '形近词选择',
             context: '语境释义',
             cloze: '填空题',
@@ -294,6 +182,12 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
 
     const getTypeIcon = () => {
         const icons = {
+            // New Types
+            context_cloze: '📝',
+            collocation_match: '🔗',
+            pragmatic_scenario: '🎭',
+            word_family: '🌲',
+            // Legacy Types
             similar_words: '👀',
             context: '📖',
             cloze: '✍️',

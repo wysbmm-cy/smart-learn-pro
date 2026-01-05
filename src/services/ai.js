@@ -835,129 +835,71 @@ export const generateDrillCards = async (word, definition, settings) => {
     return [];
   }
 
-  const systemPrompt = `You are an expert English vocabulary trainer creating HIGH-QUALITY practice exercises.
+  const systemPrompt = `You are an expert **Applied Linguist and Psychometrician** specializing in Second Language Acquisition (SLA). Your objective is to generate high-stakes, context-aware English vocabulary assessment items (Multiple Choice Questions) for a specific Target Word.
 
-Target Word: "${word}"
-Definition: "${definition}"
+# Core Constraint: The "Goldilocks" Distractor Logic
+You must rigorously filter distractors to avoid common AI hallucinations:
+1.  **NO Logical Fallacies (Selectional Restrictions):** Strictly obey semantic constraints. (e.g., "adopt a sky" is invalid).
+2.  **NO Synonyms as Distractors:** Do not use words that could be considered correct in a loose context.
+3.  **Goldilocks Distance:** Distractors must be wrong enough to be defensible, but close enough to challenge the learner.
+4.  **NO L1 Fallacies:** Distractors should often reflect "Negative Transfer Errors" (common mistakes by learners).
 
-Generate EXACTLY 8 different exercise types. Follow the EXACT specifications below:
+# Item Types to Generate (Generate ONE of EACH type, totaling 4 items)
 
-=== TYPE 1: similar_words (形近词辨析) ===
-- Question: 给出3-4个拼写相似的英文单词，让学生选出目标单词的正确释义
-- The distractors must be VISUALLY SIMILAR in spelling (e.g., affect/effect, adapt/adopt, complement/compliment)
-- NOT semantically similar, but SPELLING similar
-- Example: For "complement" → distractors could be "compliment", "complete", "compel"
+## TYPE 1: context_cloze (Focus: Meaning)
+* **Structure:** A B1-B2 level sentence with the target word blanked out (replaced with "_____").
+* **Distractor Strategy:** Use **Semantic Competitors** (words from the same field but factually wrong in this specific context).
+* **Goal:** Test if the user understands the precise definition in context.
 
-=== TYPE 2: context (语境释义) ===
-- Question: 给出一个包含目标单词的完整英文句子（不要空格），让学生选择该单词在此语境中的中文意思
-- Do NOT use blanks like "_____", show the complete sentence with the word
-- Example: "He is a seasoned politician." → 选择 seasoned 在此句中的意思
+## TYPE 2: collocation_match (Focus: Native Usage)
+* **Structure:** Ask which word pairs correctly with the target.
+* **Prompt Style:** "Which word best completes the phrase: '_____ a crime'?"
+* **Distractor Strategy:** Use **L1 Negative Transfer Errors** (e.g., "do a crime" instead of "commit").
+* **Goal:** Fix "Chinglish" habits.
 
-=== TYPE 3: cloze (填空题) ===
-- Question: 根据中文释义，填写对应的英文单词
-- Provide helpful hints: first letter, word length, root meaning
+## TYPE 3: pragmatic_scenario (Focus: Register & Tone)
+* **Structure:** Describe a social scenario (e.g., "A formal business email") and ask for the most appropriate word.
+* **Distractor Strategy:** Use words that are **Too Informal (Slang)** or **Too Formal/Archaic** for the situation.
+* **Goal:** Test appropriateness, not just definition.
 
-=== TYPE 4: collocation (搭配选择) ===
-- Question: 选择与目标单词搭配正确的英文短语
-- Options must be ENGLISH PHRASES, not Chinese translations
-- Use authentic English collocations vs incorrect collocations
-- Example: "charcoal grill" (正确) vs "charcoal water" (错误) vs "charcoal sleep" (错误)
-- All 4 options should be English phrases containing the target word
+## TYPE 4: word_family (Focus: Grammar)
+* **Structure:** A sentence requiring a specific part of speech (Noun/Verb/Adj).
+* **Distractor Strategy:** Use **Morphological Distractors** (e.g., reliance, reliable, rely, reliably).
+* **Goal:** Test grammatical accuracy.
 
-=== TYPE 5: word_forms (词性变换) ===
-- Question: 根据句子选择正确的词形
-- Include: noun, verb, adjective, adverb forms
-- Context sentence showing which form is needed
+# Chain of Thought (CoT) Process
+1.  **Draft Context:** Is the sentence natural and authentic?
+2.  **Draft Distractors:** Can I explain exactly why each distractor is wrong without ambiguity?
+3.  **Fallacy Check:** Discard nonsensical images immediately.
 
-=== TYPE 6: synonyms (同义词/反义词) ===
-- Question: 选择目标单词的英文同义词或反义词
-- Options must be ENGLISH words, not Chinese
-- Example: For "seasoned" (经验丰富的) → synonyms: experienced, veteran, skilled
+# Output Format (Strict JSON)
+Return ONLY the following JSON structure with an array of 4 drills:
 
-=== TYPE 7: sentence_order (句子排序) ===
-- Provide scrambled words from a sentence using the target word
-- The sentence should demonstrate proper usage
-
-=== TYPE 8: dictation (听写模式) ===
-- Provide phonetic transcription, syllable breakdown, and letter count
-
-Return JSON format:
 {
   "drills": [
     {
-      "type": "similar_words",
-      "question": "以下哪个是 '${word}' 的正确释义？注意区分形近词。",
-      "options": ["${definition}", "形近词1的释义", "形近词2的释义", "形近词3的释义"],
-      "answer": 0,
-      "explanation": "形近词辨析：${word} vs 形近词1 vs 形近词2 的区别",
-      "distractorWords": ["spelling_similar_word1", "spelling_similar_word2", "spelling_similar_word3"]
+      "type": "context_cloze",
+      "question": "The actual question or sentence context...",
+      "target_word": "${word}",
+      "options": [
+        { "text": "Distractor A", "is_correct": false, "feedback": "Explain WHY wrong (e.g., 'Implies physical movement, not abstract.')." },
+        { "text": "Correct Answer", "is_correct": true, "feedback": "Great job! This is the standard usage." },
+        { "text": "Distractor C", "is_correct": false, "feedback": "Common mistake explanation." },
+        { "text": "Distractor D", "is_correct": false, "feedback": "Check spelling/grammar." }
+      ],
+      "explanation": "Overall explanation of the correct usage.",
+      "image_gen_prompt": "Concise English prompt describing the scene"
     },
-    {
-      "type": "context",
-      "question": "He is a seasoned politician with decades of experience.",
-      "targetWord": "${word}",
-      "options": ["语境意思A", "语境意思B（不符合语境）", "语境意思C", "语境意思D"],
-      "answer": 0,
-      "explanation": "在这个语境中，seasoned 表示经验丰富的，形容政治家老练"
-    },
-    {
-      "type": "cloze",
-      "question": "根据释义填写单词: ${definition}",
-      "answer": "${word}",
-      "hints": ["首字母: ${word.charAt(0).toUpperCase()}", "${word.length} 个字母", "词根/词缀提示"]
-    },
-    {
-      "type": "collocation",
-      "question": "选择与 '${word}' 搭配正确的英文短语",
-      "options": ["charcoal grill", "charcoal water", "charcoal sleep", "charcoal sing"],
-      "answer": 0,
-      "explanation": "charcoal grill (木炭烧烤架) 是正确搭配，其他选项不是常见搭配"
-    },
-    {
-      "type": "word_forms",
-      "question": "选择句子中应填入的正确词形：The _____ of his argument was convincing.",
-      "baseWord": "${word}",
-      "targetForm": "名词/动词/形容词/副词",
-      "options": ["正确词形", "错误词形1", "错误词形2", "错误词形3"],
-      "answer": 0,
-      "forms": {"noun": "名词形式", "verb": "动词形式", "adj": "形容词形式", "adv": "副词形式"}
-    },
-    {
-      "type": "synonyms",
-      "question": "选择 '${word}' 的英文同义词",
-      "mode": "synonym",
-      "options": ["english_synonym1", "unrelated_word1", "unrelated_word2", "antonym"],
-      "answer": 0,
-      "explanation": "${word} 和 synonym1 都表示...；其他选项的含义是..."
-    },
-    {
-      "type": "sentence_order",
-      "question": "将下列单词排列成正确的句子",
-      "scrambled": ["word1", "word2", "${word}", "word4", "word5"],
-      "correctOrder": [0, 1, 2, 3, 4],
-      "fullSentence": "完整的正确句子（包含目标单词）"
-    },
-    {
-      "type": "dictation",
-      "word": "${word}",
-      "phonetic": "/IPA发音/",
-      "syllables": ["音-", "节-", "划-", "分"],
-      "letterCount": ${word.length},
-      "hints": ["${word.charAt(0).toUpperCase()}开头", "共${word.length}个字母"]
-    }
+    { ... repeat for collocation_match ... },
+    { ... repeat for pragmatic_scenario (include 'scenario_description' field if needed) ... },
+    { ... repeat for word_family ... }
   ]
 }
 
-CRITICAL REQUIREMENTS (MUST FOLLOW EXACTLY):
-1. similar_words: Distractors must be SPELLING-similar ENGLISH words, not meaning-similar
-2. context: Sentence MUST be in ENGLISH only (e.g. "We plan to grill some vegetables for dinner."), NO Chinese sentences, NO blanks "_____"
-3. synonyms: All 4 options must be ENGLISH WORDS (roast, barbecue, broil), NEVER Chinese words
-4. collocation: All 4 options must be ENGLISH PHRASES (charcoal grill, gas grill), NEVER Chinese
-5. word_forms: Context sentence must be in ENGLISH
-6. sentence_order: Words must be ENGLISH
-7. All explanations should be educational and in Chinese (解析用中文)
-8. Questions (题目说明) can be in Chinese, but EXAMPLE SENTENCES and OPTIONS must be ENGLISH
-9. RANDOMIZE ANSWER POSITION: The correct answer should NOT always be option A (index 0). Randomly place the correct answer at position 0, 1, 2, or 3 and set "answer" field accordingly`;
+IMPORTANT:
+- Options should be an array of OBJECTS with 'text', 'is_correct', and 'feedback'.
+- Randomize the position of the correct answer.
+- Ensure all text is high-quality English, but FEEDBACK/EXPLANATION can be in Chinese for the learner.`;
 
   try {
     const jsonStr = await fetchFromAI([
