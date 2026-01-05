@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
 import DifficultyPieChart from '../components/DifficultyPieChart';
@@ -43,9 +43,83 @@ const FlashcardView = () => {
     const [pickedStudent, setPickedStudent] = useState(null);
     const [isRolling, setIsRolling] = useState(false);
 
+    // New: Advanced Optimization State
+    const [showSessionSummary, setShowSessionSummary] = useState(false);
+    const [lastAction, setLastAction] = useState(null); // { cardId, prevIndex, quality, timestamp }
+    const [undoTimeout, setUndoTimeout] = useState(null);
+    const [studyStreak, setStudyStreak] = useState({ current: 0, longest: 0 });
+    const [sessionStartTime, setSessionStartTime] = useState(null);
+
     useEffect(() => {
         loadData();
+        loadStreak();
     }, []);
+
+    const loadStreak = () => {
+        const streakData = localStorage.getItem('smartlearn_streak');
+        if (streakData) {
+            setStudyStreak(JSON.parse(streakData));
+        }
+    };
+
+    const saveStreak = (newStreak) => {
+        localStorage.setItem('smartlearn_streak', JSON.stringify(newStreak));
+        setStudyStreak(newStreak);
+    };
+
+    const updateStreak = () => {
+        const today = new Date().toISOString().split('T')[0];
+        const streakData = localStorage.getItem('smartlearn_streak');
+        let streak = streakData ? JSON.parse(streakData) : { current: 0, longest: 0, lastDate: null };
+
+        if (streak.lastDate === today) {
+            // Already studied today
+            return streak;
+        }
+
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        if (streak.lastDate === yesterday) {
+            streak.current += 1;
+        } else {
+            streak.current = 1; // Reset streak
+        }
+
+        streak.longest = Math.max(streak.longest, streak.current);
+        streak.lastDate = today;
+        saveStreak(streak);
+        return streak;
+    };
+
+    const speakText = (text) => {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+            speechSynthesis.speak(utterance);
+        }
+    };
+
+    const handleUndo = async () => {
+        if (!lastAction || Date.now() - lastAction.timestamp > 5000) return;
+
+        // Clear timeout
+        if (undoTimeout) {
+            clearTimeout(undoTimeout);
+            setUndoTimeout(null);
+        }
+
+        // Restore previous state
+        setCurrentCardIndex(lastAction.prevIndex);
+        setIsFlipped(false);
+        setSessionStats(lastAction.prevStats);
+
+        // Remove retry card if it was added
+        if (lastAction.quality === 1) {
+            setStudyQueue(prev => prev.slice(0, -1));
+        }
+
+        setLastAction(null);
+    };
 
     const loadData = async () => {
         const [cards, folderList] = await Promise.all([
@@ -185,21 +259,49 @@ const FlashcardView = () => {
         setCurrentCardIndex(0);
         setIsFlipped(false);
         setSessionStats({ reviewed: 0, correct: 0 });
+        setSessionStartTime(Date.now());
+        setLastAction(null);
+        setShowSessionSummary(false);
         setMode('study');
     };
 
-    // Keyboard Shortcuts
+    // Enhanced Keyboard Shortcuts
     useEffect(() => {
-        if (mode !== 'study' || !isFlipped) return;
+        if (mode !== 'study') return;
         const handleKeyDown = (e) => {
-            if (e.key === '1') handleNextCard(1);
-            if (e.key === '2') handleNextCard(2);
-            if (e.key === '3') handleNextCard(3);
-            if (e.key === '4') handleNextCard(4);
+            // Prevent shortcuts when typing in inputs
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            // Universal shortcuts
+            if (e.key === 'Escape') {
+                setMode('manage');
+                return;
+            }
+            if (e.key === ' ' || e.key === 'Space') {
+                e.preventDefault();
+                setIsFlipped(prev => !prev);
+                return;
+            }
+            if ((e.key === 's' || e.key === 'S') && currentCard) {
+                handleToggleFlag(e, currentCard);
+                return;
+            }
+            if ((e.key === 'z' || e.key === 'Z') && lastAction) {
+                handleUndo();
+                return;
+            }
+
+            // Grading shortcuts (only when flipped)
+            if (isFlipped) {
+                if (e.key === '1') handleNextCard(1);
+                if (e.key === '2') handleNextCard(2);
+                if (e.key === '3') handleNextCard(3);
+                if (e.key === '4') handleNextCard(4);
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [mode, isFlipped, currentCardIndex, studyQueue]);
+    }, [mode, isFlipped, currentCardIndex, studyQueue, lastAction]);
 
     const handleToggleFlag = async (e, card) => {
         e.stopPropagation();
@@ -214,6 +316,20 @@ const FlashcardView = () => {
     const handleNextCard = async (quality) => {
         const currentCard = studyQueue[currentCardIndex];
 
+        // Store undo state BEFORE making changes
+        setLastAction({
+            cardId: currentCard.id,
+            prevIndex: currentCardIndex,
+            prevStats: { ...sessionStats },
+            quality,
+            timestamp: Date.now()
+        });
+
+        // Clear any existing undo timeout
+        if (undoTimeout) clearTimeout(undoTimeout);
+        const timeout = setTimeout(() => setLastAction(null), 5000);
+        setUndoTimeout(timeout);
+
         // SRS Update
         // Quality: 1=Again, 2=Hard, 3=Good, 4=Easy
         await updateFlashcardProgress(currentCard.id, quality);
@@ -223,38 +339,25 @@ const FlashcardView = () => {
             // Again: Re-queue this card to end of session
             setStudyQueue(prev => {
                 const newB = [...prev];
-                // Clone card to avoid reference issues, maybe add a marker
                 newB.push({ ...currentCard, _isRetry: true });
                 return newB;
             });
         }
 
-        setSessionStats(prev => ({
-            reviewed: prev.reviewed + 1,
-            correct: quality >= 3 ? prev.correct + 1 : prev.correct
-        }));
+        const newStats = {
+            reviewed: sessionStats.reviewed + 1,
+            correct: quality >= 3 ? sessionStats.correct + 1 : sessionStats.correct
+        };
+        setSessionStats(newStats);
 
         if (currentCardIndex < studyQueue.length - 1) {
             setCurrentCardIndex(prev => prev + 1);
             setIsFlipped(false);
         } else {
-            // Check if there are any pending retries that were added?
-            // currentCardIndex is incremented.
-            // If we pushed to queue, length increased.
-            // So loop continues naturally.
-
-            // If we are truly at end (index === length - 1 before increment)
-            // But we handled 'Again' by pushing, so length > index+1 if Again was hit.
-
-            // If we are HERE, it means index IS causing termination?
-            // React state update is async.
-            // We need to check if we just finished the LAST card and no 'Again' occurred.
-            // The 'if' block handles moving forward. This 'else' is for "All Done".
-
-            // Reload data to reflect new review dates
+            // Session complete!
             await loadData();
-            alert(`学习完成！本次复习: ${studyQueue.length} 张`);
-            setMode('manage');
+            updateStreak(); // Update daily streak
+            setShowSessionSummary(true); // Show summary modal instead of alert
         }
     };
 
@@ -569,8 +672,17 @@ const FlashcardView = () => {
                                     <div className={`font-black text-slate-800 break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
                                         {questionText}
                                     </div>
-                                    <div className="mt-8 text-xs text-slate-400 font-medium flex items-center gap-2">
-                                        <RotateCw size={12} /> 点击翻转查看答案
+                                    <div className="mt-6 flex items-center gap-4">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); speakText(questionText); }}
+                                            className="p-2 bg-indigo-100 hover:bg-indigo-200 rounded-full text-indigo-600 transition-all"
+                                            title="朗读发音"
+                                        >
+                                            <Volume2 size={20} />
+                                        </button>
+                                    </div>
+                                    <div className="mt-4 text-xs text-slate-400 font-medium flex items-center gap-2">
+                                        <RotateCw size={12} /> 点击翻转查看答案 (Space)
                                     </div>
                                 </div>
 
@@ -579,6 +691,13 @@ const FlashcardView = () => {
                                     <div className={`font-bold break-words w-full ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
                                         {answerText}
                                     </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); speakText(answerText); }}
+                                        className="mt-4 p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-all"
+                                        title="朗读发音"
+                                    >
+                                        <Volume2 size={20} />
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -689,6 +808,70 @@ const FlashcardView = () => {
                     </div>
                 )
             }
+
+            {/* Session Summary Modal */}
+            {showSessionSummary && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-[420px] text-center border-4 border-white ring-4 ring-emerald-50 animate-in fade-in zoom-in duration-300">
+                        <div className="mb-6">
+                            <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-200">
+                                <Trophy size={40} className="text-white" />
+                            </div>
+                            <h2 className="text-2xl font-black text-slate-800">复习完成！🎉</h2>
+                            <p className="text-slate-500 text-sm mt-1">太棒了，继续保持！</p>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 mb-6">
+                            <div className="bg-slate-50 rounded-xl p-4">
+                                <div className="text-3xl font-black text-indigo-600">{sessionStats.reviewed}</div>
+                                <div className="text-xs text-slate-400 font-bold">复习卡片</div>
+                            </div>
+                            <div className="bg-slate-50 rounded-xl p-4">
+                                <div className="text-3xl font-black text-emerald-600">
+                                    {sessionStats.reviewed > 0 ? Math.round((sessionStats.correct / sessionStats.reviewed) * 100) : 0}%
+                                </div>
+                                <div className="text-xs text-slate-400 font-bold">正确率</div>
+                            </div>
+                            <div className="bg-slate-50 rounded-xl p-4">
+                                <div className="text-3xl font-black text-amber-500">
+                                    {sessionStartTime ? Math.round((Date.now() - sessionStartTime) / 60000) : 0}
+                                </div>
+                                <div className="text-xs text-slate-400 font-bold">分钟</div>
+                            </div>
+                        </div>
+
+                        {/* Streak Display */}
+                        <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 mb-6 flex items-center justify-center gap-3">
+                            <Flame size={28} className="text-orange-500" />
+                            <div className="text-left">
+                                <div className="text-lg font-black text-orange-600">连续学习 {studyStreak.current} 天</div>
+                                <div className="text-xs text-orange-400">最长记录: {studyStreak.longest} 天</div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setShowSessionSummary(false);
+                                setMode('manage');
+                            }}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                        >
+                            继续学习
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Undo Floating Button */}
+            {mode === 'study' && lastAction && Date.now() - lastAction.timestamp < 5000 && (
+                <button
+                    onClick={handleUndo}
+                    className="fixed bottom-8 left-8 z-40 flex items-center gap-2 bg-slate-800 text-white px-4 py-3 rounded-xl shadow-lg hover:bg-slate-700 transition-all animate-fade-in"
+                >
+                    <Undo2 size={18} />
+                    <span className="font-bold text-sm">撤销 (Z)</span>
+                </button>
+            )}
         </div >
     );
 };
