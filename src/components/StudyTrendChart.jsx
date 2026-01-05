@@ -5,34 +5,40 @@ import { TrendingUp, Calendar } from 'lucide-react';
 const StudyTrendChart = ({ days = 30 }) => {
     const chartData = useMemo(() => {
         // Get stats from localStorage
-        const statsStr = localStorage.getItem('smartlearn_stats');
-        if (!statsStr) return [];
+        try {
+            const statsStr = localStorage.getItem('smartlearn_stats');
+            if (!statsStr) return [];
 
-        const stats = JSON.parse(statsStr);
-        const dailyActivity = stats.dailyActivity || [];
+            const stats = JSON.parse(statsStr);
+            // Ensure dailyActivity is an array
+            const dailyActivity = Array.isArray(stats.dailyActivity) ? stats.dailyActivity : [];
 
-        // Get last N days
-        const now = new Date();
-        const result = [];
+            // Get last N days
+            const now = new Date();
+            const result = [];
 
-        for (let i = days - 1; i >= 0; i--) {
-            const date = new Date(now);
-            date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
+            for (let i = days - 1; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
 
-            // Find activity for this date
-            const activity = dailyActivity.find(a => a.date === dateStr);
+                // Find activity for this date
+                const activity = dailyActivity.find(a => a.date === dateStr);
 
-            result.push({
-                date: dateStr,
-                displayDate: `${date.getMonth() + 1}/${date.getDate()}`,
-                flashcards: activity?.flashcard || 0,
-                words: activity?.words || 0,
-                notes: activity?.notes || 0
-            });
+                result.push({
+                    date: dateStr,
+                    displayDate: `${date.getMonth() + 1}/${date.getDate()}`,
+                    flashcards: activity?.flashcard || 0,
+                    words: activity?.words || 0,
+                    notes: activity?.notes || 0
+                });
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Error parsing study stats:', error);
+            return [];
         }
-
-        return result;
     }, [days]);
 
     const totalCards = useMemo(() => {

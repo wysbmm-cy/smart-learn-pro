@@ -4,7 +4,8 @@ import { Brain, Zap, BookOpen, Sparkles } from 'lucide-react';
 
 const DifficultyPieChart = ({ flashcards }) => {
     const stats = useMemo(() => {
-        if (!flashcards || flashcards.length === 0) {
+        // Ensure flashcards is an array
+        if (!flashcards || !Array.isArray(flashcards) || flashcards.length === 0) {
             return {
                 data: [],
                 total: 0
