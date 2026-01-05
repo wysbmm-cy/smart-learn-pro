@@ -785,12 +785,47 @@ const FlashcardView = () => {
                             </div>
                         )}
 
-                        {/* Flagged Card Indicator */}
+                        {/* Flagged Card Indicator with Regenerate Button */}
                         {currentCard?.isFlagged && !isDrillMode && (
                             <div className="absolute top-4 left-4 flex items-center gap-2 bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full text-xs font-bold">
                                 <Star size={14} fill="currentColor" />
                                 重点卡片
-                                {currentCard?.drillCards?.length > 0 && <span className="text-amber-500">• 有智能练习</span>}
+                                {currentCard?.drillCards?.length > 0 && (
+                                    <>
+                                        <span className="text-amber-500">• 有智能练习</span>
+                                        <button
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm('确定要重新生成练习题吗？这将清除旧题目。')) {
+                                                    const cardWithoutDrills = { ...currentCard, drillCards: null, drillGeneratedAt: null };
+                                                    await updateFlashcard(cardWithoutDrills);
+                                                    setAllCards(prev => prev.map(c => c.id === currentCard.id ? cardWithoutDrills : c));
+                                                    setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? cardWithoutDrills : c));
+
+                                                    // Trigger new generation
+                                                    if (settings?.apiKey) {
+                                                        setIsGeneratingDrill(true);
+                                                        generateDrillCards(currentCard.front, currentCard.back, settings)
+                                                            .then(drills => {
+                                                                if (drills?.length > 0) {
+                                                                    const updatedCard = { ...cardWithoutDrills, drillCards: drills, drillGeneratedAt: Date.now() };
+                                                                    updateFlashcard(updatedCard);
+                                                                    setAllCards(prev => prev.map(c => c.id === currentCard.id ? updatedCard : c));
+                                                                    setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? updatedCard : c));
+                                                                    alert('✅ 练习题已重新生成！点击卡片开始练习。');
+                                                                }
+                                                            })
+                                                            .finally(() => setIsGeneratingDrill(false));
+                                                    }
+                                                }
+                                            }}
+                                            className="ml-1 px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-800 rounded text-[10px] font-bold transition-all"
+                                            title="重新生成练习题"
+                                        >
+                                            🔄 重新生成
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -808,8 +843,8 @@ const FlashcardView = () => {
                                             <div
                                                 key={idx}
                                                 className={`w-3 h-3 rounded-full transition-all ${idx < drillIndex ? 'bg-emerald-500' :
-                                                        idx === drillIndex ? 'bg-indigo-500 ring-2 ring-indigo-200' :
-                                                            'bg-slate-200'
+                                                    idx === drillIndex ? 'bg-indigo-500 ring-2 ring-indigo-200' :
+                                                        'bg-slate-200'
                                                     }`}
                                             />
                                         ))}

@@ -858,9 +858,11 @@ Generate EXACTLY 8 different exercise types. Follow the EXACT specifications bel
 - Provide helpful hints: first letter, word length, root meaning
 
 === TYPE 4: collocation (搭配选择) ===
-- Question: 选择正确的词语搭配
-- Use authentic English collocations
-- Example: "make a decision" vs "do a decision"
+- Question: 选择与目标单词搭配正确的英文短语
+- Options must be ENGLISH PHRASES, not Chinese translations
+- Use authentic English collocations vs incorrect collocations
+- Example: "charcoal grill" (正确) vs "charcoal water" (错误) vs "charcoal sleep" (错误)
+- All 4 options should be English phrases containing the target word
 
 === TYPE 5: word_forms (词性变换) ===
 - Question: 根据句子选择正确的词形
@@ -906,10 +908,10 @@ Return JSON format:
     },
     {
       "type": "collocation",
-      "question": "选择与 '${word}' 搭配正确的短语",
-      "options": ["正确搭配短语", "错误搭配1", "错误搭配2", "错误搭配3"],
+      "question": "选择与 '${word}' 搭配正确的英文短语",
+      "options": ["charcoal grill", "charcoal water", "charcoal sleep", "charcoal sing"],
       "answer": 0,
-      "explanation": "固定搭配/常见用法说明"
+      "explanation": "charcoal grill (木炭烧烤架) 是正确搭配，其他选项不是常见搭配"
     },
     {
       "type": "word_forms",
@@ -946,12 +948,16 @@ Return JSON format:
   ]
 }
 
-CRITICAL REQUIREMENTS:
-1. similar_words: Distractors must be SPELLING-similar, not meaning-similar
-2. context: Show COMPLETE sentence, NO blanks "_____"
-3. synonyms: Options must be ENGLISH WORDS (experienced, veteran), not Chinese
-4. All explanations should be educational and in Chinese
-5. Make distractors challenging but fair - they should be real confusing alternatives`;
+CRITICAL REQUIREMENTS (MUST FOLLOW EXACTLY):
+1. similar_words: Distractors must be SPELLING-similar ENGLISH words, not meaning-similar
+2. context: Sentence MUST be in ENGLISH only (e.g. "We plan to grill some vegetables for dinner."), NO Chinese sentences, NO blanks "_____"
+3. synonyms: All 4 options must be ENGLISH WORDS (roast, barbecue, broil), NEVER Chinese words
+4. collocation: All 4 options must be ENGLISH PHRASES (charcoal grill, gas grill), NEVER Chinese
+5. word_forms: Context sentence must be in ENGLISH
+6. sentence_order: Words must be ENGLISH
+7. All explanations should be educational and in Chinese (解析用中文)
+8. Questions (题目说明) can be in Chinese, but EXAMPLE SENTENCES and OPTIONS must be ENGLISH
+9. RANDOMIZE ANSWER POSITION: The correct answer should NOT always be option A (index 0). Randomly place the correct answer at position 0, 1, 2, or 3 and set "answer" field accordingly`;
 
   try {
     const jsonStr = await fetchFromAI([
