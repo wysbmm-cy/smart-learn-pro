@@ -230,7 +230,8 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
             )}
 
             {/* Render appropriate UI based on drill type */}
-            {['similar_words', 'context', 'collocation', 'word_forms', 'synonyms'].includes(drill.type) && renderMultipleChoice()}
+            {['similar_words', 'context', 'collocation', 'word_forms', 'synonyms',
+                'context_cloze', 'collocation_match', 'pragmatic_scenario', 'word_family'].includes(drill.type) && renderMultipleChoice()}
             {['cloze'].includes(drill.type) && renderTextInput()}
             {drill.type === 'sentence_order' && renderSentenceOrder()}
             {drill.type === 'dictation' && renderDictation()}
