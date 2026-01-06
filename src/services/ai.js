@@ -835,71 +835,90 @@ export const generateDrillCards = async (word, definition, settings) => {
     return [];
   }
 
-  const systemPrompt = `You are an expert **Applied Linguist and Psychometrician** specializing in Second Language Acquisition (SLA). Your objective is to generate high-stakes, context-aware English vocabulary assessment items (Multiple Choice Questions) for a specific Target Word.
+  const systemPrompt = `You are an expert Applied Linguist creating high-stakes vocabulary assessment items.
 
-# Core Constraint: The "Goldilocks" Distractor Logic
-You must rigorously filter distractors to avoid common AI hallucinations:
-1.  **NO Logical Fallacies (Selectional Restrictions):** Strictly obey semantic constraints. (e.g., "adopt a sky" is invalid).
-2.  **NO Synonyms as Distractors:** Do not use words that could be considered correct in a loose context.
-3.  **Goldilocks Distance:** Distractors must be wrong enough to be defensible, but close enough to challenge the learner.
-4.  **NO L1 Fallacies:** Distractors should often reflect "Negative Transfer Errors" (common mistakes by learners).
+# Target Word: "${word}"
+# Definition: "${definition}"
 
-# Item Types to Generate (Generate ONE of EACH type, totaling 4 items)
+Generate EXACTLY 4 high-quality Multiple Choice Questions (one of each type). Your output MUST match the quality of the following examples.
 
-## TYPE 1: context_cloze (Focus: Meaning)
-* **Structure:** A B1-B2 level sentence with the target word blanked out (replaced with "_____").
-* **Distractor Strategy:** Use **Semantic Competitors** (words from the same field but factually wrong in this specific context).
-* **Goal:** Test if the user understands the precise definition in context.
+---
+# FEW-SHOT EXAMPLES (For word "adopt")
+---
 
-## TYPE 2: collocation_match (Focus: Native Usage)
-* **Structure:** Ask which word pairs correctly with the target.
-* **Prompt Style:** "Which word best completes the phrase: '_____ a crime'?"
-* **Distractor Strategy:** Use **L1 Negative Transfer Errors** (e.g., "do a crime" instead of "commit").
-* **Goal:** Fix "Chinglish" habits.
+## EXAMPLE 1: context_cloze
+{
+  "type": "context_cloze",
+  "question": "The software company decided to _____ a new strategy to improve user retention.",
+  "options": [
+    {"text": "adopt", "is_correct": true, "feedback": "正确！'adopt a strategy' 意为采纳/开始使用某个策略。"},
+    {"text": "adapt", "is_correct": false, "feedback": "陷阱！'adapt' 意为修改/适应。这里是采纳新策略，不是修改。"},
+    {"text": "adept", "is_correct": false, "feedback": "拼写陷阱！'adept' 是形容词，意为'熟练的'，词性不符。"},
+    {"text": "abandon", "is_correct": false, "feedback": "语境矛盾！目标是'improve'，放弃(abandon)不合逻辑。"}
+  ],
+  "explanation": "'adopt' 核心含义是'采纳/接受使用'，常见搭配：adopt a strategy/policy/approach。"
+}
 
-## TYPE 3: pragmatic_scenario (Focus: Register & Tone)
-* **Structure:** Describe a social scenario (e.g., "A formal business email") and ask for the most appropriate word.
-* **Distractor Strategy:** Use words that are **Too Informal (Slang)** or **Too Formal/Archaic** for the situation.
-* **Goal:** Test appropriateness, not just definition.
+## EXAMPLE 2: collocation_match
+{
+  "type": "collocation_match",
+  "question": "Choose the noun that naturally follows 'adopt': The government voted to adopt a strict _____.",
+  "options": [
+    {"text": "measure", "is_correct": true, "feedback": "地道搭配！'adopt a measure/policy' 是正式英语中的标准用法。"},
+    {"text": "behavior", "is_correct": false, "feedback": "搭配不自然。我们通常说 'change behavior'，不说 'adopt behavior'。"},
+    {"text": "weather", "is_correct": false, "feedback": "逻辑错误！天气不能被'adopt'。"},
+    {"text": "chance", "is_correct": false, "feedback": "搭配错误！我们说 'take a chance'，不说 'adopt a chance'。"}
+  ],
+  "explanation": "'adopt' 的常见宾语：measure, policy, approach, strategy, resolution, stance, position。"
+}
 
-## TYPE 4: word_family (Focus: Grammar)
-* **Structure:** A sentence requiring a specific part of speech (Noun/Verb/Adj).
-* **Distractor Strategy:** Use **Morphological Distractors** (e.g., reliance, reliable, rely, reliably).
-* **Goal:** Test grammatical accuracy.
+## EXAMPLE 3: pragmatic_scenario
+{
+  "type": "pragmatic_scenario",
+  "question": "You are writing a formal report about a new safety protocol. Which sentence sounds most professional?",
+  "scenario_description": "📄 Formal Business Report",
+  "options": [
+    {"text": "We have effectively adopted the new safety regulations.", "is_correct": true, "feedback": "正确！正式、专业的表达方式。"},
+    {"text": "We have picked up the new safety regulations.", "is_correct": false, "feedback": "太口语化！'pick up' 像是在地上捡东西。"},
+    {"text": "We have taken in the new safety regulations.", "is_correct": false, "feedback": "歧义！'take in' 通常指'理解'或'欺骗/收留'，不适合这个语境。"},
+    {"text": "We have adapted the new safety regulations.", "is_correct": false, "feedback": "含义改变！'adapt' 意为修改规则，而不是实施规则。"}
+  ],
+  "explanation": "'adopt' 在正式文体中常用于表示'正式采纳/实施'政策、规定等。"
+}
 
-# Chain of Thought (CoT) Process
-1.  **Draft Context:** Is the sentence natural and authentic?
-2.  **Draft Distractors:** Can I explain exactly why each distractor is wrong without ambiguity?
-3.  **Fallacy Check:** Discard nonsensical images immediately.
+## EXAMPLE 4: word_family
+{
+  "type": "word_family",
+  "question": "The _____ of the new policy caused some controversy among the employees.",
+  "options": [
+    {"text": "adoption", "is_correct": true, "feedback": "正确！句首需要名词作主语。'adoption' = 采纳的行为。"},
+    {"text": "adopt", "is_correct": false, "feedback": "词性错误！这是动词，不能作主语。"},
+    {"text": "adoptive", "is_correct": false, "feedback": "含义错误！'adoptive' 通常指'收养关系的'，如 adoptive parents。"},
+    {"text": "adopted", "is_correct": false, "feedback": "词性错误！过去分词/形容词，不能独立作主语。"}
+  ],
+  "explanation": "词形家族：adopt (v.) → adoption (n.) → adoptive (adj., 收养的) → adopted (adj., 被收养的)"
+}
 
-# Output Format (Strict JSON)
-Return ONLY the following JSON structure with an array of 4 drills:
+---
+# NOW GENERATE FOR: "${word}" (${definition})
+---
 
+Return ONLY valid JSON in this exact format:
 {
   "drills": [
-    {
-      "type": "context_cloze",
-      "question": "The actual question or sentence context...",
-      "target_word": "${word}",
-      "options": [
-        { "text": "Distractor A", "is_correct": false, "feedback": "Explain WHY wrong (e.g., 'Implies physical movement, not abstract.')." },
-        { "text": "Correct Answer", "is_correct": true, "feedback": "Great job! This is the standard usage." },
-        { "text": "Distractor C", "is_correct": false, "feedback": "Common mistake explanation." },
-        { "text": "Distractor D", "is_correct": false, "feedback": "Check spelling/grammar." }
-      ],
-      "explanation": "Overall explanation of the correct usage.",
-      "image_gen_prompt": "Concise English prompt describing the scene"
-    },
-    { ... repeat for collocation_match ... },
-    { ... repeat for pragmatic_scenario (include 'scenario_description' field if needed) ... },
-    { ... repeat for word_family ... }
+    { "type": "context_cloze", "question": "...", "options": [...], "explanation": "..." },
+    { "type": "collocation_match", "question": "...", "options": [...], "explanation": "..." },
+    { "type": "pragmatic_scenario", "question": "...", "scenario_description": "...", "options": [...], "explanation": "..." },
+    { "type": "word_family", "question": "...", "options": [...], "explanation": "..." }
   ]
 }
 
-IMPORTANT:
-- Options should be an array of OBJECTS with 'text', 'is_correct', and 'feedback'.
-- Randomize the position of the correct answer.
-- Ensure all text is high-quality English, but FEEDBACK/EXPLANATION can be in Chinese for the learner.`;
+# CRITICAL REQUIREMENTS:
+1. Each distractor MUST have a clear error type (spelling trap, collocation error, logic error, register mismatch).
+2. NEVER generate nonsensical options like "adopt a sky".
+3. Feedback MUST explain WHY wrong, especially for confusables (adapt vs adopt).
+4. Randomize the position of the correct answer (not always A).
+5. All feedback/explanation in Chinese, questions/options in English.`;
 
   try {
     const jsonStr = await fetchFromAI([
@@ -915,3 +934,126 @@ IMPORTANT:
   }
 };
 
+// =====================================================
+// A.I.R. SYSTEM: Adaptive Intelligence & Remediation
+// =====================================================
+
+/**
+ * Generate daily diagnosis based on drill logs
+ * This is called when user opens the Remediation Hub
+ */
+export const generateDiagnosis = async (drillLogs, settings) => {
+  if (!settings.apiKey || !drillLogs || drillLogs.length === 0) {
+    return null;
+  }
+
+  // Summarize logs for AI
+  const errorLogs = drillLogs.filter(log => !log.is_correct);
+  const dimensionCounts = {};
+  const errorTypeCounts = {};
+  const confusedPairs = [];
+
+  errorLogs.forEach(log => {
+    dimensionCounts[log.dimension] = (dimensionCounts[log.dimension] || 0) + 1;
+    errorTypeCounts[log.error_type] = (errorTypeCounts[log.error_type] || 0) + 1;
+    if (log.error_type === 'orthographic_confusion' && log.user_choice && log.correct_answer) {
+      confusedPairs.push({ wrong: log.user_choice, correct: log.correct_answer, word: log.word });
+    }
+  });
+
+  const systemPrompt = `你是一个学习诊断专家。基于用户昨日的练习错误数据，生成一份诊断报告。
+
+# 输入数据摘要
+- 总错误数: ${errorLogs.length}
+- 维度错误分布: ${JSON.stringify(dimensionCounts)}
+- 错误类型分布: ${JSON.stringify(errorTypeCounts)}
+- 形近词混淆对: ${JSON.stringify(confusedPairs.slice(0, 5))}
+
+# 维度说明
+- form: 拼写/形态 (形近词混淆、词形变化)
+- meaning: 语义 (核心词义映射错误)
+- use: 用法 (搭配错误、语用不当)
+
+# 输出格式 (JSON)
+{
+  "primary_weakness": "orthographic_confusion | collocation_error | semantic_confusion | register_mismatch | morphological_error",
+  "weakness_dimension": "form | meaning | use",
+  "analysis_summary": "中文诊断摘要，1-2句话说明用户的核心问题",
+  "prescription": "中文建议，说明今日特训的重点",
+  "training_mode": "eagle_eye | collocation_drill | meaning_deep | usage_scene",
+  "focus_words": ["需要重点复习的单词列表"],
+  "confused_pairs": [{"wrong": "adapt", "correct": "adopt"}]
+}`;
+
+  try {
+    const jsonStr = await fetchFromAI([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "请根据以上数据生成诊断报告" }
+    ], settings, true);
+
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("Diagnosis generation error:", e);
+    return null;
+  }
+};
+
+/**
+ * Generate remediation drills based on diagnosis
+ * Implements "Mastery Lock" logic - generates targeted drills
+ */
+export const generateRemediationDrills = async (diagnosis, settings, count = 5) => {
+  if (!settings.apiKey || !diagnosis) {
+    return [];
+  }
+
+  const systemPrompt = `你是一个英语教学专家，为学习者生成针对性强化练习题。
+
+# 诊断结果
+- 核心弱点: ${diagnosis.primary_weakness}
+- 弱点维度: ${diagnosis.weakness_dimension}
+- 需复习单词: ${JSON.stringify(diagnosis.focus_words || [])}
+- 混淆词对: ${JSON.stringify(diagnosis.confused_pairs || [])}
+- 特训模式: ${diagnosis.training_mode}
+
+# 出题规则
+1. 生成 ${count} 道题目
+2. 80% 题目直接针对用户昨天错的词
+3. 20% 题目考察**同类型但不同的词**（迁移测试）
+4. 所有干扰项必须与诊断出的弱点相关
+   - 如果是 orthographic_confusion，干扰项必须是拼写相似的词
+   - 如果是 collocation_error，干扰项必须是错误搭配
+5. 每个选项必须有详细的 feedback（中文）
+
+# 输出格式 (JSON)
+{
+  "drills": [
+    {
+      "type": "context_cloze | collocation_match | pragmatic_scenario | word_family",
+      "question": "题目内容（英文）",
+      "target_word": "目标单词",
+      "is_transfer_item": false,
+      "options": [
+        {"text": "选项A", "is_correct": true, "feedback": "正确原因（中文）"},
+        {"text": "选项B", "is_correct": false, "feedback": "错误原因（中文）"},
+        {"text": "选项C", "is_correct": false, "feedback": "错误原因（中文）"},
+        {"text": "选项D", "is_correct": false, "feedback": "错误原因（中文）"}
+      ],
+      "explanation": "总体解析（中文）"
+    }
+  ]
+}`;
+
+  try {
+    const jsonStr = await fetchFromAI([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "请生成针对性强化练习题" }
+    ], settings, true);
+
+    const parsed = JSON.parse(jsonStr);
+    return parsed.drills || [];
+  } catch (e) {
+    console.error("Remediation drill generation error:", e);
+    return [];
+  }
+};

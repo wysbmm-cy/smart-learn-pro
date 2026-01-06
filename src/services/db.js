@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 9; // Bumped since User complained about re-analysis
+const DB_VERSION = 10; // Bumped for A.I.R. System (Drill Logs & Diagnosis)
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -79,6 +79,19 @@ export const initDB = () => {
             if (!db.objectStoreNames.contains('daily_plans')) {
                 const planStore = db.createObjectStore('daily_plans', { keyPath: 'date' }); // Key: YYYY-MM-DD
             }
+
+            // --- NEW V10 STORES (A.I.R. System) ---
+            // Drill Logs (Raw data for diagnosis)
+            if (!db.objectStoreNames.contains('drill_logs')) {
+                const drillLogStore = db.createObjectStore('drill_logs', { keyPath: 'id' });
+                drillLogStore.createIndex('timestamp', 'timestamp', { unique: false });
+                drillLogStore.createIndex('dimension', 'dimension', { unique: false });
+                // We keep logs for ~7 days for analysis
+            }
+            // Learning Diagnosis (Daily reports)
+            if (!db.objectStoreNames.contains('learning_diagnosis')) {
+                const diagnosisStore = db.createObjectStore('learning_diagnosis', { keyPath: 'date' }); // YYYY-MM-DD
+            }
         };
 
         request.onsuccess = (event) => resolve(event.target.result);
@@ -154,6 +167,62 @@ export const getDailyPlan = async (date) => {
     return new Promise((resolve, reject) => {
         const request = store.get(date);
         request.onsuccess = () => resolve(request.result ? request.result.plan : null);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// --- A.I.R. System CRUD ---
+
+// Save a single drill attempt log
+export const saveDrillLog = async (log) => {
+    // log: { word, dimension, item_type, user_choice, correct_answer, is_correct, error_type, timestamp }
+    const db = await initDB();
+    const tx = db.transaction('drill_logs', 'readwrite');
+    const store = tx.objectStore('drill_logs');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...log, id: crypto.randomUUID(), timestamp: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Get recent drill logs (e.g., last 24h) for diagnosis
+export const getRecentDrillLogs = async (startTime) => {
+    const db = await initDB();
+    const tx = db.transaction('drill_logs', 'readonly');
+    const store = tx.objectStore('drill_logs');
+    const index = store.index('timestamp');
+    const range = IDBKeyRange.lowerBound(startTime);
+
+    return new Promise((resolve, reject) => {
+        const request = index.getAll(range);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Save a daily diagnosis
+export const saveDiagnosis = async (date, diagnosis) => {
+    // date: 'YYYY-MM-DD'
+    // diagnosis: JSON object from AI
+    const db = await initDB();
+    const tx = db.transaction('learning_diagnosis', 'readwrite');
+    const store = tx.objectStore('learning_diagnosis');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ date, diagnosis, timestamp: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Get diagnosis by date
+export const getDiagnosis = async (date) => {
+    const db = await initDB();
+    const tx = db.transaction('learning_diagnosis', 'readonly');
+    const store = tx.objectStore('learning_diagnosis');
+    return new Promise((resolve, reject) => {
+        const request = store.get(date);
+        request.onsuccess = () => resolve(request.result ? request.result.diagnosis : null);
         request.onerror = () => reject(request.error);
     });
 };

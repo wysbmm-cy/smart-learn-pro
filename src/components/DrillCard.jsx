@@ -3,6 +3,69 @@ import {
     CheckCircle, XCircle, Volume2, Shuffle, HelpCircle,
     ArrowRight, Lightbulb, RotateCcw, Keyboard
 } from 'lucide-react';
+import { saveDrillLog } from '../services/db';
+
+// A.I.R. Dimension Mapping
+const getDimension = (drillType) => {
+    const dimensionMap = {
+        // Form dimension (spelling, orthography)
+        'similar_words': 'form',
+        'context_cloze': 'meaning',
+        // Meaning dimension (core semantics)
+        'context': 'meaning',
+        'synonyms': 'meaning',
+        // Use dimension (collocations, pragmatics)
+        'collocation': 'use',
+        'collocation_match': 'use',
+        'pragmatic_scenario': 'use',
+        // Grammar (word forms)
+        'word_forms': 'form',
+        'word_family': 'form',
+        // Others
+        'cloze': 'meaning',
+        'sentence_order': 'use',
+        'dictation': 'form'
+    };
+    return dimensionMap[drillType] || 'meaning';
+};
+
+// Error type classification
+const getErrorType = (drillType, userChoice, correctAnswer) => {
+    if (drillType === 'context_cloze' || drillType === 'similar_words') {
+        // Check if it's an orthographic confusion (similar spelling)
+        if (userChoice && correctAnswer) {
+            const similarity = calculateSimilarity(userChoice, correctAnswer);
+            if (similarity > 0.7) return 'orthographic_confusion';
+        }
+        return 'semantic_confusion';
+    }
+    if (drillType === 'collocation_match' || drillType === 'collocation') {
+        return 'collocation_error';
+    }
+    if (drillType === 'pragmatic_scenario') {
+        return 'register_mismatch';
+    }
+    if (drillType === 'word_family' || drillType === 'word_forms') {
+        return 'morphological_error';
+    }
+    return 'general_error';
+};
+
+// Simple string similarity (Levenshtein-ish)
+const calculateSimilarity = (str1, str2) => {
+    if (!str1 || !str2) return 0;
+    const s1 = str1.toLowerCase();
+    const s2 = str2.toLowerCase();
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    if (longer.length === 0) return 1.0;
+    // Check prefix/suffix match
+    let matches = 0;
+    for (let i = 0; i < shorter.length; i++) {
+        if (shorter[i] === longer[i]) matches++;
+    }
+    return matches / longer.length;
+};
 
 /**
  * DrillCard Component - Renders different drill types for Smart Drill Cards
@@ -31,10 +94,33 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
 
     if (!drill) return null;
 
-    const handleSelectOption = (index) => {
+    const handleSelectOption = async (index) => {
         if (showResult) return;
         setSelectedAnswer(index);
         setShowResult(true);
+
+        // A.I.R. Data Logging
+        try {
+            const isNewFormat = drill.options && typeof drill.options[0] === 'object';
+            const correctIdx = isNewFormat
+                ? drill.options.findIndex(o => o.is_correct)
+                : drill.answer;
+            const userChoice = isNewFormat ? drill.options[index]?.text : drill.options?.[index];
+            const correctAnswer = isNewFormat ? drill.options[correctIdx]?.text : drill.options?.[correctIdx];
+            const wasCorrect = isNewFormat ? drill.options[index]?.is_correct : (index === drill.answer);
+
+            await saveDrillLog({
+                word: drill.target_word || drill.word || '',
+                dimension: getDimension(drill.type),
+                item_type: drill.type,
+                user_choice: userChoice,
+                correct_answer: correctAnswer,
+                is_correct: wasCorrect,
+                error_type: wasCorrect ? null : getErrorType(drill.type, userChoice, correctAnswer)
+            });
+        } catch (err) {
+            console.warn('Failed to log drill result:', err);
+        }
     };
 
     const handleInputSubmit = () => {

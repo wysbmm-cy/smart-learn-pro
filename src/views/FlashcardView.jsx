@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap } from 'lucide-react';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap, Brain, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
 import DifficultyPieChart from '../components/DifficultyPieChart';
 import StudyTrendChart from '../components/StudyTrendChart';
 import DrillCard from '../components/DrillCard';
-import { saveFolder, getFolders, deleteFolder } from '../services/db';
-import { generateDrillCards } from '../services/ai';
+import RemediationHub from '../components/RemediationHub';
+import { saveFolder, getFolders, deleteFolder, getRecentDrillLogs, getDiagnosis, saveDiagnosis } from '../services/db';
+import { generateDrillCards, generateDiagnosis, generateRemediationDrills } from '../services/ai';
 
 const FlashcardView = () => {
     const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState, settings } = useApp();
@@ -58,6 +59,68 @@ const FlashcardView = () => {
     const [drillQueue, setDrillQueue] = useState([]); // Queue of all drills for current card
     const [drillIndex, setDrillIndex] = useState(0); // Current drill index in queue
     const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
+
+    // A.I.R. System State
+    const [showRemediation, setShowRemediation] = useState(false);
+    const [airStatus, setAirStatus] = useState('idle'); // 'idle' | 'preparing' | 'ready'
+    const [airData, setAirData] = useState(null); // { diagnosis, drills }
+
+    // A.I.R. Background Prefetch Function
+    const prefetchAIR = async () => {
+        if (airStatus === 'preparing') return; // Already in progress
+
+        setAirStatus('preparing');
+
+        try {
+            const today = new Date().toISOString().split('T')[0];
+
+            // Check existing diagnosis
+            let diagnosis = await getDiagnosis(today);
+
+            if (!diagnosis) {
+                // Generate new diagnosis
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+                const recentLogs = await getRecentDrillLogs(yesterday);
+
+                if (recentLogs.length === 0) {
+                    diagnosis = {
+                        primary_weakness: 'none',
+                        analysis_summary: '暂无诊断数据。请先完成一些练习题。',
+                        prescription: '去闪卡复习页面完成一些练习吧！'
+                    };
+                } else {
+                    diagnosis = await generateDiagnosis(recentLogs, settings);
+                    if (diagnosis) {
+                        await saveDiagnosis(today, diagnosis);
+                    }
+                }
+            }
+
+            // Generate drills if diagnosis is valid
+            let drills = [];
+            if (diagnosis && diagnosis.primary_weakness !== 'none' && diagnosis.primary_weakness !== 'error') {
+                drills = await generateRemediationDrills(diagnosis, settings, 5);
+            }
+
+            setAirData({ diagnosis, drills });
+            setAirStatus('ready');
+        } catch (err) {
+            console.error('A.I.R. prefetch error:', err);
+            setAirStatus('idle');
+        }
+    };
+
+    // Handle A.I.R. button click
+    const handleAIRClick = () => {
+        if (airStatus === 'ready') {
+            // Already prepared, open directly
+            setShowRemediation(true);
+        } else if (airStatus === 'idle') {
+            // Start background preparation
+            prefetchAIR();
+        }
+        // If 'preparing', do nothing (show loading state)
+    };
 
     useEffect(() => {
         loadData();
@@ -582,7 +645,26 @@ const FlashcardView = () => {
                 })}
             </div>
 
-            <div className="p-4 border-t border-slate-200 bg-slate-100/50">
+            <div className="p-4 border-t border-slate-200 bg-slate-100/50 space-y-2">
+                {/* A.I.R. Smart Review Button */}
+                <button
+                    onClick={handleAIRClick}
+                    disabled={airStatus === 'preparing'}
+                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold shadow-md transition-all ${airStatus === 'ready'
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white'
+                        : airStatus === 'preparing'
+                            ? 'bg-slate-200 text-slate-500 cursor-wait'
+                            : 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white'
+                        }`}
+                >
+                    {airStatus === 'preparing' ? (
+                        <><Loader2 size={16} className="animate-spin" /> 准备中...</>
+                    ) : airStatus === 'ready' ? (
+                        <><Brain size={16} /> ✅ 点击开始复习</>
+                    ) : (
+                        <><Brain size={16} /> 🩺 智能复习 (A.I.R.)</>
+                    )}
+                </button>
                 <button
                     onClick={() => setShowStudentPicker(true)}
                     className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-slate-200 text-slate-600 text-sm font-bold shadow-sm hover:text-indigo-600 hover:border-indigo-100 transition-colors"
@@ -1088,6 +1170,18 @@ const FlashcardView = () => {
                     <Undo2 size={18} />
                     <span className="font-bold text-sm">撤销 (Z)</span>
                 </button>
+            )}
+
+            {/* A.I.R. Remediation Hub */}
+            {showRemediation && (
+                <RemediationHub
+                    prefetchedData={airData}
+                    onClose={() => {
+                        setShowRemediation(false);
+                        setAirStatus('idle'); // Reset for next time
+                        setAirData(null);
+                    }}
+                />
             )}
         </div >
     );
