@@ -1108,9 +1108,12 @@ export const checkImageGenConnection = async (settings) => {
 };
 
 /**
- * Generate Daily Summary Image
+ * Generate Daily Summary Image with AI Analysis + Style Templates
+ * @param {Array} highlights - Today's highlighted content
+ * @param {Object} settings - API settings  
+ * @param {string} style - 'cyberpunk' or 'popart'
  */
-export const generateDailySummaryImage = async (highlights, settings) => {
+export const generateDailySummaryImage = async (highlights, settings, style = 'cyberpunk') => {
   const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
   const apiKey = settings.imageGenApiKey || settings.apiKey;
   const model = settings.imageGenModel || 'dall-e-3';
@@ -1123,16 +1126,47 @@ export const generateDailySummaryImage = async (highlights, settings) => {
   const isOpenRouter = cleanUrl.includes('openrouter');
   const isSiliconFlow = cleanUrl.includes('siliconflow');
 
-  // Build prompt from highlights
-  const summaryText = highlights.map(h => `- ${h.content}`).join('\n');
+  // === STEP 1: Use Main AI to Analyze Highlights ===
+  const analysisPrompt = `你是一个学习助手，请分析以下今日学习标记内容，并提取用于生成图片的关键元素。
 
-  const prompt = `Create a beautiful, inspiring learning summary card design. 
-Style: Modern minimalist, gradient background (blue to purple), clean typography.
-Content to visualize:
-${summaryText.substring(0, 500)}
+今日标记内容：
+${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
 
-Make it look like a premium daily learning achievement card with subtle illustrations.
-Do NOT include any text or words, only abstract visual representations.`;
+请以JSON格式返回以下信息：
+{
+  "mainObject": "代表今日学习的标志性物品(如: 一本发光的书、一座知识灯塔、一把打开思维的钥匙)",
+  "objectName": "给这个物品的炫酷名称(如: 知识核心、智慧水晶)",
+  "taskIcon1": "第一个学习任务的图标(如: 阅读卷轴、词汇宝石)",
+  "taskIcon2": "第二个学习任务的图标(如: 写作羽毛笔、笔记本)",
+  "actionVerb": "动态动作描述(如: 闪耀、爆发能量、释放光芒)"
+}`;
+
+  let analysisResult;
+  try {
+    const analysisJson = await fetchFromAI([
+      { role: "system", content: "你是一个创意助手，只输出JSON格式。" },
+      { role: "user", content: analysisPrompt }
+    ], settings, true);
+    analysisResult = JSON.parse(analysisJson);
+  } catch (e) {
+    console.error("Analysis error:", e);
+    analysisResult = {
+      mainObject: "a glowing crystal brain representing knowledge",
+      objectName: "Knowledge Core",
+      taskIcon1: "scrolls of wisdom",
+      taskIcon2: "golden pen",
+      actionVerb: "radiating energy"
+    };
+  }
+
+  // === STEP 2: Build Prompt from Template ===
+  let prompt;
+  if (style === 'popart') {
+    prompt = `Vertical UI design, layout structure follows the Battlefield 1 stats screen, but re-imagined in a vibrant POP ART COMIC BOOK style. ATMOSPHERE: Background is a dynamic comic book panel collage with explosion bubbles, speed lines, and halftone dot patterns. High-contrast clashing colors: bright yellow, red, electric blue, and black outlines. LAYOUT & ELEMENTS: Header: "DAILY POWER-UP!" in a huge, explosive comic title font. Left Column (Primary Slot): A dynamic, cel-shaded comic book illustration of ${analysisResult.mainObject} being ${analysisResult.actionVerb} with motion lines. The stats grid looks like a superhero's power-level card. Right Column: Three main stats are in jagged explosion speech bubbles with superhero icons. Secondary task slots are stylized comic panels with bold outlines showing icons of ${analysisResult.taskIcon1} and ${analysisResult.taskIcon2}. TYPOGRAPHY: Bold, blocky comic book fonts with heavy black outlines and drop shadows. Fun, energetic, impactful, 8k. --ar 9:16`;
+  } else {
+    prompt = `Vertical UI design, layout structure strictly follows the Battlefield 1 end-of-round stats screen, but with a CYBERPUNK NEON aesthetic. ATMOSPHERE: Background is a dense, futuristic cyberpunk city street at night with flying vehicles, drenched in neon rain and holographic ads (purple, cyan, magenta, electric blue light). Glitch art effects overlay the entire UI. LAYOUT & ELEMENTS: Header: Glowing neon text "DAILY NEON REPORT". Left Column (Primary Slot): A holographic, glowing wireframe render of ${analysisResult.mainObject} pulsating with electric blue light. Text name "${analysisResult.objectName}" in glowing cyan. The stats grid is a floating holographic HUD interface. Right Column: Three main stats icons are stylized glowing cybernetic implants or data chips. Secondary task slots show holographic icons of ${analysisResult.taskIcon1} and ${analysisResult.taskIcon2} with digital scanlines. TYPOGRAPHY: All text glows with neon light, looking like digital displays. High contrast, futuristic, energetic, 8k. --ar 9:16`;
+  }
+
 
   let response;
   if (isOpenRouter) {

@@ -17,6 +17,7 @@ const Dashboard = ({ onNavigate }) => {
     const [dailyImage, setDailyImage] = useState(null);
     const [isGeneratingImage, setIsGeneratingImage] = useState(false);
     const [todayHighlights, setTodayHighlights] = useState([]);
+    const [imageStyle, setImageStyle] = useState('cyberpunk'); // 'cyberpunk' or 'popart'
 
     useEffect(() => {
         const load = async () => {
@@ -38,7 +39,7 @@ const Dashboard = ({ onNavigate }) => {
         }
         setIsGeneratingImage(true);
         try {
-            const imageUrl = await generateDailySummaryImage(todayHighlights, settings);
+            const imageUrl = await generateDailySummaryImage(todayHighlights, settings, imageStyle);
             if (imageUrl) {
                 setDailyImage(imageUrl);
             } else {
@@ -107,17 +108,33 @@ const Dashboard = ({ onNavigate }) => {
                             今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容
                         </div>
                     </div>
-                    <button
-                        onClick={handleGenerateImage}
-                        disabled={isGeneratingImage || !todayHighlights.length}
-                        className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 shadow-amber-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
-                    >
-                        {isGeneratingImage ? (
-                            <><Loader2 size={18} className="animate-spin" /> AI 生成中...</>
-                        ) : (
-                            <><Sparkles size={18} /> 生成每日总结图</>
-                        )}
-                    </button>
+
+                    {/* Style Selector */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setImageStyle('cyberpunk')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${imageStyle === 'cyberpunk' ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400/50' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+                        >
+                            💠 赛博霓虹
+                        </button>
+                        <button
+                            onClick={() => setImageStyle('popart')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${imageStyle === 'popart' ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-400/50' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+                        >
+                            💥 波普漫画
+                        </button>
+                        <button
+                            onClick={handleGenerateImage}
+                            disabled={isGeneratingImage || !todayHighlights.length}
+                            className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 shadow-amber-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                        >
+                            {isGeneratingImage ? (
+                                <><Loader2 size={18} className="animate-spin" /> AI 分析+生图中...</>
+                            ) : (
+                                <><Sparkles size={18} /> 生成每日总结图</>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {dailyImage ? (
