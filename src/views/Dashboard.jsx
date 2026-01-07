@@ -92,7 +92,52 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
             </div>
 
-            {/* 2. Study Heatmap (Replaces Daily Goal) */}
+            {/* ⭐ 2. Daily Summary Image - PROMINENT POSITION */}
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-900 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-indigo-500/10 border border-indigo-500/20 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500 opacity-5 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                        <div className="flex items-center gap-3 text-white font-bold text-xl mb-2">
+                            <div className="p-2 bg-amber-500/20 rounded-xl">
+                                <ImageIcon size={24} className="text-amber-400" />
+                            </div>
+                            每日学习总结
+                        </div>
+                        <div className="text-indigo-300 text-sm">
+                            今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleGenerateImage}
+                        disabled={isGeneratingImage || !todayHighlights.length}
+                        className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 shadow-amber-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                    >
+                        {isGeneratingImage ? (
+                            <><Loader2 size={18} className="animate-spin" /> AI 生成中...</>
+                        ) : (
+                            <><Sparkles size={18} /> 生成每日总结图</>
+                        )}
+                    </button>
+                </div>
+
+                {dailyImage ? (
+                    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                        <img
+                            src={dailyImage}
+                            alt="Daily Summary"
+                            className="w-full h-auto object-cover"
+                        />
+                    </div>
+                ) : (
+                    <div className="h-56 rounded-2xl bg-white/5 border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-indigo-300">
+                        <ImageIcon size={56} className="opacity-20 mb-4" />
+                        <p className="text-base font-medium">在各模块标记重点 → 点击生成专属学习总结图</p>
+                        <p className="text-xs text-indigo-400 mt-2">支持 OpenRouter / SiliconFlow / OpenAI 图像模型</p>
+                    </div>
+                )}
+            </div>
+
+            {/* 3. Study Heatmap */}
             <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
 
             {/* 3. Forgetting Curve & Today's Task */}
@@ -143,47 +188,6 @@ const Dashboard = ({ onNavigate }) => {
                             AI 已根据进度调整复习队列，点击开始今日复习。
                         </div>
                     </div>
-                </div>
-
-                {/* Card: Daily Summary Image */}
-                <div className="md:col-span-2 bg-gradient-to-br from-slate-900 to-indigo-900 p-6 rounded-3xl shadow-lg border border-indigo-500/20 relative overflow-hidden">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <div className="flex items-center gap-2 text-white font-bold text-lg mb-1">
-                                <ImageIcon size={20} className="text-amber-400" />
-                                每日总结生图
-                            </div>
-                            <div className="text-indigo-300 text-sm">
-                                今日已标记 <span className="font-bold text-amber-400">{todayHighlights.length}</span> 条内容
-                            </div>
-                        </div>
-                        <button
-                            onClick={handleGenerateImage}
-                            disabled={isGeneratingImage || !todayHighlights.length}
-                            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
-                        >
-                            {isGeneratingImage ? (
-                                <><Loader2 size={16} className="animate-spin" /> 生成中...</>
-                            ) : (
-                                <><Sparkles size={16} /> 生成图片</>
-                            )}
-                        </button>
-                    </div>
-
-                    {dailyImage ? (
-                        <div className="rounded-xl overflow-hidden border border-white/10">
-                            <img
-                                src={dailyImage.startsWith('data:') ? dailyImage : dailyImage}
-                                alt="Daily Summary"
-                                className="w-full h-auto object-cover"
-                            />
-                        </div>
-                    ) : (
-                        <div className="h-48 rounded-xl bg-white/5 border border-dashed border-white/20 flex flex-col items-center justify-center text-indigo-300">
-                            <ImageIcon size={48} className="opacity-30 mb-3" />
-                            <p className="text-sm">点击“生成图片”创建今日学习总结</p>
-                        </div>
-                    )}
                 </div>
 
             </div>
