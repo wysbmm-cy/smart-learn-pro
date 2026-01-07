@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2 } from 'lucide-react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
 import { getHighlightsByDate } from '../services/db';
-import { generateDailySummaryImage } from '../services/ai';
+import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 
 const Dashboard = ({ onNavigate }) => {
     const { stats, settings, loadUserFlashcards, setFlashcardStartupState } = useApp();
@@ -17,7 +17,11 @@ const Dashboard = ({ onNavigate }) => {
     const [dailyImage, setDailyImage] = useState(null);
     const [isGeneratingImage, setIsGeneratingImage] = useState(false);
     const [todayHighlights, setTodayHighlights] = useState([]);
-    const [imageStyle, setImageStyle] = useState('cyberpunk'); // 'cyberpunk' or 'popart'
+    const [imageStyle, setImageStyle] = useState('cyberpunk');
+
+    // Story Comic State
+    const [storyComic, setStoryComic] = useState(null); // { imageUrl, styleName, storyTitle }
+    const [isGeneratingComic, setIsGeneratingComic] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -50,6 +54,28 @@ const Dashboard = ({ onNavigate }) => {
             alert('生成失败: ' + e.message);
         } finally {
             setIsGeneratingImage(false);
+        }
+    };
+
+    // Generate Story Comic (random style)
+    const handleGenerateComic = async () => {
+        if (!todayHighlights.length) {
+            alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
+            return;
+        }
+        setIsGeneratingComic(true);
+        try {
+            const result = await generateStoryComic(todayHighlights, settings);
+            if (result?.imageUrl) {
+                setStoryComic(result);
+            } else {
+                alert('漫画生成失败，请检查生图 API 配置');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('漫画生成失败: ' + e.message);
+        } finally {
+            setIsGeneratingComic(false);
         }
     };
 
@@ -154,7 +180,57 @@ const Dashboard = ({ onNavigate }) => {
                 )}
             </div>
 
-            {/* 3. Study Heatmap */}
+            {/* ⭐ 3. Story Comic - Random Art Style */}
+            <div className="bg-gradient-to-br from-rose-950 via-purple-950 to-indigo-950 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-purple-500/10 border border-purple-500/20 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-64 h-64 bg-pink-500 opacity-5 rounded-full blur-3xl -ml-20 -mt-20"></div>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                        <div className="flex items-center gap-3 text-white font-bold text-xl mb-2">
+                            <div className="p-2 bg-pink-500/20 rounded-xl">
+                                <BookMarked size={24} className="text-pink-400" />
+                            </div>
+                            今日故事漫画
+                        </div>
+                        <div className="text-purple-300 text-sm">
+                            AI 将标记内容变成冒险故事，随机画风生成
+                            {storyComic?.styleName && <span className="ml-2 px-2 py-0.5 bg-pink-500/20 text-pink-300 rounded-lg text-xs">{storyComic.styleName}</span>}
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleGenerateComic}
+                        disabled={isGeneratingComic || !todayHighlights.length}
+                        className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingComic ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-400 hover:to-purple-400 text-white shadow-pink-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                    >
+                        {isGeneratingComic ? (
+                            <><Loader2 size={18} className="animate-spin" /> AI 编剧+随机画风生成...</>
+                        ) : (
+                            <><BookMarked size={18} /> 生成故事漫画</>
+                        )}
+                    </button>
+                </div>
+
+                {storyComic?.imageUrl ? (
+                    <div className="space-y-3">
+                        <div className="text-center text-white font-bold text-lg">{storyComic.storyTitle}</div>
+                        <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                            <img
+                                src={storyComic.imageUrl}
+                                alt="Story Comic"
+                                className="w-full h-auto object-cover"
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <div className="h-56 rounded-2xl bg-white/5 border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-purple-300">
+                        <BookMarked size={56} className="opacity-20 mb-4" />
+                        <p className="text-base font-medium">AI 将学习内容变成冒险故事</p>
+                        <p className="text-xs text-purple-400 mt-2">支持 22+ 漫画画风：日漫 / 美漫 / 国漫 / 儿童卡通 / 特殊风格</p>
+                    </div>
+                )}
+            </div>
+
+            {/* 4. Study Heatmap */}
             <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
 
             {/* 3. Forgetting Curve & Today's Task */}

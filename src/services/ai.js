@@ -1200,3 +1200,137 @@ ${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
   }
   return data.data?.[0]?.url || data.data?.[0]?.b64_json;
 };
+
+// =====================================================
+// COMIC STYLES LIBRARY - 40+ Art Styles
+// =====================================================
+const COMIC_STYLES = {
+  // 日漫风格
+  shonen: { name: '少年热血风', prompt: 'Shonen manga style, dynamic action poses, exaggerated muscles, intense battle expressions, bold linework like Dragon Ball or One Piece' },
+  shojo: { name: '少女唯美风', prompt: 'Shojo manga style, huge sparkling eyes, flowery decorations, delicate lines, soft colors like Sailor Moon' },
+  seinen: { name: '写实青年风', prompt: 'Seinen manga realistic style, precise human anatomy, detailed backgrounds, mature themes like Slam Dunk or Berserk' },
+  ghibli: { name: '吉卜力风', prompt: 'Studio Ghibli style, warm hand-painted feel, natural lighting, cozy atmosphere, like Spirited Away' },
+  moe: { name: '萌系风格', prompt: 'Moe anime style, chibi proportions, big eyes small mouth, pastel colors, cute expressions' },
+  gekiga: { name: '暗黑剧画风', prompt: 'Gekiga style, harsh shadows, cinematic composition, gritty realistic feel like Akira by Otomo' },
+  cellshade: { name: '赛璐璐风', prompt: 'Classic 90s anime cell-shading, distinct color blocks, clean outlines, Evangelion aesthetic' },
+
+  // 美漫风格
+  superhero: { name: '超英写实风', prompt: 'American superhero comic style, precise anatomy, dynamic poses, dramatic shadows like Marvel/DC' },
+  noir: { name: '黑色电影风', prompt: 'Film Noir comic style, extreme black and white contrast, silhouettes, heavy shadows like Sin City' },
+  goldenage: { name: '复古黄金时代', prompt: 'Golden Age retro comic, Ben-Day dots, primary colors (red yellow blue), simple but bold lines like early Superman' },
+  spiderverse: { name: '波普涂鸦风', prompt: 'Spider-Verse style, mixed media collage, pop art effects, halftone patterns, grafitti urban feel' },
+  disney: { name: '迪士尼经典', prompt: 'Classic Disney animation style, round shapes, fluid squash and stretch, expressive characters' },
+
+  // 国漫风格
+  inkwash: { name: '水墨动画风', prompt: 'Chinese ink wash painting style, misty atmosphere, blend of void and solid, elegant brush strokes' },
+  neochinese: { name: '新中式写实', prompt: 'Neo-Chinese style, traditional Chinese color palette with modern 3D rendering' },
+  dunhuang: { name: '敦煌壁画风', prompt: 'Dunhuang mural style, ancient Chinese colors (vermillion, azurite), flowing lines, Buddhist art influence' },
+  webtoon: { name: '现代条漫风', prompt: 'Modern webtoon style, clean lines, soft gradients, simplified backgrounds, perfect for vertical reading' },
+
+  // 儿童卡通
+  flat: { name: '极简扁平风', prompt: 'Flat minimalist style, simple geometric shapes, no shadows, bold colors like Peppa Pig' },
+  chibi: { name: '粗线条Q版', prompt: 'Chibi style, very thick outlines, super-deformed proportions, cute expressions like Powerpuff Girls' },
+  claymation: { name: '粘土定格风', prompt: 'Claymation style, handmade clay texture, stop-motion feel like Shaun the Sheep' },
+  picturebook: { name: '绘本涂鸦风', prompt: 'Picture book illustration, crayon/watercolor texture, childlike charm like Winnie the Pooh' },
+
+  // 特殊风格
+  steampunk: { name: '蒸汽朋克风', prompt: 'Steampunk style, gears cogs brass pipes, Victorian industrial aesthetic, mechanical complexity' },
+  pixel: { name: '像素艺术风', prompt: 'Pixel art style, retro 8-bit game aesthetic, blocky sprites, limited color palette' },
+  cel3d: { name: '三渲二风格', prompt: '3D cel-shaded style, 3D models with 2D hand-drawn look like Guilty Gear' }
+};
+
+/**
+ * Generate Story Comic - Creates a story-based comic from highlights
+ * Uses a random art style and generates a narrative
+ */
+export const generateStoryComic = async (highlights, settings) => {
+  const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
+  const apiKey = settings.imageGenApiKey || settings.apiKey;
+  const model = settings.imageGenModel || 'dall-e-3';
+
+  if (!apiUrl || !apiKey || !highlights?.length) {
+    return null;
+  }
+
+  // === STEP 1: Pick Random Art Style ===
+  const styleKeys = Object.keys(COMIC_STYLES);
+  const randomKey = styleKeys[Math.floor(Math.random() * styleKeys.length)];
+  const selectedStyle = COMIC_STYLES[randomKey];
+
+  // === STEP 2: Use AI to Generate Story Scene ===
+  const storyPrompt = `你是一个创意漫画编剧。请根据以下学习内容，创作一个有趣的漫画场景描述。
+
+今日学习标记：
+${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
+
+请将这些内容转化为一个有趣的冒险故事场景。主角是一个正在学习的冒险者。
+用JSON格式返回：
+{
+  "scene": "场景描述（英文，100词以内，描述画面应该是什么样子，包括角色动作、环境、物品等）",
+  "storyTitle": "故事标题（中文，简短有趣）"
+}`;
+
+  let storyResult;
+  try {
+    const storyJson = await fetchFromAI([
+      { role: "system", content: "你是一个创意漫画编剧，擅长把学习内容变成有趣的冒险故事。只输出JSON。" },
+      { role: "user", content: storyPrompt }
+    ], settings, true);
+    storyResult = JSON.parse(storyJson);
+  } catch (e) {
+    console.error("Story generation error:", e);
+    storyResult = {
+      scene: "A young adventurer reading an ancient scroll in a mystical library, magical knowledge floating around as glowing symbols",
+      storyTitle: "知识冒险者"
+    };
+  }
+
+  // === STEP 3: Build Final Image Prompt ===
+  const finalPrompt = `${selectedStyle.prompt}. 
+SCENE: ${storyResult.scene}
+Create a single comic panel illustration. Dynamic composition, expressive characters, rich details. The image should tell a story visually. 8k quality, --ar 9:16`;
+
+  // === STEP 4: Generate Image ===
+  const cleanUrl = apiUrl.replace(/\/+$/, '');
+  const isOpenRouter = cleanUrl.includes('openrouter');
+  const isSiliconFlow = cleanUrl.includes('siliconflow');
+
+  let response;
+  if (isOpenRouter) {
+    response = await fetch(`${cleanUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: finalPrompt }],
+        modalities: ["image", "text"]
+      })
+    });
+  } else {
+    const endpoint = isSiliconFlow ? '/image/generations' : '/images/generations';
+    response = await fetch(`${cleanUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: model, prompt: finalPrompt, n: 1, size: "1024x1024" })
+    });
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Comic Gen Error: ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  let imageUrl;
+  if (isOpenRouter && data.choices?.[0]?.message?.images) {
+    imageUrl = data.choices[0].message.images[0]?.image_url?.url;
+  } else {
+    imageUrl = data.data?.[0]?.url || data.data?.[0]?.b64_json;
+  }
+
+  return {
+    imageUrl,
+    styleName: selectedStyle.name,
+    storyTitle: storyResult.storyTitle
+  };
+};
