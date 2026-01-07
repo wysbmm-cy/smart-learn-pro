@@ -1112,13 +1112,14 @@ export const checkImageGenConnection = async (settings) => {
  * @param {Array} highlights - Today's highlighted content
  * @param {Object} settings - API settings  
  * @param {string} style - 'cyberpunk' or 'popart'
+ * @param {Object} todayStats - Today's learning stats
  */
-export const generateDailySummaryImage = async (highlights, settings, style = 'cyberpunk') => {
+export const generateDailySummaryImage = async (highlights, settings, style = 'cyberpunk', todayStats = {}) => {
   const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
   const apiKey = settings.imageGenApiKey || settings.apiKey;
   const model = settings.imageGenModel || 'dall-e-3';
 
-  if (!apiUrl || !apiKey || !highlights?.length) {
+  if (!apiUrl || !apiKey) {
     return null;
   }
 
@@ -1126,11 +1127,24 @@ export const generateDailySummaryImage = async (highlights, settings, style = 'c
   const isOpenRouter = cleanUrl.includes('openrouter');
   const isSiliconFlow = cleanUrl.includes('siliconflow');
 
+  // Build stats display text
+  const statsText = `Words: ${todayStats.wordsLearned || 0}, Articles: ${todayStats.articlesRead || 0}, Notes: ${todayStats.notesCreated || 0}, Flashcards: ${todayStats.flashcardsReviewed || 0}`;
+
   // === STEP 1: Use Main AI to Analyze Highlights ===
-  const analysisPrompt = `你是一个学习助手，请分析以下今日学习标记内容，并提取用于生成图片的关键元素。
+  const highlightContent = highlights?.length
+    ? highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')
+    : '今日暂无标记内容，但用户有学习活动';
+
+  const analysisPrompt = `你是一个学习助手，请分析以下今日学习内容，并提取用于生成图片的关键元素。
+
+今日学习统计：
+- 学习单词数: ${todayStats.wordsLearned || 0}
+- 阅读文章数: ${todayStats.articlesRead || 0}
+- 创建笔记数: ${todayStats.notesCreated || 0}
+- 复习卡片数: ${todayStats.flashcardsReviewed || 0}
 
 今日标记内容：
-${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
+${highlightContent}
 
 请以JSON格式返回以下信息：
 {
@@ -1159,12 +1173,12 @@ ${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
     };
   }
 
-  // === STEP 2: Build Prompt from Template ===
+  // === STEP 2: Build Prompt from Template with Stats ===
   let prompt;
   if (style === 'popart') {
-    prompt = `Vertical UI design, layout structure follows the Battlefield 1 stats screen, but re-imagined in a vibrant POP ART COMIC BOOK style. ATMOSPHERE: Background is a dynamic comic book panel collage with explosion bubbles, speed lines, and halftone dot patterns. High-contrast clashing colors: bright yellow, red, electric blue, and black outlines. LAYOUT & ELEMENTS: Header: "DAILY POWER-UP!" in a huge, explosive comic title font. Left Column (Primary Slot): A dynamic, cel-shaded comic book illustration of ${analysisResult.mainObject} being ${analysisResult.actionVerb} with motion lines. The stats grid looks like a superhero's power-level card. Right Column: Three main stats are in jagged explosion speech bubbles with superhero icons. Secondary task slots are stylized comic panels with bold outlines showing icons of ${analysisResult.taskIcon1} and ${analysisResult.taskIcon2}. TYPOGRAPHY: Bold, blocky comic book fonts with heavy black outlines and drop shadows. Fun, energetic, impactful, 8k. --ar 9:16`;
+    prompt = `Vertical UI design, layout structure follows the Battlefield 1 stats screen, but re-imagined in a vibrant POP ART COMIC BOOK style. ATMOSPHERE: Background is a dynamic comic book panel collage with explosion bubbles, speed lines, and halftone dot patterns. High-contrast clashing colors: bright yellow, red, electric blue, and black outlines. LAYOUT & ELEMENTS: Header: "DAILY POWER-UP!" in a huge, explosive comic title font. Left Column (Primary Slot): A dynamic, cel-shaded comic book illustration of ${analysisResult.mainObject} being ${analysisResult.actionVerb} with motion lines. Below it: a stats grid showing [${statsText}] in comic panel style with progress bars. Right Column: Three main stats are in jagged explosion speech bubbles with superhero icons. Secondary task slots are stylized comic panels with bold outlines showing icons of ${analysisResult.taskIcon1} and ${analysisResult.taskIcon2}. TYPOGRAPHY: Bold, blocky comic book fonts with heavy black outlines and drop shadows. Fun, energetic, impactful, 8k. --ar 9:16`;
   } else {
-    prompt = `Vertical UI design, layout structure strictly follows the Battlefield 1 end-of-round stats screen, but with a CYBERPUNK NEON aesthetic. ATMOSPHERE: Background is a dense, futuristic cyberpunk city street at night with flying vehicles, drenched in neon rain and holographic ads (purple, cyan, magenta, electric blue light). Glitch art effects overlay the entire UI. LAYOUT & ELEMENTS: Header: Glowing neon text "DAILY NEON REPORT". Left Column (Primary Slot): A holographic, glowing wireframe render of ${analysisResult.mainObject} pulsating with electric blue light. Text name "${analysisResult.objectName}" in glowing cyan. The stats grid is a floating holographic HUD interface. Right Column: Three main stats icons are stylized glowing cybernetic implants or data chips. Secondary task slots show holographic icons of ${analysisResult.taskIcon1} and ${analysisResult.taskIcon2} with digital scanlines. TYPOGRAPHY: All text glows with neon light, looking like digital displays. High contrast, futuristic, energetic, 8k. --ar 9:16`;
+    prompt = `Vertical UI design, layout structure strictly follows the Battlefield 1 end-of-round stats screen, but with a CYBERPUNK NEON aesthetic. ATMOSPHERE: Background is a dense, futuristic cyberpunk city street at night with flying vehicles, drenched in neon rain and holographic ads (purple, cyan, magenta, electric blue light). Glitch art effects overlay the entire UI. LAYOUT & ELEMENTS: Header: Glowing neon text "DAILY NEON REPORT". Left Column (Primary Slot): A holographic, glowing wireframe render of ${analysisResult.mainObject} pulsating with electric blue light. Text name "${analysisResult.objectName}" in glowing cyan. The stats grid is a floating holographic HUD interface showing: [${statsText}] with cyan progress bars and glowing icons. Right Column: Three main stats icons are stylized glowing cybernetic implants or data chips. Secondary task slots show holographic icons of ${analysisResult.taskIcon1} and ${analysisResult.taskIcon2} with digital scanlines. TYPOGRAPHY: All text glows with neon light, looking like digital displays. High contrast, futuristic, energetic, 8k. --ar 9:16`;
   }
 
 

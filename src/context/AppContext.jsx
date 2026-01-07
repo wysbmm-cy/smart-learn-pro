@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession, getHighlightsByDate } from '../services/db';
+import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 
 const AppContext = createContext();
 
@@ -14,10 +15,10 @@ const DEFAULT_SETTINGS = {
     showMnemonic: true,
     showCollocations: true,
     showEtymology: false,
-    preloadAll: true, // Default to "Fast Mode" (Preload All)
-    writingLevel: "CET-6", // Default Writing Level
-    writingPrompt: "Strict examiner mode. Find all errors.", // Default Custom Prompt
-    vocabCount: "10-15", // Default vocabulary range
+    preloadAll: true,
+    writingLevel: "CET-6",
+    writingPrompt: "Strict examiner mode. Find all errors.",
+    vocabCount: "10-15",
     systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
     vocabAnalysisPrompt: `
   Role: Expert English Teacher.
@@ -25,23 +26,9 @@ const DEFAULT_SETTINGS = {
   Requirements:
   1. Summary: Chinese summary + Difficulty Level.
   2. Vocabulary: Extract {{vocabCount}} key words/phrases (prioritize academic). For each: Chinese meaning, mnemonic, usage tips.
-  3. Grammar: Identify 2-3 **truly advanced or noteworthy** syntactic structures (e.g., Inversion, Subjunctive, Participle Phrases, Complex Clauses). 
-     *   **Ignore** simple Subject-Verb-Object sentences.
-     *   Focus on sentence variety and rhetorical function.
-     *   Pattern: The abstract structure (e.g., "Not only... but also...").
-     *   Explanation: Why is this used? (e.g., "Emphasizes contrast...").
+  3. Grammar: Identify 2-3 **truly advanced or noteworthy** syntactic structures.
   
-  Output MUST be valid JSON with this structure:
-  {
-    "summary": "...",
-    "level": "CET-4/CET-6/IELTS/Advanced",
-    "vocabulary": [
-      { "word": "...", "phonetic": "...", "pos": "...", "meaning": "...", "entry": "...", "mnemonic": "...", "writing": "..." }
-    ],
-    "structures": [
-      { "pattern": "...", "type": "...", "explanation": "..." }
-    ]
-  }
+  Output MUST be valid JSON.
   `,
 
     // Audio API Settings (Separate)
@@ -108,6 +95,12 @@ export const AppProvider = ({ children }) => {
         return saved ? { ...defaultStats, ...JSON.parse(saved) } : defaultStats;
     });
 
+    // --- Background Tasks State (Global) ---
+    const [bgTasks, setBgTasks] = useState({
+        dailyImage: null, // { status: 'idle'|'loading'|'done'|'error', url: null, error: null }
+        storyComic: null  // { status: 'idle'|'loading'|'done'|'error', data: null, error: null }
+    });
+
     // --- Stats Helpers ---
     const logActivity = (type, count = 1) => {
         const todayStr = new Date().toISOString().split('T')[0];
@@ -123,6 +116,29 @@ export const AppProvider = ({ children }) => {
             localStorage.setItem('smartlearn_stats', JSON.stringify(newStats));
             return newStats;
         });
+    };
+
+    // --- Global Task Runners ---
+    const runDailyImageGeneration = async (highlights, style, todayStats) => {
+        setBgTasks(prev => ({ ...prev, dailyImage: { status: 'loading', url: null } }));
+        try {
+            const url = await generateDailySummaryImage(highlights, settings, style, todayStats);
+            setBgTasks(prev => ({ ...prev, dailyImage: { status: 'done', url } }));
+        } catch (e) {
+            console.error(e);
+            setBgTasks(prev => ({ ...prev, dailyImage: { status: 'error', error: e.message } }));
+        }
+    };
+
+    const runStoryComicGeneration = async (highlights) => {
+        setBgTasks(prev => ({ ...prev, storyComic: { status: 'loading', data: null } }));
+        try {
+            const result = await generateStoryComic(highlights, settings);
+            setBgTasks(prev => ({ ...prev, storyComic: { status: 'done', data: result } }));
+        } catch (e) {
+            console.error(e);
+            setBgTasks(prev => ({ ...prev, storyComic: { status: 'error', error: e.message } }));
+        }
     };
 
     // --- Core Action Wrappers ---
@@ -553,7 +569,10 @@ export const AppProvider = ({ children }) => {
         toggleAudioPlay,
         // Helpers
         saveFile,
-        deleteFile
+        deleteFile,
+        bgTasks,
+        runDailyImageGeneration,
+        runStoryComicGeneration
     };
 
     return (

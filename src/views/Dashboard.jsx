@@ -4,24 +4,43 @@ import { useApp } from '../context/AppContext';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
-import { getHighlightsByDate } from '../services/db';
+import { getHighlightsByDate, getFlashcards, getNotes, getHistory } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 
 const Dashboard = ({ onNavigate }) => {
-    const { stats, settings, loadUserFlashcards, setFlashcardStartupState } = useApp();
+    const {
+        stats,
+        settings,
+        loadUserFlashcards,
+        setFlashcardStartupState,
+        bgTasks,
+        runDailyImageGeneration,
+        runStoryComicGeneration
+    } = useApp();
+
     const hasKey = !!settings.apiKey;
     const [flashcards, setFlashcards] = useState([]);
     const [showGuide, setShowGuide] = useState(false);
-
-    // Daily Summary Image State
-    const [dailyImage, setDailyImage] = useState(null);
-    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
     const [todayHighlights, setTodayHighlights] = useState([]);
     const [imageStyle, setImageStyle] = useState('cyberpunk');
 
-    // Story Comic State
-    const [storyComic, setStoryComic] = useState(null); // { imageUrl, styleName, storyTitle }
-    const [isGeneratingComic, setIsGeneratingComic] = useState(false);
+    // --- Stats & Local State ---
+    const [todayStats, setTodayStats] = useState({
+        wordsLearned: 0,
+        articlesRead: 0,
+        notesCreated: 0,
+        flashcardsReviewed: 0
+    });
+
+    // Check if tasks are running globally
+    const isGeneratingImage = bgTasks.dailyImage?.status === 'loading';
+    const isGeneratingComic = bgTasks.storyComic?.status === 'loading';
+
+    // Get results from global state
+    const dailyImage = bgTasks.dailyImage?.url;
+    const storyComic = bgTasks.storyComic?.data;
+
+
 
     useEffect(() => {
         const load = async () => {
@@ -31,30 +50,38 @@ const Dashboard = ({ onNavigate }) => {
             // Load today's highlights
             const today = new Date().toISOString().split('T')[0];
             const highlights = await getHighlightsByDate(today);
-            setTodayHighlights(highlights);
+            setTodayHighlights(highlights || []);
+
+            // Calculate today's stats
+            try {
+                const allCards = await getFlashcards();
+                const allNotes = await getNotes();
+                const allHistory = await getHistory();
+
+                const todayCards = allCards.filter(c => c.lastReview && c.lastReview.startsWith(today));
+                const todayNotes = allNotes.filter(n => n.date && n.date.startsWith(today));
+                const todayArticles = allHistory.filter(h => h.date && h.date.startsWith(today));
+
+                setTodayStats({
+                    wordsLearned: todayCards.reduce((acc, c) => acc + (c.reviews || 1), 0),
+                    articlesRead: todayArticles.length,
+                    notesCreated: todayNotes.length,
+                    flashcardsReviewed: todayCards.length
+                });
+            } catch (e) {
+                console.error('Stats loading error:', e);
+            }
         };
         load();
     }, []);
 
     const handleGenerateImage = async () => {
-        if (!todayHighlights.length) {
-            alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
+        if (!todayHighlights.length && !todayStats.articlesRead) {
+            alert('今日暂无标记内容或学习数据。请先在各模块中学习并标记重点！');
             return;
         }
-        setIsGeneratingImage(true);
-        try {
-            const imageUrl = await generateDailySummaryImage(todayHighlights, settings, imageStyle);
-            if (imageUrl) {
-                setDailyImage(imageUrl);
-            } else {
-                alert('图片生成失败，请检查生图 API 配置');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('生成失败: ' + e.message);
-        } finally {
-            setIsGeneratingImage(false);
-        }
+        // Run in background (Global Context)
+        runDailyImageGeneration(todayHighlights, imageStyle, todayStats);
     };
 
     // Generate Story Comic (random style)
@@ -63,20 +90,8 @@ const Dashboard = ({ onNavigate }) => {
             alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
             return;
         }
-        setIsGeneratingComic(true);
-        try {
-            const result = await generateStoryComic(todayHighlights, settings);
-            if (result?.imageUrl) {
-                setStoryComic(result);
-            } else {
-                alert('漫画生成失败，请检查生图 API 配置');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('漫画生成失败: ' + e.message);
-        } finally {
-            setIsGeneratingComic(false);
-        }
+        // Run in background (Global Context)
+        runStoryComicGeneration(todayHighlights);
     };
 
     return (
@@ -151,8 +166,8 @@ const Dashboard = ({ onNavigate }) => {
                         </button>
                         <button
                             onClick={handleGenerateImage}
-                            disabled={isGeneratingImage || !todayHighlights.length}
-                            className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 shadow-amber-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                            disabled={isGeneratingImage || (!todayHighlights.length && !todayStats.articlesRead)}
+                            className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : (todayHighlights.length || todayStats.articlesRead) ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 shadow-amber-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
                         >
                             {isGeneratingImage ? (
                                 <><Loader2 size={18} className="animate-spin" /> AI 分析+生图中...</>
