@@ -1075,21 +1075,28 @@ export const checkImageGenConnection = async (settings) => {
   }
 
   const cleanUrl = apiUrl.replace(/\/+$/, '');
+  const isOpenRouter = cleanUrl.includes('openrouter');
+  const isSiliconFlow = cleanUrl.includes('siliconflow');
 
-  // Try to call the images/generations endpoint with a minimal request
-  const response = await fetch(`${cleanUrl}/images/generations`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: model,
-      prompt: "A simple blue dot on white background",
-      n: 1,
-      size: "256x256" // Smallest size for testing
-    })
-  });
+  let response;
+  if (isOpenRouter) {
+    response = await fetch(`${cleanUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: "Generate a simple blue circle" }],
+        modalities: ["image", "text"]
+      })
+    });
+  } else {
+    const endpoint = isSiliconFlow ? '/image/generations' : '/images/generations';
+    response = await fetch(`${cleanUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: model, prompt: "A simple blue circle", n: 1, size: "1024x1024" })
+    });
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -1113,6 +1120,8 @@ export const generateDailySummaryImage = async (highlights, settings) => {
   }
 
   const cleanUrl = apiUrl.replace(/\/+$/, '');
+  const isOpenRouter = cleanUrl.includes('openrouter');
+  const isSiliconFlow = cleanUrl.includes('siliconflow');
 
   // Build prompt from highlights
   const summaryText = highlights.map(h => `- ${h.content}`).join('\n');
@@ -1125,19 +1134,25 @@ ${summaryText.substring(0, 500)}
 Make it look like a premium daily learning achievement card with subtle illustrations.
 Do NOT include any text or words, only abstract visual representations.`;
 
-  const response = await fetch(`${cleanUrl}/images/generations`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: model,
-      prompt: prompt,
-      n: 1,
-      size: "1024x1024"
-    })
-  });
+  let response;
+  if (isOpenRouter) {
+    response = await fetch(`${cleanUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+        modalities: ["image", "text"]
+      })
+    });
+  } else {
+    const endpoint = isSiliconFlow ? '/image/generations' : '/images/generations';
+    response = await fetch(`${cleanUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: model, prompt: prompt, n: 1, size: "1024x1024" })
+    });
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -1145,6 +1160,9 @@ Do NOT include any text or words, only abstract visual representations.`;
   }
 
   const data = await response.json();
-  // Returns URL or base64 depending on API
+  // OpenRouter returns in choices[0].message.images
+  if (isOpenRouter && data.choices?.[0]?.message?.images) {
+    return data.choices[0].message.images[0]?.image_url?.url;
+  }
   return data.data?.[0]?.url || data.data?.[0]?.b64_json;
 };
