@@ -101,8 +101,8 @@ const Dashboard = ({ onNavigate }) => {
             {/* 1. Hero Banner - The Blue Gradient Card */}
             <div className="w-full bg-gradient-to-r from-[#3B82F6] to-[#4F46E5] rounded-[2rem] p-8 md:p-10 shadow-xl shadow-blue-500/20 text-white relative overflow-hidden flex flex-col justify-center min-h-[220px]">
                 {/* Background Circles for decoration */}
-                <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                <div className="absolute bottom-0 left-20 w-64 h-64 bg-indigo-300 opacity-10 rounded-full blur-2xl"></div>
+                <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                <div className="absolute bottom-0 left-20 w-64 h-64 bg-indigo-300 opacity-10 rounded-full blur-2xl pointer-events-none"></div>
 
                 <div className="relative z-10 max-w-2xl">
                     <h1 className="text-3xl md:text-4xl font-bold mb-3 tracking-tight text-white">
@@ -136,8 +136,8 @@ const Dashboard = ({ onNavigate }) => {
 
             {/* ⭐ 2. Daily Summary Image - PROMINENT POSITION */}
             <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-900 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-indigo-500/10 border border-indigo-500/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500 opacity-5 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500 opacity-5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 relative z-10">
                     <div>
                         <div className="flex items-center gap-3 text-white font-bold text-xl mb-2">
                             <div className="p-2 bg-amber-500/20 rounded-xl">
@@ -197,8 +197,8 @@ const Dashboard = ({ onNavigate }) => {
 
             {/* ⭐ 3. Story Comic - Random Art Style */}
             <div className="bg-gradient-to-br from-rose-950 via-purple-950 to-indigo-950 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-purple-500/10 border border-purple-500/20 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-64 h-64 bg-pink-500 opacity-5 rounded-full blur-3xl -ml-20 -mt-20"></div>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div className="absolute top-0 left-0 w-64 h-64 bg-pink-500 opacity-5 rounded-full blur-3xl -ml-20 -mt-20 pointer-events-none"></div>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 relative z-10">
                     <div>
                         <div className="flex items-center gap-3 text-white font-bold text-xl mb-2">
                             <div className="p-2 bg-pink-500/20 rounded-xl">
