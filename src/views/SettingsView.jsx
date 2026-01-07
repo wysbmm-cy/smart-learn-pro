@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { checkConnection, checkAudioConnection, checkTTSConnection } from '../services/ai';
+import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection } from '../services/ai';
 
 const SettingsView = () => {
     const { settings, updateSetting, exportUserData, saveFile, deleteFile } = useApp();
     const [connectionStatus, setConnectionStatus] = useState('idle');
     const [audioConnectionStatus, setAudioConnectionStatus] = useState('idle');
     const [ttsConnectionStatus, setTtsConnectionStatus] = useState('idle');
+    const [imageGenConnectionStatus, setImageGenConnectionStatus] = useState('idle');
 
     const handleTest = async () => {
         if (!settings.apiKey) return;
@@ -47,6 +48,20 @@ const SettingsView = () => {
             setTtsConnectionStatus('error');
             alert("TTS Test Failed: " + e.message);
             setTimeout(() => setTtsConnectionStatus('idle'), 3000);
+        }
+    };
+
+    const handleImageGenTest = async () => {
+        setImageGenConnectionStatus('testing');
+        try {
+            await checkImageGenConnection(settings);
+            setImageGenConnectionStatus('success');
+            setTimeout(() => setImageGenConnectionStatus('idle'), 3000);
+        } catch (e) {
+            console.error(e);
+            setImageGenConnectionStatus('error');
+            alert("生图 API 测试失败: " + e.message);
+            setTimeout(() => setImageGenConnectionStatus('idle'), 3000);
         }
     };
 
@@ -388,6 +403,29 @@ const SettingsView = () => {
                             <Server size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
                         </div>
                         <p className="text-[11px] text-slate-400 mt-2 ml-1">如果生图 API 与主 API 使用不同的 Key，请在此填写</p>
+                    </div>
+
+                    {/* Test Button */}
+                    <div className="md:col-span-2">
+                        <button
+                            onClick={handleImageGenTest}
+                            disabled={imageGenConnectionStatus === 'testing'}
+                            className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${imageGenConnectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
+                                imageGenConnectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
+                                    'bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-200'
+                                }`}
+                        >
+                            {imageGenConnectionStatus === 'testing' ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : imageGenConnectionStatus === 'success' ? (
+                                <><CheckCircle size={16} /> 生图成功！</>
+                            ) : imageGenConnectionStatus === 'error' ? (
+                                <><X size={16} /> 连接失败</>
+                            ) : (
+                                <><ImageIcon size={16} /> 测试生图 API</>
+                            )}
+                        </button>
+                        <p className="text-[11px] text-slate-400 mt-2 ml-1">测试会生成一张小图片，可能会消耗少量 API 额度</p>
                     </div>
                 </div>
             </div>

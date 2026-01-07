@@ -1057,3 +1057,94 @@ export const generateRemediationDrills = async (diagnosis, settings, count = 5) 
     return [];
   }
 };
+
+// =====================================================
+// IMAGE GENERATION API
+// =====================================================
+
+/**
+ * Test Image Generation API Connection
+ */
+export const checkImageGenConnection = async (settings) => {
+  const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
+  const apiKey = settings.imageGenApiKey || settings.apiKey;
+  const model = settings.imageGenModel || 'dall-e-3';
+
+  if (!apiUrl || !apiKey) {
+    throw new Error("Missing Image API URL or Key");
+  }
+
+  const cleanUrl = apiUrl.replace(/\/+$/, '');
+
+  // Try to call the images/generations endpoint with a minimal request
+  const response = await fetch(`${cleanUrl}/images/generations`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: model,
+      prompt: "A simple blue dot on white background",
+      n: 1,
+      size: "256x256" // Smallest size for testing
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API Error: ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  return data; // Returns the generated image data
+};
+
+/**
+ * Generate Daily Summary Image
+ */
+export const generateDailySummaryImage = async (highlights, settings) => {
+  const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
+  const apiKey = settings.imageGenApiKey || settings.apiKey;
+  const model = settings.imageGenModel || 'dall-e-3';
+
+  if (!apiUrl || !apiKey || !highlights?.length) {
+    return null;
+  }
+
+  const cleanUrl = apiUrl.replace(/\/+$/, '');
+
+  // Build prompt from highlights
+  const summaryText = highlights.map(h => `- ${h.content}`).join('\n');
+
+  const prompt = `Create a beautiful, inspiring learning summary card design. 
+Style: Modern minimalist, gradient background (blue to purple), clean typography.
+Content to visualize:
+${summaryText.substring(0, 500)}
+
+Make it look like a premium daily learning achievement card with subtle illustrations.
+Do NOT include any text or words, only abstract visual representations.`;
+
+  const response = await fetch(`${cleanUrl}/images/generations`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: model,
+      prompt: prompt,
+      n: 1,
+      size: "1024x1024"
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Image Gen Error: ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  // Returns URL or base64 depending on API
+  return data.data?.[0]?.url || data.data?.[0]?.b64_json;
+};

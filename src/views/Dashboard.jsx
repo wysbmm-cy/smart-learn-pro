@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen } from 'lucide-react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
+import { getHighlightsByDate } from '../services/db';
+import { generateDailySummaryImage } from '../services/ai';
 
 const Dashboard = ({ onNavigate }) => {
     const { stats, settings, loadUserFlashcards, setFlashcardStartupState } = useApp();
@@ -11,13 +13,44 @@ const Dashboard = ({ onNavigate }) => {
     const [flashcards, setFlashcards] = useState([]);
     const [showGuide, setShowGuide] = useState(false);
 
+    // Daily Summary Image State
+    const [dailyImage, setDailyImage] = useState(null);
+    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+    const [todayHighlights, setTodayHighlights] = useState([]);
+
     useEffect(() => {
         const load = async () => {
             const cards = await loadUserFlashcards();
             setFlashcards(cards);
+
+            // Load today's highlights
+            const today = new Date().toISOString().split('T')[0];
+            const highlights = await getHighlightsByDate(today);
+            setTodayHighlights(highlights);
         };
         load();
     }, []);
+
+    const handleGenerateImage = async () => {
+        if (!todayHighlights.length) {
+            alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
+            return;
+        }
+        setIsGeneratingImage(true);
+        try {
+            const imageUrl = await generateDailySummaryImage(todayHighlights, settings);
+            if (imageUrl) {
+                setDailyImage(imageUrl);
+            } else {
+                alert('图片生成失败，请检查生图 API 配置');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('生成失败: ' + e.message);
+        } finally {
+            setIsGeneratingImage(false);
+        }
+    };
 
     return (
         <div className="space-y-6 animate-fade-in pb-10 relative">
@@ -110,6 +143,47 @@ const Dashboard = ({ onNavigate }) => {
                             AI 已根据进度调整复习队列，点击开始今日复习。
                         </div>
                     </div>
+                </div>
+
+                {/* Card: Daily Summary Image */}
+                <div className="md:col-span-2 bg-gradient-to-br from-slate-900 to-indigo-900 p-6 rounded-3xl shadow-lg border border-indigo-500/20 relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <div className="flex items-center gap-2 text-white font-bold text-lg mb-1">
+                                <ImageIcon size={20} className="text-amber-400" />
+                                每日总结生图
+                            </div>
+                            <div className="text-indigo-300 text-sm">
+                                今日已标记 <span className="font-bold text-amber-400">{todayHighlights.length}</span> 条内容
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleGenerateImage}
+                            disabled={isGeneratingImage || !todayHighlights.length}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                        >
+                            {isGeneratingImage ? (
+                                <><Loader2 size={16} className="animate-spin" /> 生成中...</>
+                            ) : (
+                                <><Sparkles size={16} /> 生成图片</>
+                            )}
+                        </button>
+                    </div>
+
+                    {dailyImage ? (
+                        <div className="rounded-xl overflow-hidden border border-white/10">
+                            <img
+                                src={dailyImage.startsWith('data:') ? dailyImage : dailyImage}
+                                alt="Daily Summary"
+                                className="w-full h-auto object-cover"
+                            />
+                        </div>
+                    ) : (
+                        <div className="h-48 rounded-xl bg-white/5 border border-dashed border-white/20 flex flex-col items-center justify-center text-indigo-300">
+                            <ImageIcon size={48} className="opacity-30 mb-3" />
+                            <p className="text-sm">点击“生成图片”创建今日学习总结</p>
+                        </div>
+                    )}
                 </div>
 
             </div>
