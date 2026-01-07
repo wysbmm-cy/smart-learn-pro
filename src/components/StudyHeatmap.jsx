@@ -15,10 +15,10 @@ const StudyHeatmap = ({ dailyActivity }) => {
 
     const getColor = (count) => {
         if (!count) return 'bg-slate-100';
-        if (count < 5) return 'bg-green-200';
-        if (count < 10) return 'bg-green-400';
-        if (count < 20) return 'bg-green-600';
-        return 'bg-green-800';
+        if (count < 10) return 'bg-green-200'; // Light effort
+        if (count < 30) return 'bg-green-400'; // Moderate effort
+        if (count < 60) return 'bg-green-600'; // High effort
+        return 'bg-green-800';                 // Extreme effort (60+ items)
     };
 
     const formatDate = (date) => {
