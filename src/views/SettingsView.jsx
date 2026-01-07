@@ -328,6 +328,70 @@ const SettingsView = () => {
                 </div>
             </div>
 
+            {/* Image Generation API Card */}
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                    <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                        <ImageIcon size={20} />
+                    </div>
+                    <h3 className="text-lg">配置图像生成 API (每日总结生图)</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Image Gen Base URL */}
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            Image API Endpoint URL
+                        </label>
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={settings.imageGenApiUrl || ''}
+                                onChange={(e) => updateSetting('imageGenApiUrl', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-white focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-medium text-slate-700"
+                                placeholder="e.g. https://api.openai.com/v1 or https://api.siliconflow.cn/v1"
+                            />
+                            <Wifi size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                        </div>
+                    </div>
+
+                    {/* Image Gen Model Name */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            Image Model Name
+                        </label>
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={settings.imageGenModel || 'dall-e-3'}
+                                onChange={(e) => updateSetting('imageGenModel', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-white focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-medium text-slate-700"
+                            />
+                            <Box size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-2 ml-1">e.g. <b>dall-e-3</b> (OpenAI) or <b>Kwai-Kolors/Kolors</b> (SiliconFlow)</p>
+                    </div>
+
+                    {/* Image Gen API Key */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            Image API Key (Optional)
+                        </label>
+                        <div className="relative group">
+                            <input
+                                type="password"
+                                value={settings.imageGenApiKey || ''}
+                                onChange={(e) => updateSetting('imageGenApiKey', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-white focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-medium text-slate-700"
+                                placeholder="留空则使用主 API Key"
+                            />
+                            <Server size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-2 ml-1">如果生图 API 与主 API 使用不同的 Key，请在此填写</p>
+                    </div>
+                </div>
+            </div>
+
             {/* System Prompt Card */}
             <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
                 <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">

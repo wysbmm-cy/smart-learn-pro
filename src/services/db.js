@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 10; // Bumped for A.I.R. System (Drill Logs & Diagnosis)
+const DB_VERSION = 11; // Bumped for Daily Highlights (Bookmark System)
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -91,6 +91,13 @@ export const initDB = () => {
             // Learning Diagnosis (Daily reports)
             if (!db.objectStoreNames.contains('learning_diagnosis')) {
                 const diagnosisStore = db.createObjectStore('learning_diagnosis', { keyPath: 'date' }); // YYYY-MM-DD
+            }
+
+            // --- NEW V11 STORE (Daily Summary Highlights) ---
+            if (!db.objectStoreNames.contains('daily_highlights')) {
+                const highlightStore = db.createObjectStore('daily_highlights', { keyPath: 'id' });
+                highlightStore.createIndex('date', 'date', { unique: false });
+                highlightStore.createIndex('type', 'type', { unique: false });
             }
         };
 
@@ -223,6 +230,65 @@ export const getDiagnosis = async (date) => {
     return new Promise((resolve, reject) => {
         const request = store.get(date);
         request.onsuccess = () => resolve(request.result ? request.result.diagnosis : null);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// --- Daily Highlights (Bookmark System) CRUD ---
+
+// Save a highlight/bookmark
+export const saveHighlight = async (highlight) => {
+    // highlight: { type, sourceId, content, context, date }
+    const db = await initDB();
+    const tx = db.transaction('daily_highlights', 'readwrite');
+    const store = tx.objectStore('daily_highlights');
+    return new Promise((resolve, reject) => {
+        const request = store.put({
+            ...highlight,
+            id: highlight.id || crypto.randomUUID(),
+            timestamp: Date.now()
+        });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Get highlights by date
+export const getHighlightsByDate = async (date) => {
+    const db = await initDB();
+    const tx = db.transaction('daily_highlights', 'readonly');
+    const store = tx.objectStore('daily_highlights');
+    const index = store.index('date');
+    return new Promise((resolve, reject) => {
+        const request = index.getAll(date);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Get all highlights (for summary generation)
+export const getAllHighlights = async () => {
+    const db = await initDB();
+    const tx = db.transaction('daily_highlights', 'readonly');
+    const store = tx.objectStore('daily_highlights');
+    return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const results = request.result.sort((a, b) => b.timestamp - a.timestamp);
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// Delete a highlight
+export const deleteHighlight = async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('daily_highlights', 'readwrite');
+    const store = tx.objectStore('daily_highlights');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
 };

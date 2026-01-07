@@ -6,9 +6,10 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import {
     NotebookPen, Plus, Search, Trash2, Save, Folder, FolderPlus,
-    PanelLeft, Eye, EyeOff, FileText, MoreVertical, FileDown, ChevronRight, ChevronDown
+    PanelLeft, Eye, EyeOff, FileText, MoreVertical, FileDown, ChevronRight, ChevronDown, Bookmark
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { saveHighlight } from '../services/db';
 
 const NotesView = () => {
     const { loadUserNotes, saveToNotes, removeNoteItem } = useApp();
@@ -203,12 +204,31 @@ const NotesView = () => {
                                     </span>
                                 )}
                             </div>
-                            <button
-                                onClick={(e) => handleDelete(e, note.id)}
-                                className="absolute right-2 top-2 p-1.5 text-slate-500 hover:text-red-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <Trash2 size={12} />
-                            </button>
+                            <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await saveHighlight({
+                                            type: 'note',
+                                            sourceId: note.id,
+                                            content: note.title,
+                                            context: note.content?.substring(0, 100) || '',
+                                            date: new Date().toISOString().split('T')[0]
+                                        });
+                                        alert('已标记到每日总结！');
+                                    }}
+                                    className="p-1.5 text-amber-400 hover:text-amber-300 rounded-full"
+                                    title="标记到每日总结"
+                                >
+                                    <Bookmark size={12} />
+                                </button>
+                                <button
+                                    onClick={(e) => handleDelete(e, note.id)}
+                                    className="p-1.5 text-slate-500 hover:text-red-400 rounded-full"
+                                >
+                                    <Trash2 size={12} />
+                                </button>
+                            </div>
                         </div>
                     ))}
                     {filteredNotes.length === 0 && (

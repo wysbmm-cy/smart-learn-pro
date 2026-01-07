@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
-import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, ArrowRightLeft, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen } from 'lucide-react';
+import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, ArrowRightLeft, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen, Bookmark } from 'lucide-react';
 // ... (Top imports)
-import { saveWriting, getWritings, deleteWriting, saveNote, getFolders } from '../services/db';
+import { saveWriting, getWritings, deleteWriting, saveNote, getFolders, saveHighlight } from '../services/db';
 import { analyzeWriting, generateTranslationChallenge, gradeTranslation } from '../services/ai';
 import { writingTemplates } from '../data/writingTemplates';
 import DiffViewer from '../components/DiffViewer';
@@ -584,12 +584,30 @@ const WriterView = () => {
                                                     </button>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => setAnalysis(null)}
-                                                className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs font-bold"
-                                            >
-                                                <X size={16} /> 关闭
-                                            </button>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={async () => {
+                                                        await saveHighlight({
+                                                            type: 'writing',
+                                                            sourceId: currentId || 'draft',
+                                                            content: `写作分析: ${analysis.score}/15 - ${analysis.level}`,
+                                                            context: analysis.comment || title,
+                                                            date: new Date().toISOString().split('T')[0]
+                                                        });
+                                                        toast.success('已标记到每日总结！');
+                                                    }}
+                                                    className="p-2 hover:bg-amber-500/20 rounded-lg text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1 text-xs font-bold"
+                                                    title="标记到每日总结"
+                                                >
+                                                    <Bookmark size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setAnalysis(null)}
+                                                    className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs font-bold"
+                                                >
+                                                    <X size={16} /> 关闭
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {viewMode === 'report' && (

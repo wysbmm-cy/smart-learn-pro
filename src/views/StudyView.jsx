@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, NotebookPen, Layers, Sparkles, X, Loader, FileText } from 'lucide-react';
+import { Brain, NotebookPen, Layers, Sparkles, X, Loader, FileText, Bookmark } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import WordCard from '../components/WordCard';
 import { generateDeepWordAnalysis, sendChatMessage, generateQuickDefinition } from '../services/ai';
-import { getFolders, saveFolder } from '../services/db';
+import { getFolders, saveFolder, saveHighlight } from '../services/db';
 import ArticleActionMenu from '../components/ArticleActionMenu';
 import TranslationBubble from '../components/TranslationBubble';
 
@@ -259,13 +259,32 @@ const StudyView = ({ onNavigate }) => {
                             <Brain size={20} />
                             <span>AI 智能总结</span>
                         </div>
-                        <button
-                            onClick={handleSaveNote}
-                            className="bg-white text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1 opacity-0 group-hover:opacity-100"
-                        >
-                            <NotebookPen size={12} />
-                            保存到笔记
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={async () => {
+                                    await saveHighlight({
+                                        type: 'article',
+                                        sourceId: 'current_analysis',
+                                        content: analysisResult.summary,
+                                        context: `文章级别: ${analysisResult.level || '未知'}`,
+                                        date: new Date().toISOString().split('T')[0]
+                                    });
+                                    alert('已标记到每日总结！');
+                                }}
+                                className="bg-white text-amber-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border border-amber-100 hover:bg-amber-500 hover:text-white transition-all flex items-center gap-1 opacity-0 group-hover:opacity-100"
+                                title="标记到每日总结"
+                            >
+                                <Bookmark size={12} />
+                                标记
+                            </button>
+                            <button
+                                onClick={handleSaveNote}
+                                className="bg-white text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1 opacity-0 group-hover:opacity-100"
+                            >
+                                <NotebookPen size={12} />
+                                保存到笔记
+                            </button>
+                        </div>
                     </div>
                     <p className="text-indigo-900/80 text-sm leading-relaxed">
                         {analysisResult.summary}
