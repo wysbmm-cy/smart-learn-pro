@@ -1,14 +1,29 @@
 import React, { useState } from 'react';
-import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock } from 'lucide-react';
+import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection } from '../services/ai';
 
 const SettingsView = () => {
-    const { settings, updateSetting, exportUserData, saveFile, deleteFile } = useApp();
+    const { settings, updateSetting, exportUserData, saveFile, deleteFile, addCustomStyle, removeCustomStyle } = useApp();
     const [connectionStatus, setConnectionStatus] = useState('idle');
     const [audioConnectionStatus, setAudioConnectionStatus] = useState('idle');
     const [ttsConnectionStatus, setTtsConnectionStatus] = useState('idle');
     const [imageGenConnectionStatus, setImageGenConnectionStatus] = useState('idle');
+
+    // Custom Style Form
+    const [newStyleName, setNewStyleName] = useState('');
+    const [newStylePrompt, setNewStylePrompt] = useState('');
+
+    const handleAddStyle = () => {
+        if (!newStyleName.trim() || !newStylePrompt.trim()) return;
+        addCustomStyle({
+            id: Date.now().toString(),
+            name: newStyleName.trim(),
+            prompt: newStylePrompt.trim()
+        });
+        setNewStyleName('');
+        setNewStylePrompt('');
+    };
 
     const handleTest = async () => {
         if (!settings.apiKey) return;
@@ -558,6 +573,95 @@ const SettingsView = () => {
                         <p className="text-[11px] text-slate-400 mt-2">
                             Set a target range (e.g. "15-20") or fixed number for key word extraction.
                         </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Custom Comic Styles Settings */}
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                    <div className="p-2 bg-pink-50 text-pink-600 rounded-lg">
+                        <BookMarked size={20} />
+                    </div>
+                    <h3 className="text-lg">自定义漫画风格 (Design Your Comic Style)</h3>
+                </div>
+
+                {/* List Existing Custom Styles */}
+                <div className="mb-8">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Your Custom Styles
+                    </label>
+                    <div className="space-y-3">
+                        {settings.customStyles?.length > 0 ? (
+                            settings.customStyles.map(style => (
+                                <div key={style.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl group hover:border-pink-200 hover:bg-pink-50/30 transition-all">
+                                    <div className="flex-1 min-w-0 mr-4">
+                                        <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                            {style.name}
+                                            <span className="text-[10px] bg-pink-100 text-pink-600 px-1.5 py-0.5 rounded font-medium">Custom</span>
+                                        </div>
+                                        <div className="text-xs text-slate-500 truncate mt-1 font-mono">{style.prompt}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => removeCustomStyle(style.id)}
+                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                        title="Delete Style"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-6 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                <BookMarked className="mx-auto mb-2 opacity-20" size={32} />
+                                <p className="text-xs">还没有自定义风格。添加您喜欢的画风，AI将在生成漫画时随机使用。</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Add New Style Form */}
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                    <h4 className="font-bold text-sm mb-4 text-slate-800 flex items-center gap-2">
+                        <Plus size={16} className="text-pink-500" /> 添加新风格
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                                Style Name (风格名称)
+                            </label>
+                            <input
+                                type="text"
+                                value={newStyleName}
+                                onChange={(e) => setNewStyleName(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-pink-500 focus:ring-4 focus:ring-pink-500/10 outline-none transition-all"
+                                placeholder="e.g. 进击的巨人风"
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                                AI Prompt (画风描述/关键词)
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newStylePrompt}
+                                    onChange={(e) => setNewStylePrompt(e.target.value)}
+                                    className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-pink-500 focus:ring-4 focus:ring-pink-500/10 outline-none transition-all font-mono"
+                                    placeholder="e.g. rough lines, dark atmosphere..."
+                                />
+                                <button
+                                    onClick={handleAddStyle}
+                                    disabled={!newStyleName.trim() || !newStylePrompt.trim()}
+                                    className="px-4 py-2 bg-pink-500 text-white rounded-xl font-bold text-xs hover:bg-pink-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-pink-200 transition-all"
+                                >
+                                    Add
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1.5">
+                                <b>Tip:</b> 使用英文描述效果最佳。可以参考 Midjourney/Stable Diffusion 的画风提示词。
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>

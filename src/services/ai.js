@@ -1250,14 +1250,18 @@ const COMIC_STYLES = {
   // 特殊风格
   steampunk: { name: '蒸汽朋克风', prompt: 'Steampunk style, gears cogs brass pipes, Victorian industrial aesthetic, mechanical complexity' },
   pixel: { name: '像素艺术风', prompt: 'Pixel art style, retro 8-bit game aesthetic, blocky sprites, limited color palette' },
-  cel3d: { name: '三渲二风格', prompt: '3D cel-shaded style, 3D models with 2D hand-drawn look like Guilty Gear' }
+  cel3d: { name: '三渲二风格', prompt: '3D cel-shaded style, 3D models with 2D hand-drawn look like Guilty Gear' },
+
+  // 经典神作
+  aot: { name: '进击的巨人风', prompt: 'Attack on Titan style (Shingeki no Kyojin), rough and oppressive atmosphere, body distortion aesthetics, hard lines, thick shadow lines (hatching), intense expressions, desolate world, raw power, WIT Studio / MAPPA style blend' },
+  steinsgate: { name: '命运石之门风', prompt: 'Steins;Gate style, huke art style, distinctive psychedelic eyes with concentric circles, granular texture, metallic feel, desaturated cold tones, visual novel aesthetic, white lab coat sci-fi vibe' }
 };
 
 /**
  * Generate Story Comic - Creates a story-based comic from highlights
  * Uses a random art style and generates a narrative
  */
-export const generateStoryComic = async (highlights, settings) => {
+export const generateStoryComic = async (highlights, settings, customStyles = []) => {
   const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
   const apiKey = settings.imageGenApiKey || settings.apiKey;
   const model = settings.imageGenModel || 'dall-e-3';
@@ -1267,9 +1271,21 @@ export const generateStoryComic = async (highlights, settings) => {
   }
 
   // === STEP 1: Pick Random Art Style ===
-  const styleKeys = Object.keys(COMIC_STYLES);
+  let stylePool = { ...COMIC_STYLES };
+
+  // Merge custom styles
+  if (Array.isArray(customStyles) && customStyles.length > 0) {
+    customStyles.forEach(s => {
+      if (s.name && s.prompt) {
+        const key = s.id || `custom_${Date.now()}_${Math.random()}`;
+        stylePool[key] = s;
+      }
+    });
+  }
+
+  const styleKeys = Object.keys(stylePool);
   const randomKey = styleKeys[Math.floor(Math.random() * styleKeys.length)];
-  const selectedStyle = COMIC_STYLES[randomKey];
+  const selectedStyle = stylePool[randomKey];
 
   // === STEP 2: Use AI to Generate Story Scene ===
   const storyPrompt = `你是一个创意漫画编剧。请根据以下学习内容，创作一个有趣的漫画场景描述。

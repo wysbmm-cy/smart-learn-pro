@@ -51,6 +51,7 @@ const DEFAULT_SETTINGS = {
     showPomodoro: true,
     pomodoroFocus: 25,
     pomodoroBreak: 5,
+    customStyles: []
 };
 
 // Initial Mock Analysis
@@ -145,7 +146,7 @@ export const AppProvider = ({ children }) => {
     const runStoryComicGeneration = async (highlights) => {
         setBgTasks(prev => ({ ...prev, storyComic: { status: 'loading', data: null } }));
         try {
-            const result = await generateStoryComic(highlights, settings);
+            const result = await generateStoryComic(highlights, settings, settings.customStyles || []);
             setBgTasks(prev => ({ ...prev, storyComic: { status: 'done', data: result } }));
 
             // Persist to Gallery
@@ -581,7 +582,21 @@ export const AppProvider = ({ children }) => {
         exportUserData,
         addFlashcard,
         updateFlashcard,
+        addFlashcard,
+        updateFlashcard,
         saveTask,
+
+        // Style Management
+        addCustomStyle: (style) => setSettings(prev => {
+            const newState = { ...prev, customStyles: [...(prev.customStyles || []), style] };
+            localStorage.setItem('slp_settings', JSON.stringify(newState));
+            return newState;
+        }),
+        removeCustomStyle: (id) => setSettings(prev => {
+            const newState = { ...prev, customStyles: (prev.customStyles || []).filter(s => s.id !== id) };
+            localStorage.setItem('slp_settings', JSON.stringify(newState));
+            return newState;
+        }),
         getTasks,
         deleteTask,
         loadUserFlashcards,
