@@ -8,7 +8,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion
+    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2
 } from 'lucide-react';
 // NotesView import removed (dynamic in App.jsx)
 
@@ -57,6 +57,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         { id: 'exam', icon: FileQuestion, label: '模拟考场 (Exam Sim)' },
         { id: 'study', icon: BookOpen, label: '词汇与阅读' },
         { id: 'flashcards', icon: Layers, label: '抽记卡 (Flashcards)' },
+        { id: 'knowledge', icon: Share2, label: '知识图谱 (3D)' },
         { id: 'library', icon: FolderOpen, label: '文件库' },
         { id: 'history', icon: Clock, label: '历史回顾' },
         { id: 'coach', icon: Mic, label: '口语教练 (AI Coach)' },

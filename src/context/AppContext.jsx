@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = {
     writingLevel: "CET-6",
     writingPrompt: "Strict examiner mode. Find all errors.",
     vocabCount: "10-15",
-    systemPrompt: "You are a helpful English teacher. Please answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
+    systemPrompt: "You are SmartLearn AI, an intelligent and helpful English tutor. You are powered by advanced AI technology. Answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
     vocabAnalysisPrompt: `
   Role: Expert English Teacher.
   Task: Analyze the provided text comprehensively in one go.

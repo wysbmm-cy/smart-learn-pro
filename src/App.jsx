@@ -20,6 +20,7 @@ const viewFactories = {
     VideoView: () => import('./views/VideoView'),
     WriterView: () => import('./views/WriterView'),
     ExamView: () => import('./views/ExamView'),
+    KnowledgeGraphView: () => import('./views/KnowledgeGraphView'),
 };
 
 export const preloadAllViews = () => {
@@ -41,6 +42,7 @@ const CoachView = lazy(viewFactories.CoachView);
 const VideoView = lazy(viewFactories.VideoView);
 const WriterView = lazy(viewFactories.WriterView);
 const ExamView = lazy(viewFactories.ExamView);
+const KnowledgeGraphView = lazy(viewFactories.KnowledgeGraphView);
 
 const LoadingFallback = () => <SkeletonLoader />;
 
@@ -84,6 +86,8 @@ function AppContent() {
                 return <WriterView />;
             case 'exam':
                 return <ExamView onNavigate={setCurrentView} />;
+            case 'knowledge':
+                return <KnowledgeGraphView />;
             default:
                 return <Dashboard onNavigate={setCurrentView} />;
         }
