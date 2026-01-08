@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked } from 'lucide-react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import ImageGalleryModal from '../components/ImageGalleryModal';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
@@ -21,6 +22,7 @@ const Dashboard = ({ onNavigate }) => {
     const hasKey = !!settings.apiKey;
     const [flashcards, setFlashcards] = useState([]);
     const [showGuide, setShowGuide] = useState(false);
+    const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const [todayHighlights, setTodayHighlights] = useState([]);
     const [imageStyle, setImageStyle] = useState('cyberpunk');
 
@@ -144,6 +146,13 @@ const Dashboard = ({ onNavigate }) => {
                                 <ImageIcon size={24} className="text-amber-400" />
                             </div>
                             每日学习总结
+                            <button
+                                onClick={() => setIsGalleryOpen(true)}
+                                className="ml-2 p-1.5 bg-white/10 hover:bg-white/20 rounded-full text-indigo-200 hover:text-white transition-colors cursor-pointer"
+                                title="查看历史图片"
+                            >
+                                <HistoryIcon size={18} />
+                            </button>
                         </div>
                         <div className="text-indigo-300 text-sm">
                             今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容
@@ -247,6 +256,12 @@ const Dashboard = ({ onNavigate }) => {
 
             {/* 4. Study Heatmap */}
             <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
+
+            {/* Gallery Modal */}
+            <ImageGalleryModal
+                isOpen={isGalleryOpen}
+                onClose={() => setIsGalleryOpen(false)}
+            />
 
             {/* 3. Forgetting Curve & Today's Task */}
             <ForgettingCurveChart

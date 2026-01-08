@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 11; // Bumped for Daily Highlights (Bookmark System)
+const DB_VERSION = 12; // Bumped for Daily Images Gallery
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -62,6 +62,12 @@ export const initDB = () => {
             if (!db.objectStoreNames.contains('writings')) {
                 const writingStore = db.createObjectStore('writings', { keyPath: 'id' });
                 writingStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+            }
+            // Daily Images (New in v12)
+            if (!db.objectStoreNames.contains('daily_images')) {
+                const imageStore = db.createObjectStore('daily_images', { keyPath: 'id' });
+                imageStore.createIndex('createdAt', 'createdAt', { unique: false });
+                imageStore.createIndex('type', 'type', { unique: false });
             }
             // --- NEW V8 STORES ---
             // User Goals
@@ -641,9 +647,48 @@ export const deleteFolder = async (id) => {
     });
 };
 
+// Daily Images Gallery CRUD
+export const saveDailyImage = async (image) => {
+    const db = await initDB();
+    const tx = db.transaction('daily_images', 'readwrite');
+    const store = tx.objectStore('daily_images');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...image, createdAt: image.createdAt || new Date().toISOString() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getDailyImages = async () => {
+    const db = await initDB();
+    const tx = db.transaction('daily_images', 'readonly');
+    const store = tx.objectStore('daily_images');
+    const index = store.index('createdAt');
+    return new Promise((resolve, reject) => {
+        const request = index.getAll();
+        request.onsuccess = () => {
+            // Sort by createdAt descending (newest first)
+            const results = request.result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteDailyImage = async (id) => {
+    const db = await initDB();
+    const tx = db.transaction('daily_images', 'readwrite');
+    const store = tx.objectStore('daily_images');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+};
+
 export const getAllData = async () => {
     const db = await initDB();
-    const tx = db.transaction(['history', 'notes', 'files', 'flashcards', 'chat_sessions', 'folders'], 'readonly');
+    const tx = db.transaction(['history', 'notes', 'files', 'flashcards', 'chat_sessions', 'folders', 'daily_images'], 'readonly');
 
     // Helper to promisify store.getAll
     const getAll = (storeName) => new Promise((resolve, reject) => {
@@ -658,6 +703,7 @@ export const getAllData = async () => {
         const flashcards = await getAll('flashcards');
         const files = await getAll('files');
         const folders = await getAll('folders');
+        const dailyImages = await getAll('daily_images');
         // We can include sessions if we want
         const chatSessions = await getAll('chat_sessions');
 
@@ -670,7 +716,7 @@ export const getAllData = async () => {
             size: f.blob?.size || 0
         }));
 
-        return { history, notes, flashcards, chat_sessions: chatSessions, files: fileMetadata, folders };
+        return { history, notes, flashcards, chat_sessions: chatSessions, files: fileMetadata, folders, daily_images: dailyImages };
     } catch (err) {
         throw err;
     }

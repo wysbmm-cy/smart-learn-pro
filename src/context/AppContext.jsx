@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession, getHighlightsByDate } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 
 const AppContext = createContext();
@@ -124,6 +124,18 @@ export const AppProvider = ({ children }) => {
         try {
             const url = await generateDailySummaryImage(highlights, settings, style, todayStats);
             setBgTasks(prev => ({ ...prev, dailyImage: { status: 'done', url } }));
+
+            if (url) {
+                await saveDailyImage({
+                    id: Date.now().toString(),
+                    date: new Date().toISOString().split('T')[0],
+                    type: 'summary',
+                    url: url,
+                    style: style,
+                    metadata: { stats: todayStats },
+                    createdAt: new Date().toISOString()
+                });
+            }
         } catch (e) {
             console.error(e);
             setBgTasks(prev => ({ ...prev, dailyImage: { status: 'error', error: e.message } }));
@@ -135,6 +147,19 @@ export const AppProvider = ({ children }) => {
         try {
             const result = await generateStoryComic(highlights, settings);
             setBgTasks(prev => ({ ...prev, storyComic: { status: 'done', data: result } }));
+
+            // Persist to Gallery
+            if (result?.imageUrl) {
+                await saveDailyImage({
+                    id: Date.now().toString(),
+                    date: new Date().toISOString().split('T')[0],
+                    type: 'comic',
+                    url: result.imageUrl,
+                    style: result.styleName,
+                    metadata: { title: result.storyTitle },
+                    createdAt: new Date().toISOString()
+                });
+            }
         } catch (e) {
             console.error(e);
             setBgTasks(prev => ({ ...prev, storyComic: { status: 'error', error: e.message } }));
@@ -572,7 +597,10 @@ export const AppProvider = ({ children }) => {
         deleteFile,
         bgTasks,
         runDailyImageGeneration,
-        runStoryComicGeneration
+
+        runStoryComicGeneration,
+        getDailyImages,
+        deleteDailyImage
     };
 
     return (
