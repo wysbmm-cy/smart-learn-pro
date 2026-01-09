@@ -193,64 +193,103 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
   }
 };
 
+// 🚀 Optimized Analysis: Parallel Execution
 export const analyzeText = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
-  // "Turbo Mode": Aggregated Analysis (One-Shot) to balance Speed vs Rate Limits.
-  // Sends text ONCE (Saving Input Tokens) and makes ONE request (Saving RPM).
-
   const vocabCount = settings.vocabCount || "10-15";
+  const safeText = text.length > 8000 ? text.substring(0, 8000) + "..." : text;
 
-  // Use custom prompt from settings, or fallback to default
-  let analysisSystemPrompt = settings.vocabAnalysisPrompt || `
+  // 1. Core Summary & Level (Fast)
+  const corePrompt = `
   Role: Expert English Teacher.
-  Task: Analyze the provided text comprehensively in one go.
+  Task: Analyze the text to provide a structured summary and assess difficulty.
   Requirements:
-  1. Summary: Chinese summary + Difficulty Level.
-  2. Vocabulary: Extract {{vocabCount}} key words/phrases (prioritize academic). For each: Chinese meaning, mnemonic, usage tips.
-  3. Grammar: Identify 2-3 **truly advanced or noteworthy** syntactic structures (e.g., Inversion, Subjunctive, Participle Phrases, Complex Clauses). 
-     *   **Ignore** simple Subject-Verb-Object sentences.
-     *   Focus on sentence variety and rhetorical function.
-     *   Pattern: The abstract structure (e.g., "Not only... but also...").
-     *   Explanation: Why is this used? (e.g., "Emphasizes contrast...").
-  
-  Output MUST be valid JSON with this structure:
+  - Summary: Write a cohesive Chinese summary (approx 100-150 words) capturing the main idea and key arguments.
+  - Level: Assess CEFR level (e.g., B2, C1, C2) or exam equivalent (CET-4/6, IELTS, TOEFL).
+  Output JSON:
   {
-    "summary": "...",
-    "level": "CET-4/CET-6/IELTS/Advanced",
+    "summary": "String",
+    "level": "String"
+  }
+  `;
+
+  // 2. Vocabulary Extraction (Intensive)
+  // Optimization: Added 'usage' and explicit 'mnemonic' request
+  const vocabPrompt = `
+  Role: Senior Lexicographer.
+  Task: Extract ${vocabCount} high-value words/phrases from the text.
+  Selection Criteria:
+  1. Prioritize **Academic/Formal** vocabulary (Tier 2/3 words).
+  2. Include impactful **phrasal verbs** or **idioms**.
+  3. **Ignore** common words (top 2000 frequent words).
+  
+  For each word, provide:
+  - Chinese definition contextually matching the text.
+  - A clever **Mnemonic** (associative memory aid or etymology).
+  - **Usage Tip**: Determining collocation or nuance (e.g., "Formal use only").
+  
+  Output JSON:
+  {
     "vocabulary": [
-      { "word": "...", "phonetic": "...", "pos": "...", "meaning": "...", "entry": "...", "mnemonic": "...", "writing": "..." }
-    ],
-    "structures": [
-      { "pattern": "...", "type": "...", "explanation": "..." }
+      { 
+        "word": "String", 
+        "phonetic": "String (IPA)", 
+        "meaning": "String (CN)", 
+        "mnemonic": "String (Memory Aid)", 
+        "level": "String (e.g., C1)",
+        "usage": "String (Tip/Collocation)"
+      }
     ]
   }
   `;
 
-  // Replace placeholder
-  analysisSystemPrompt = analysisSystemPrompt.replace('{{vocabCount}}', vocabCount);
-
-  // Cap text to ~6000 chars to be safe for most 16k/32k context models while leaving room for output
-  const safeText = text.length > 8000 ? text.substring(0, 8000) + "..." : text;
+  // 3. Grammar Analysis (Structural)
+  // Optimization: Focus on rhetorical function
+  const grammarPrompt = `
+  Role: Syntax Stylist.
+  Task: Identify 2-3 **syntactically complex** or **rhetorically effective** sentence structures.
+  Target:
+  - Inverted Sentences (Inversion)
+  - Subjunctive Mood
+  - Participle Phrases / Absolute Constructions
+  - Parallelism / Antithesis
+  - Complex Subordinate Clauses
+  
+  Analysis Goal: Explain **WHY** the author chose this structure (Rhetorical Function), not just what it is.
+  
+  Output JSON:
+  {
+    "structures": [
+      { 
+        "pattern": "String (Abstract structure, e.g., 'Not only... but also...')", 
+        "type": "String (Grammar Term)", 
+        "explanation": "String (Functional analysis in Chinese)" 
+      }
+    ]
+  }
+  `;
 
   try {
-    const jsonStr = await fetchFromAI([
-      { role: "system", content: analysisSystemPrompt },
-      { role: "user", content: safeText }
-    ], settings, true);
+    const [coreRes, vocabRes, grammarRes] = await Promise.all([
+      fetchFromAI([{ role: "system", content: corePrompt }, { role: "user", content: safeText }], settings, true),
+      fetchFromAI([{ role: "system", content: vocabPrompt }, { role: "user", content: safeText }], settings, true),
+      fetchFromAI([{ role: "system", content: grammarPrompt }, { role: "user", content: safeText }], settings, true)
+    ]);
 
-    // Parse logic
-    try {
-      return JSON.parse(jsonStr);
-    } catch (e) {
-      // Fallback regex if model adds markdown blocks
-      const match = jsonStr.match(/\{[\s\S]*\}/);
-      if (match) return JSON.parse(match[0]);
-      throw new Error("Failed to parse AI response");
-    }
+    const core = JSON.parse(coreRes);
+    const vocab = JSON.parse(vocabRes);
+    const grammar = JSON.parse(grammarRes);
+
+    return {
+      summary: core.summary,
+      level: core.level,
+      vocabulary: vocab.vocabulary || [],
+      structures: grammar.structures || []
+    };
 
   } catch (error) {
-    console.error("Analysis Error:", error);
+    console.warn("Parallel Analysis Partial Failure, retrying safely...", error);
     throw error;
   }
 };
@@ -267,16 +306,35 @@ const extractJSON = (str) => {
 /**
  * AI Writing Polish Engine (CET-4/6 Standard)
  */
-export const analyzeWriting = async (text, settings) => {
+export const analyzeWriting = async (text, settings, analysisMode = 'polish') => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
+  // Merge analysisMode into settings for internal use if needed, or just use it directly
+  // Actually, I updated the prompt generation to read `settings.analysisMode` OR `mode` arg effectively.
+  // Let's adhere to the convention: Pass mode as the NEW 3rd argument, but also allow settings override.
+  const effectiveSettings = { ...settings, analysisMode: analysisMode };
+  return analyzeWritingInternal(text, effectiveSettings);
+};
+
+const analyzeWritingInternal = async (text, settings) => {
+
   const level = settings.writingLevel || "CET-4/6";
+  const mode = settings.analysisMode || "polish"; // 'grammar' | 'polish' | 'academic'
+
+  const modePrompts = {
+    'grammar': "STRICTLY GRAMMAR CHECK. Focus ONLY on fixing object errors (Grammar, Spelling, Punctuation). Do NOT change the user's style or vocabulary unless incorrect.",
+    'polish': "STANDARD POLISHING. Fix errors and improve vocabulary/flow to make it natural and native-like.",
+    'academic': "ACADEMIC REWRITING. Elevate the writing to a formal, academic standard. Use advanced sentence structures (inversion, subjunctive) and sophisticated vocabulary."
+  };
+
+  const currentModeInstruction = modePrompts[mode] || modePrompts['polish'];
   const customInstruction = settings.writingPrompt || "Standard strict grading.";
 
   const systemPrompt = `
   Role: Professional English Examiner (Target Level: ${level}).
   
-  Task: Grade and polish the student's essay based on ${level} standards.
+  Task: Analyze the student's essay.
+  CURRENT MODE: ${currentModeInstruction}
 
   User Custom Instruction: ${customInstruction}
   
@@ -292,11 +350,12 @@ export const analyzeWriting = async (text, settings) => {
     "score": Number (0-15),
     "level": "String (Excellent/Good/Fair/Poor/Very Poor)",
     "comment": "String (Short overall comment, ~50 words, encouraging but strict)",
-    "corrected_text": "String (The FULL essay rewritten to be 14-15 points standard, keeping original meaning)",
+    "corrected_text": "String (The FULL essay rewritten based on the CURRENT MODE)",
     "issues": [
       {
-        "type": "String (Grammar/Vocabulary/Cohesion/Spelling)",
-        "original": "String (The specific error snippet)",
+        "type": "String (Grammar/Vocabulary/Cohesion/Spelling/Style)",
+        "severity": "String (critical/improvement/style)",
+        "original": "String (The specific error snippet - MUST match input text exactly if possible)",
         "fixed": "String (The corrected snippet)",
         "reason": "String (Brief explanation in Chinese)"
       }
@@ -311,6 +370,11 @@ export const analyzeWriting = async (text, settings) => {
     ],
     "knowledge_summary": "String (A generic markdown note summarizing key grammar points, vocabulary usage, and better expressions from this essay. Format it as a study note.)"
   }
+  
+  Severity Guide:
+  - critical: Grammar, Spelling, Punctuation errors.
+  - improvement: Better word choice, redundancy, clarity.
+  - style: Academic tone, sentence variety, native expression.
   `;
 
   const safeText = text.substring(0, 5000); // Limit input

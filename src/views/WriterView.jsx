@@ -26,6 +26,7 @@ const WriterView = () => {
     const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [isFocusMode, setIsFocusMode] = useState(false);
     const [viewMode, setViewMode] = useState('report');
+    const [analysisMode, setAnalysisMode] = useState('polish'); // 'grammar', 'polish', 'academic'
 
     // Translation Challenge State
     const [isTranslationMode, setIsTranslationMode] = useState(false);
@@ -40,25 +41,7 @@ const WriterView = () => {
 
     // ... (wordCount, loadWritings remain same)
 
-    const handleStartChallenge = async () => {
-        try {
-            toast.loading("Generating Challenge...", { id: 'gen_trans' });
-            // Fetch vocab from DB
-            const folders = await getFolders();
-            const allVocab = folders.flatMap(f => f.flashcards || []);
-
-            const challenge = await generateTranslationChallenge(allVocab, settings);
-            setChallengeData(challenge);
-            setContent(''); // Clear editor for the user
-            setTitle("Translation Practice - " + new Date().toLocaleDateString());
-            setAnalysis(null);
-            setIsTranslationMode(true);
-            toast.success("Ready! Translate the Chinese sentence.", { id: 'gen_trans' });
-        } catch (e) {
-            toast.error("Failed to generate: " + e.message, { id: 'gen_trans' });
-        }
-    };
-
+    // Update handleAnalyze to use mode
     const handleAnalyze = async () => {
         if (!content.trim()) {
             toast.error("请先写点什么吧！");
@@ -69,16 +52,18 @@ const WriterView = () => {
 
         try {
             if (isTranslationMode && challengeData) {
-                // --- Translation Grading Mode ---
+                // Translation Mode (Keep as is for now, or unified?)
+                // Let's keep distinct
                 const result = await gradeTranslation(challengeData, content, settings);
-                // Normalize result to fit existing UI structure (kinda)
+                // ... (existing translation prompt normalization) ...
                 const normalized = {
-                    score: Math.round(result.score / 100 * 15), // Scale 100 to 15
+                    score: Math.round(result.score / 100 * 15),
                     level: result.score > 85 ? "Excellent" : result.score > 70 ? "Good" : "Fair",
                     comment: result.comment,
-                    corrected_text: result.improved_version, // Use improved version for diff
+                    corrected_text: result.improved_version,
                     issues: (result.vocab_check || []).map(v => ({
                         type: "Vocabulary",
+                        severity: v.correctly ? "improvement" : "critical",
                         original: v.word,
                         fixed: v.used ? "Used ✅" : "Missed ❌",
                         reason: v.correctly ? "Great usage!" : "Incorrect usage or form."
@@ -88,15 +73,16 @@ const WriterView = () => {
                 };
                 setAnalysis(normalized);
                 toast.success("Translation Graded!");
+
             } else {
                 // --- Standard Essay Grading Mode ---
-                const result = await analyzeWriting(content, settings);
+                // Pass analysisMode !
+                const result = await analyzeWriting(content, settings, analysisMode);
                 setAnalysis(result);
                 toast.success("AI 润色分析完成！");
             }
 
-            // Auto-save logic (Shared)
-            // ... (keep existing auto-save but update to handle generic result)
+            // ... auto save ...
 
         } catch (e) {
             console.error(e);
@@ -104,6 +90,31 @@ const WriterView = () => {
         } finally {
             setIsAnalyzing(false);
         }
+    };
+
+    const handleApplyFix = (issue) => {
+        if (issue.applied) return;
+
+        // Find position
+        const idx = content.indexOf(issue.original);
+        if (idx === -1) {
+            toast.error("未找到原文，可能已被修改。");
+            return;
+        }
+
+        // Replace one occurrence
+        const before = content.substring(0, idx);
+        const after = content.substring(idx + issue.original.length);
+        const newContent = before + issue.fixed + after;
+
+        setContent(newContent);
+
+        // Mark as applied in UI
+        const newIssues = analysis.issues.map(i =>
+            i === issue ? { ...i, applied: true } : i
+        );
+        setAnalysis({ ...analysis, issues: newIssues });
+        toast.success("修改已应用");
     };
 
     // ... (existing handlers handleSave, handleLoad etc. - I will just target the specific areas to insert/replace)
@@ -499,6 +510,29 @@ const WriterView = () => {
                                                 <Sparkles size={16} /> 单句精修
                                             </button>
                                         )}
+                                        <div className="flex items-center bg-slate-800 rounded-lg p-1 mr-2 border border-slate-700">
+                                            <button
+                                                onClick={() => setAnalysisMode('grammar')}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisMode === 'grammar' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                                title="仅修正语法错误，不改变文风"
+                                            >
+                                                语法
+                                            </button>
+                                            <button
+                                                onClick={() => setAnalysisMode('polish')}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisMode === 'polish' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                                title="标准润色，优化流畅度"
+                                            >
+                                                润色
+                                            </button>
+                                            <button
+                                                onClick={() => setAnalysisMode('academic')}
+                                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisMode === 'academic' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                                title="雅思/学术级改写，提升句式"
+                                            >
+                                                学术
+                                            </button>
+                                        </div>
 
                                         <button
                                             onClick={handleAnalyze}
@@ -509,7 +543,7 @@ const WriterView = () => {
                                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
                                         >
                                             {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                                            {isAnalyzing ? '正在分析...' : 'AI 润色'}
+                                            {isAnalyzing ? '正在分析...' : 'AI 分析'}
                                         </button>
                                     </div>
                                 </div>
@@ -642,23 +676,56 @@ const WriterView = () => {
                                                             🎉 太棒了！未发现主要问题。
                                                         </div>
                                                     ) : (
-                                                        analysis.issues.map((issue, idx) => (
-                                                            <div key={idx} className="bg-slate-800/30 rounded-xl p-4 border border-white/5 hover:bg-slate-800/50 transition-colors">
-                                                                <div className="flex flex-wrap gap-2 items-center mb-2">
-                                                                    <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 font-bold uppercase border border-indigo-500/30">
-                                                                        {issue.type}
-                                                                    </span>
-                                                                    <span className="text-xs text-red-300 font-mono bg-red-500/10 px-1 rounded line-through decoration-red-500/50">
-                                                                        {issue.original}
-                                                                    </span>
-                                                                    <span className="text-slate-500">→</span>
-                                                                    <span className="text-xs text-emerald-300 font-mono bg-emerald-500/10 px-1 rounded font-bold">
-                                                                        {issue.fixed}
-                                                                    </span>
+                                                        analysis.issues.map((issue, idx) => {
+                                                            let borderColor = 'border-white/5';
+                                                            let badgeColor = 'bg-slate-500/20 text-slate-300';
+                                                            let severityIcon = null;
+
+                                                            // Color Coding Logic
+                                                            const s = (issue.severity || 'improvement').toLowerCase();
+                                                            if (s.includes('critical')) {
+                                                                borderColor = 'border-red-500/30 bg-red-900/10';
+                                                                badgeColor = 'bg-red-500/20 text-red-300 border-red-500/30';
+                                                                severityIcon = <AlertCircle size={12} className="text-red-400" />;
+                                                            } else if (s.includes('style')) {
+                                                                borderColor = 'border-purple-500/30 bg-purple-900/10';
+                                                                badgeColor = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+                                                                severityIcon = <Sparkles size={12} className="text-purple-400" />;
+                                                            } else {
+                                                                // improvement / default
+                                                                borderColor = 'border-amber-500/30 bg-amber-900/10';
+                                                                badgeColor = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+                                                                severityIcon = <ArrowRightLeft size={12} className="text-amber-400" />;
+                                                            }
+
+                                                            return (
+                                                                <div key={idx} className={`rounded-xl p-4 border transition-all ${borderColor} ${issue.applied ? 'opacity-50 grayscale' : 'hover:bg-slate-800/80'}`}>
+                                                                    <div className="flex justify-between items-start mb-2">
+                                                                        <div className="flex flex-wrap gap-2 items-center">
+                                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border flex items-center gap-1 ${badgeColor}`}>
+                                                                                {severityIcon} {issue.type}
+                                                                            </span>
+                                                                        </div>
+                                                                        {!issue.applied && (
+                                                                            <button
+                                                                                onClick={() => handleApplyFix(issue)}
+                                                                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1"
+                                                                            >
+                                                                                <CheckCircle size={12} /> 应用
+                                                                            </button>
+                                                                        )}
+                                                                        {issue.applied && <span className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle size={12} /> 已应用</span>}
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2 mb-2 font-mono text-sm">
+                                                                        <span className="text-red-300/80 line-through decoration-red-500/50 bg-red-900/20 px-1 rounded">{issue.original}</span>
+                                                                        <ArrowRightLeft size={12} className="text-slate-500" />
+                                                                        <span className="text-emerald-300 font-bold bg-emerald-900/20 px-1 rounded">{issue.fixed}</span>
+                                                                    </div>
+                                                                    <p className="text-sm text-slate-400">{issue.reason}</p>
                                                                 </div>
-                                                                <p className="text-sm text-slate-400">{issue.reason}</p>
-                                                            </div>
-                                                        ))
+                                                            );
+                                                        })
                                                     )}
                                                 </div>
 
