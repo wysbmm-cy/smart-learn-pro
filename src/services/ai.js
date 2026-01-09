@@ -846,6 +846,15 @@ export const gradeTranslation = async (challenge, userEnglish, settings) => {
     "improved_version": "String (Better translation using required words)",
     "vocab_check": [
       { "word": "word1", "used": Boolean, "correctly": Boolean }
+    ],
+    "issues": [
+      {
+        "type": "String (Grammar/Vocabulary/Style)",
+        "severity": "String (critical/improvement/style)",
+        "original": "String (Exact segment from USER translation)",
+        "fixed": "String (Correction)",
+        "reason": "String (Brief explanation in Chinese)"
+      }
     ]
   }
   `;

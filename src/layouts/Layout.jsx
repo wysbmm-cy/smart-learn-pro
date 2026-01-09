@@ -8,7 +8,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2
+    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X
 } from 'lucide-react';
 // NotesView import removed (dynamic in App.jsx)
 
@@ -30,6 +30,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const { toggleChat, isChatOpen, settings } = useApp();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [showPomodoro, setShowPomodoro] = useState(false); // Default hidden
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState(null);
@@ -47,6 +48,8 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const handleClick = () => {
         if (contextMenu) setContextMenu(null);
     };
+
+    const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
 
     const navItems = [
         { id: 'dashboard', icon: BarChart2, label: '工作台' },
@@ -67,7 +70,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     return (
         <div
             onClick={handleClick}
-            className="flex h-screen w-full overflow-hidden relative selection:bg-violet-500/30 selection:text-violet-200 bg-[#0f172a] text-slate-200"
+            className="flex h-screen w-full overflow-hidden relative selection:bg-violet-500/30 selection:text-violet-200 bg-[#0f172a] text-slate-200 flex-col md:flex-row"
         >
             {/* Zen Background Layer (Dark Theme) */}
             <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#1e1b4b] to-slate-950">
@@ -86,8 +89,30 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 />
             </div>
 
-            {/* Sidebar - Glass */}
-            <aside className={`${isSidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full opacity-0'} flex flex-col h-full shrink-0 z-20 relative transition-all duration-300 border-r border-white/5 bg-slate-950/30 backdrop-blur-xl overflow-hidden`}>
+            {/* Mobile Header (Visible < md) */}
+            <div className="md:hidden h-14 flex items-center justify-between px-4 border-b border-white/5 bg-slate-950/50 backdrop-blur-xl shrink-0 z-30">
+                <div className="flex items-center gap-2 text-indigo-400 font-extrabold text-lg">
+                    <Brain size={24} />
+                    <span>SmartLearn</span>
+                </div>
+                <button onClick={toggleMobileMenu} className="p-2 text-slate-300 active:bg-white/10 rounded-lg">
+                    <Menu size={24} />
+                </button>
+            </div>
+
+            {/* Sidebar Overlay (Mobile Only) */}
+            <div
+                className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} md:hidden`}
+                onClick={() => setIsMobileMenuOpen(false)}
+            />
+
+            {/* Sidebar - Desktop (Left) & Mobile (Drawer) */}
+            <aside className={`
+                fixed md:relative z-50 h-full
+                ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+                ${isSidebarOpen ? 'w-[75vw] md:w-64' : 'w-[75vw] -translate-x-full md:w-0'} 
+                flex flex-col shrink-0 transition-all duration-300 border-r border-white/5 bg-slate-950/95 md:bg-slate-950/30 backdrop-blur-xl overflow-hidden
+            `}>
                 <div className="h-20 flex items-center px-6">
                     <div className="flex items-center gap-3 text-indigo-400 font-extrabold text-xl tracking-tight drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]">
                         <Brain size={28} strokeWidth={2.5} />
@@ -99,23 +124,63 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                     {navItems.map((item) => (
                         <SidebarItem
                             key={item.id}
-                            {...item}
+                            icon={item.icon}
+                            label={item.label}
                             active={currentView === item.id}
-                            onClick={() => setCurrentView(item.id)}
+                            onClick={() => {
+                                setCurrentView(item.id);
+                                setIsMobileMenuOpen(false); // Close drawer on selection
+                            }}
                             onContextMenu={(e) => handleContextMenu(e, item.id)}
                         />
                     ))}
                 </nav>
 
-                <div className="p-4 border-t border-white/5">
-                    <SidebarItem
-                        icon={Settings}
-                        label="设置与接口"
-                        active={currentView === 'settings'}
-                        onClick={() => setCurrentView('settings')}
-                    />
+                {/* Sidebar Footer */}
+                <div className="p-4 border-t border-white/5 bg-black/20">
+                    <button
+                        onClick={() => {
+                            setCurrentView('settings');
+                            setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-200 hover:text-white transition-all"
+                    >
+                        <Settings size={18} />
+                        <span className="font-medium">设置与接口</span>
+                    </button>
+                    <button
+                        onClick={() => toggleChat()}
+                        className="w-full mt-2 flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all"
+                    >
+                        <Mic size={18} />
+                        <span className="font-medium">AI 助手</span>
+                    </button>
                 </div>
             </aside>
+
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900/95 backdrop-blur-xl border-t border-white/10 z-50 flex items-center justify-around px-2 text-[10px] pb-safe">
+                {[
+                    { id: 'dashboard', icon: BarChart2, label: '首页' },
+                    { id: 'study', icon: BookOpen, label: '阅读' },
+                    { id: 'writer', icon: PenTool, label: '写作' },
+                    { id: 'coach', icon: Mic, label: '教练' },
+                    { id: 'flashcards', icon: Layers, label: '复习' }
+                ].map((item) => {
+                    const isActive = currentView === item.id;
+                    const Icon = item.icon;
+                    return (
+                        <button
+                            key={item.id}
+                            onClick={() => setCurrentView(item.id)}
+                            className={`flex flex-col items-center justify-center gap-1 p-2 w-full h-full transition-all ${isActive ? 'text-indigo-400' : 'text-slate-500'}`}
+                        >
+                            <Icon size={24} strokeWidth={isActive ? 2.5 : 2} className={isActive ? "drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" : ""} />
+                            <span className={isActive ? 'font-bold' : 'font-medium'}>{item.label}</span>
+                        </button>
+                    )
+                })}
+            </div>
 
             {/* Context Menu */}
             {contextMenu && (
@@ -138,10 +203,10 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 </div>
             )}
 
-            {/* Main Content - Split-Pane Capable */}
-            <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 bg-transparent">
-                {/* Header */}
-                <header className="h-16 flex items-center justify-between px-6 shrink-0 border-b border-white/5 bg-slate-950/20 backdrop-blur-md">
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 bg-transparent pb-16 md:pb-0">
+                {/* Desktop Header (Hidden on Mobile) */}
+                <header className="hidden md:flex h-16 items-center justify-between px-6 shrink-0 border-b border-white/5 bg-slate-950/20 backdrop-blur-md">
                     <div className='flex items-center gap-4'>
                         {/* Sidebar Toggle */}
                         <button
@@ -172,20 +237,12 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             className={`p-2 rounded-full transition-all border ${showPomodoro
                                 ? 'bg-red-500 text-white border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]'
                                 : 'border-white/10 text-slate-400 hover:text-white hover:bg-white/5'}`}
-                            title="Toggle Pomodoro Timer"
+                            title="专注番茄钟"
                         >
                             <Clock size={18} />
                         </button>
-                        <button
-                            onClick={toggleChat}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm transition-all border shadow-lg backdrop-blur-md ${isChatOpen
-                                ? 'bg-violet-600 text-white border-violet-400 shadow-[0_0_15px_rgba(139,92,246,0.4)]'
-                                : 'bg-slate-800/50 text-slate-300 border-white/10 hover:bg-slate-700/50'
-                                }`}
-                        >
-                            <Brain size={18} />
-                            <span>AI 助手</span>
-                        </button>
+                        <GlobalPlayer />
+                        <ChatSidebar />
                     </div>
                 </header>
 
@@ -207,8 +264,8 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             }
                         />
                     ) : (
-                        <main className={`h-full overflow-y-auto scroll-smooth ${currentView === 'notes' ? 'p-0' : 'px-8 pb-8'}`}>
-                            <div className={`${currentView === 'notes' ? 'w-full h-full' : 'max-w-6xl mx-auto h-full pt-6'}`}>
+                        <main className={`h-full overflow-y-auto scroll-smooth ${currentView === 'notes' ? 'p-0' : 'px-4 md:px-8 pb-8'}`}>
+                            <div className="max-w-6xl mx-auto h-full pt-6">
                                 {children}
                             </div>
                         </main>
@@ -216,9 +273,12 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 </div>
             </div>
 
-            <ChatSidebar />
-            <GlobalPlayer />
-            {showPomodoro && <PomodoroTimer />}
+            {/* Pomodoro Overlay */}
+            {showPomodoro && (
+                <div className="fixed bottom-6 right-6 z-50 animate-slide-up">
+                    <PomodoroTimer onClose={() => setShowPomodoro(false)} />
+                </div>
+            )}
         </div>
     );
 };

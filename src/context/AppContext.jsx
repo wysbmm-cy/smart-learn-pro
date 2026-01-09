@@ -582,8 +582,6 @@ export const AppProvider = ({ children }) => {
         exportUserData,
         addFlashcard,
         updateFlashcard,
-        addFlashcard,
-        updateFlashcard,
         saveTask,
 
         // Style Management
