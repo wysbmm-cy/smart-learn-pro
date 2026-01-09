@@ -41,6 +41,27 @@ const WriterView = () => {
 
     // ... (wordCount, loadWritings remain same)
 
+    // wordCount and loadWritings (placeholder if defined elsewhere or used in effect)
+
+    const handleStartChallenge = async () => {
+        try {
+            toast.loading("Generating Challenge...", { id: 'gen_trans' });
+            // Fetch vocab from DB
+            const folders = await getFolders();
+            const allVocab = folders.flatMap(f => f.flashcards || []);
+
+            const challenge = await generateTranslationChallenge(allVocab, settings);
+            setChallengeData(challenge);
+            setContent(''); // Clear editor for the user
+            setTitle("Translation Practice - " + new Date().toLocaleDateString());
+            setAnalysis(null);
+            setIsTranslationMode(true);
+            toast.success("Ready! Translate the Chinese sentence.", { id: 'gen_trans' });
+        } catch (e) {
+            toast.error("Failed to generate: " + e.message, { id: 'gen_trans' });
+        }
+    };
+
     // Update handleAnalyze to use mode
     const handleAnalyze = async () => {
         if (!content.trim()) {
