@@ -242,7 +242,16 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             <Clock size={18} />
                         </button>
                         <GlobalPlayer />
-                        <ChatSidebar />
+                        {/* AI Toggle */}
+                        <button
+                            onClick={toggleChat}
+                            className={`p-2 rounded-lg transition-all border ${isChatOpen
+                                ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]'
+                                : 'border-white/10 text-slate-400 hover:text-white hover:bg-white/5'}`}
+                            title="AI 助手"
+                        >
+                            <Brain size={18} />
+                        </button>
                     </div>
                 </header>
 
@@ -279,6 +288,13 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                     <PomodoroTimer onClose={() => setShowPomodoro(false)} />
                 </div>
             )}
+
+            {/* AI Chat Sidebar (Fixed Overlay) */}
+            <div className="fixed right-0 top-0 bottom-0 z-[60] flex pointer-events-none">
+                <div className="pointer-events-auto h-full">
+                    <ChatSidebar />
+                </div>
+            </div>
         </div>
     );
 };

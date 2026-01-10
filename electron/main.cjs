@@ -1,68 +1,56 @@
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
-// Disable security warnings for local development content
-process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
+// Handle creating/removing shortcuts on Windows - Skipped for now
+// if (require('electron-squirrel-startup')) { app.quit(); }
 
 let mainWindow;
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 768,
-    // Try to load icon if it exists, otherwise default
-    icon: path.join(__dirname, '../public/favicon.ico'),
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      // preload: path.join(__dirname, 'preload.js') // Not needed yet
-    },
-    show: false // Don't show until ready to prevent white flash
-  });
+    mainWindow = new BrowserWindow({
+        width: 1280,
+        height: 800,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false, // For simple ipcRenderer usage in this proejct style
+            webSecurity: false // Often needed for local file access in simple apps
+        },
+        autoHideMenuBar: true,
+        // icon: path.join(__dirname, '../public/icon.png') // Optional if icon exists
+    });
 
-  // Hide the default menu for a cleaner "App" look
-  Menu.setApplicationMenu(null);
+    // Load the index.html of the app.
+    // In development: load from Vite dev server
+    // In production: load from dist/index.html
+    const isDev = !app.isPackaged;
 
-  const isDev = !app.isPackaged; // More reliable check than NODE_ENV sometimes
-
-  if (isDev) {
-    // In dev, load from Vite dev server
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-    console.log("Running in Development Mode: Loading http://localhost:5173");
-  } else {
-    // In prod, load from built file (index.html)
-    // 'loadFile' handles the file protocol automatically
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-    console.log("Running in Production Mode: Loading dist/index.html");
-  }
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
-
-  // Handle external links (open in browser instead of Electron)
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http')) {
-      shell.openExternal(url);
-      return { action: 'deny' };
+    if (isDev) {
+        mainWindow.loadURL('http://localhost:5173');
+        mainWindow.webContents.openDevTools();
+    } else {
+        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
-    return { action: 'allow' };
-  });
 
-  mainWindow.on('closed', () => (mainWindow = null));
+    // Open external links in browser
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        shell.openExternal(url);
+        return { action: 'deny' };
+    });
 }
 
 app.whenReady().then(() => {
-  createWindow();
+    createWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
+        }
+    });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
 });
