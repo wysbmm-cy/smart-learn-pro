@@ -1,5 +1,5 @@
-
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { ChevronRight, CheckCircle } from 'lucide-react';
 
 const FixedTooltip = ({ data, onApply }) => {
@@ -19,14 +19,15 @@ const FixedTooltip = ({ data, onApply }) => {
         borderColor = "border-purple-500/20";
     }
 
-    return (
+    // Portal to document.body to escape all overflow:hidden containers
+    return ReactDOM.createPortal(
         <div
             style={{
                 top: y,
                 left: x,
                 maxWidth: '320px'
             }}
-            className="fixed z-[100] transform -translate-x-1/2 mt-2 pointer-events-none"
+            className="fixed z-[9999] transform -translate-x-1/2 mt-2 pointer-events-none"
         >
             {/* Tooltip Card (Pointer events auto to allow clicking button) */}
             <div className={`pointer-events-auto bg-slate-900/95 backdrop-blur-xl rounded-xl shadow-2xl border ${borderColor} ring-1 ring-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
@@ -65,7 +66,8 @@ const FixedTooltip = ({ data, onApply }) => {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 
