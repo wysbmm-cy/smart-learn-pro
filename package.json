@@ -16,9 +16,20 @@
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "vite build && electron-builder"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wysbmm-cy/smart-learn-pro.git"
+  },
   "build": {
     "appId": "com.smartlearnpro.app",
     "productName": "SmartLearn Pro",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "wysbmm-cy",
+        "repo": "smart-learn-pro"
+      }
+    ],
     "directories": {
       "output": "release"
     },
@@ -33,6 +44,7 @@
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.7.3",
     "framer-motion": "^11.18.2",
     "lucide-react": "^0.358.0",
     "pdfjs-dist": "^5.4.449",
