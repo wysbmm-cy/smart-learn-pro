@@ -353,28 +353,29 @@ const analyzeWritingInternal = async (text, settings) => {
     "corrected_text": "String (The FULL essay rewritten based on the CURRENT MODE)",
     "issues": [
       {
-        "type": "String (Grammar/Vocabulary/Cohesion/Spelling/Style)",
-        "severity": "String (critical/improvement/style)",
-        "original": "String (The specific error snippet - MUST match input text exactly if possible)",
-        "fixed": "String (The corrected snippet)",
+        "type": "String (e.g., Grammar, Cohesion, Style, Vocab)",
+        "severity": "String (critical | improvement | style)",
+        "original": "String (Exact substring from original text)",
+        "fixed": "String (Suggested fix)",
         "reason": "String (Brief explanation in Chinese)"
       }
     ],
     "improvement_tips": ["String", "String", "String"],
     "vocabulary_analysis": [
-      {
-        "word": "String (The word in the text)",
-        "level": "String (B2/C1/C2 or 'Basic' if it should be improved)",
-        "suggestion": "String (Optional better synonym)"
-      }
+      { "word": "String", "level": "String", "suggestion": "String" }
     ],
-    "knowledge_summary": "String (A generic markdown note summarizing key grammar points, vocabulary usage, and better expressions from this essay. Format it as a study note.)"
+    "knowledge_summary": "String (Markdown)"
   }
   
   Severity Guide:
-  - critical: Grammar, Spelling, Punctuation errors.
-  - improvement: Better word choice, redundancy, clarity.
-  - style: Academic tone, sentence variety, native expression.
+  - critical: MAJOR Errors (Grammar, Spelling, Punctuation) -> shown as Red Wavy Lines.
+  - improvement: Minor improvements (Word choice, redundancy) -> shown as Amber Blocks.
+  - style: Advanced styling (Flow, Nativeness) -> shown as Purple Blocks.
+
+  CRITICAL INSTRUCTION:
+  - DENSITY: Aim for a balanced feedback density. For a standard essay, identify at least 1 issue every 2-3 sentences.
+  - For LONG texts, ensure the feedback is distributed EVENLY throughout the entire text, not just the beginning.
+  - Do NOT flag every single minor change unless it's a 'critical' error. Focus on impactful improvements.
   `;
 
   const safeText = text.substring(0, 5000); // Limit input

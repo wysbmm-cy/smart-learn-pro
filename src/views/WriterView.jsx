@@ -290,35 +290,61 @@ const WriterView = () => {
                 }
                 const textSegment = content.substring(start, i);
 
-                let colorClass = "decoration-amber-500/50 hover:bg-amber-500/20";
+                let colorClass = "bg-amber-500/10 text-amber-200 decoration-amber-500/30"; // Default: Block style (Improvement)
                 let badgeColor = "text-amber-400";
 
                 const s = (issue.severity || '').toLowerCase();
                 if (s.includes('critical')) {
-                    colorClass = "decoration-red-500/80 hover:bg-red-500/20 decoration-wavy";
+                    // Critical: Red Wavy Underline (No background) to mimic error
+                    colorClass = "underline decoration-wavy decoration-red-500 decoration-2 text-red-200 decoration-offset-4";
                     badgeColor = "text-red-400";
                 }
                 else if (s.includes('style')) {
-                    colorClass = "decoration-purple-500/50 hover:bg-purple-500/20 decoration-dotted";
+                    // Style: Purple Block
+                    colorClass = "bg-purple-500/20 text-purple-200 border-b-2 border-purple-500/30 px-1 rounded mx-0.5";
                     badgeColor = "text-purple-400";
+                } else {
+                    // Improvement: Amber Block
+                    colorClass = "bg-amber-500/10 text-amber-200 border-b-2 border-amber-500/30 px-1 rounded mx-0.5";
                 }
 
                 output.push(
                     <span
                         key={start}
-                        className={`underline underline-offset-4 cursor-help relative group transition-all rounded px-0.5 ${colorClass}`}
+                        className={`cursor-pointer relative group transition-all ${colorClass}`}
                     >
                         {textSegment}
-                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-4 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-sm font-sans tracking-wide">
-                            <div className="font-bold mb-2 flex justify-between items-center pb-2 border-b border-white/10">
-                                <span className={badgeColor}>{issue.type}</span>
-                                <span className="text-[10px] text-slate-500 uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded">{issue.severity}</span>
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-0 bg-slate-900 shadow-2xl rounded-xl border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity z-50 overflow-hidden">
+                            {/* Tooltip Header */}
+                            <div className="flex justify-between items-center p-3 bg-slate-950/50 border-b border-white/10">
+                                <div className="flex items-center gap-2">
+                                    <span className={`font-bold text-xs uppercase tracking-wider ${badgeColor}`}>{issue.type}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded text-slate-400 font-mono">{issue.severity}</span>
+                                </div>
                             </div>
-                            <div className="text-emerald-300 font-bold mb-2 bg-emerald-900/20 p-2 rounded border border-emerald-500/20">
-                                {issue.fixed}
-                            </div>
-                            <div className="text-slate-300 leading-relaxed text-xs">
-                                {issue.reason}
+
+                            {/* Tooltip Content */}
+                            <div className="p-4 space-y-3">
+                                <div className="text-sm text-slate-300 leading-relaxed font-sans">{issue.reason}</div>
+
+                                {/* Fix Preview */}
+                                <div className="flex items-center gap-2 text-sm bg-black/20 p-2 rounded-lg border border-white/5 font-mono">
+                                    <span className="text-red-400/70 line-through decoration-red-500/30 selection:bg-red-900/30">{issue.original}</span>
+                                    <ChevronRight size={12} className="text-slate-500" />
+                                    <span className="text-emerald-400 font-bold selection:bg-emerald-900/30">{issue.fixed}</span>
+                                </div>
+
+                                {/* Apply Button */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleApplyFix(issue);
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-emerald-900/20 active:scale-95"
+                                >
+                                    <CheckCircle size={14} />
+                                    Click to Apply Fix
+                                </button>
                             </div>
                         </span>
                     </span>

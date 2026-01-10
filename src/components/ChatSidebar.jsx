@@ -253,11 +253,11 @@ const ChatSidebar = () => {
 
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-4 px-2">Recent Sessions</div>
 
-                    {chatSessions.length === 0 && (
+                    {(!chatSessions || chatSessions.length === 0) && (
                         <div className="text-center py-8 text-slate-400 text-sm italic">No history found.</div>
                     )}
 
-                    {chatSessions.map(session => (
+                    {(chatSessions || []).map(session => (
                         <div key={session.id} className="group relative">
                             <button
                                 onClick={() => {

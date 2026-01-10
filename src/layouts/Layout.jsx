@@ -148,13 +148,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         <Settings size={18} />
                         <span className="font-medium">设置与接口</span>
                     </button>
-                    <button
-                        onClick={() => toggleChat()}
-                        className="w-full mt-2 flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all"
-                    >
-                        <Mic size={18} />
-                        <span className="font-medium">AI 助手</span>
-                    </button>
+
                 </div>
             </aside>
 
@@ -289,11 +283,9 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 </div>
             )}
 
-            {/* AI Chat Sidebar (Fixed Overlay) */}
-            <div className="fixed right-0 top-0 bottom-0 z-[60] flex pointer-events-none">
-                <div className="pointer-events-auto h-full">
-                    <ChatSidebar />
-                </div>
+            {/* AI Chat Sidebar (Flex Sibling on Desktop, Overlay on Mobile) */}
+            <div className="fixed inset-y-0 right-0 z-50 md:static md:z-0 md:h-full shrink-0">
+                <ChatSidebar />
             </div>
         </div>
     );
