@@ -195,6 +195,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
             let count = 0;
             for (const card of vocabList) {
                 await saveFlashcard({
+                    id: crypto.randomUUID(),
                     front: card.front,
                     back: card.back,
                     folderId: targetFolderId,

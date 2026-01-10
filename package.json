@@ -23,21 +23,12 @@
   "build": {
     "appId": "com.smartlearnpro.app",
     "productName": "SmartLearn Pro",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "wysbmm-cy",
-        "repo": "smart-learn-pro"
-      }
-    ],
+    "publish": null,
     "directories": {
       "output": "release"
     },
     "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
+      "target": "dir",
       "icon": "public/icon.png"
     }
   },
@@ -67,6 +58,8 @@
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@vitejs/plugin-react": "^4.2.1",
+    "7zip-bin": "^5.2.0",
+    "app-builder-bin": "^5.0.0-alpha.12",
     "autoprefixer": "^10.4.18",
     "concurrently": "^9.2.1",
     "electron": "^39.2.7",

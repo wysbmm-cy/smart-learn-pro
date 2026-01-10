@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { Play, Pause, X, Music, Maximize2, Minimize2, GripHorizontal } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -27,8 +28,11 @@ const GlobalPlayer = () => {
     }, []);
 
     // Drag Handlers
+    const dragStartPosition = useRef({ x: 0, y: 0 });
+
     const handleMouseDown = (e) => {
         setIsDragging(true);
+        dragStartPosition.current = { x: e.clientX, y: e.clientY };
         dragOffset.current = {
             x: e.clientX - position.x,
             y: e.clientY - position.y
@@ -38,14 +42,14 @@ const GlobalPlayer = () => {
     useEffect(() => {
         const handleMouseMove = (e) => {
             if (!isDragging) return;
-            e.preventDefault(); // Prevent selection
+            e.preventDefault();
             setPosition({
                 x: e.clientX - dragOffset.current.x,
                 y: e.clientY - dragOffset.current.y
             });
         };
 
-        const handleMouseUp = () => {
+        const handleMouseUp = (e) => {
             setIsDragging(false);
         };
 
@@ -59,8 +63,23 @@ const GlobalPlayer = () => {
         };
     }, [isDragging]);
 
+    // Handle Expand safely (only if not dragged)
+    const handleExpandClick = (e) => {
+        const dist = Math.hypot(e.clientX - dragStartPosition.current.x, e.clientY - dragStartPosition.current.y);
+        if (dist < 5) {
+            setIsMinimized(false);
+            // Auto-adjust if off-screen when expanding
+            const playerWidth = 340; // Approx w-80 + padding
+            if (position.x + playerWidth > window.innerWidth) {
+                setPosition(p => ({ ...p, x: Math.max(10, window.innerWidth - playerWidth - 20) }));
+            }
+            if (position.y + 200 > window.innerHeight) {
+                setPosition(p => ({ ...p, y: Math.max(10, window.innerHeight - 200 - 20) }));
+            }
+        }
+    };
 
-    // Sync playback rate
+    // Cycle speed
     useEffect(() => {
         if (audioRef.current) {
             audioRef.current.playbackRate = rate;
@@ -93,12 +112,9 @@ const GlobalPlayer = () => {
 
     if (!audioState.file) return null;
 
-    // Initial position effect (center-ish right if first load)
-    // We used default state, so no effect needed.
-
-    return (
+    return ReactDOM.createPortal(
         <div
-            className="fixed z-[100] transition-shadow"
+            className="fixed z-[9999] transition-shadow"
             style={{
                 left: position.x,
                 top: position.y,
@@ -120,6 +136,7 @@ const GlobalPlayer = () => {
                 <div
                     className="relative group"
                     onMouseDown={handleMouseDown}
+                    onClick={handleExpandClick} // Handle click logic here
                 >
                     <div className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center border-2 border-white cursor-grab active:cursor-grabbing hover:scale-105 transition-transform ${audioState.isPlaying ? 'bg-gradient-to-r from-blue-500 to-indigo-600 animate-spin-slow' : 'bg-slate-800'
                         }`}>
@@ -128,15 +145,8 @@ const GlobalPlayer = () => {
 
                     {/* Hover Actions for Minimized */}
                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                        Double click to expand
+                        Double click/Click to expand
                     </div>
-
-                    {/* Quick controls on hover/click? Simplest is expand button overlaid or just click to expand. */}
-                    <button
-                        onClick={() => setIsMinimized(false)}
-                        className="absolute inset-0 w-full h-full rounded-full z-10"
-                        title="Expand Player"
-                    />
                 </div>
             ) : (
                 // Expanded Player Card
@@ -201,7 +211,8 @@ const GlobalPlayer = () => {
                     </div>
                 </div>
             )}
-        </div>
+        </div>,
+        document.body
     );
 };
 

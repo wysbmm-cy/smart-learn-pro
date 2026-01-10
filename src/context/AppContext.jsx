@@ -564,6 +564,8 @@ export const AppProvider = ({ children }) => {
         chatMessages,
         addChatMessage,
         updateLastChatMessage,
+        currentSessionId, // Add this
+        chatSessions,     // Add this
         // Navigation Signals
         flashcardStartupState, setFlashcardStartupState,
         // Chat Sessions

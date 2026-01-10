@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
 import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, ArrowRightLeft, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen, Bookmark } from 'lucide-react';
-import { saveWriting, getWritings, deleteWriting, saveNote, getFolders, saveHighlight } from '../services/db';
+import { saveWriting, getWritings, deleteWriting, saveNote, getFolders, getFlashcards, saveHighlight } from '../services/db';
 import { analyzeWriting, generateTranslationChallenge, gradeTranslation } from '../services/ai';
 import { writingTemplates } from '../data/writingTemplates';
 import DiffViewer from '../components/DiffViewer';
@@ -166,8 +166,7 @@ const WriterView = () => {
         try {
             toast.loading("Generating Challenge...", { id: 'gen_trans' });
             // Fetch vocab from DB
-            const folders = await getFolders();
-            const allVocab = folders.flatMap(f => f.flashcards || []);
+            const allVocab = await getFlashcards();
 
             const challenge = await generateTranslationChallenge(allVocab, settings);
             setChallengeData(challenge);

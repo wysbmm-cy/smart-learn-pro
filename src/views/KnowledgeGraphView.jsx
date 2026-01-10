@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+import { generateKnowledgeGraphReferences } from '../services/ai';
 import { getFlashcards, getFolders } from '../services/db';
 import { useApp } from '../context/AppContext';
 import { X, RotateCcw, Filter, Search, Layers, BookOpen, Sparkles, Brain, Share2 } from 'lucide-react';
@@ -108,7 +109,7 @@ const DetailPanel = ({ node, onClose, onStudy }) => {
     );
 };
 
-const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onReset }) => (
+const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onReset, onRunAI }) => (
     <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-xl p-3 z-50 space-y-3 min-w-[160px]">
         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
             <Filter size={12} /> 视图控制
@@ -139,13 +140,20 @@ const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onRe
                     key={mode.id}
                     onClick={() => setLinkMode(mode.id)}
                     className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${linkMode === mode.id
-                            ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                            : 'text-slate-400 hover:bg-white/5'
+                        ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                        : 'text-slate-400 hover:bg-white/5'
                         }`}
                 >
                     {mode.label}
                 </button>
             ))}
+            <button
+                onClick={onRunAI}
+                className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors mt-2 border border-dashed border-indigo-500/50 hover:bg-indigo-500/10 text-indigo-400`}
+            >
+                <Brain size={12} className="inline mr-1" />
+                AI 深度关联分析
+            </button>
         </div>
 
         <button
@@ -296,6 +304,55 @@ export default function KnowledgeGraphView() {
         }
     };
 
+    const handleRunAI = async () => {
+        setLoading(true);
+        toast.loading("AI 正在构建高维语义网络...", { id: 'ai_graph' });
+        try {
+            const vocabList = graphData.nodes.filter(n => n.type === 'word').map(n => ({ front: n.label, back: n.definition }));
+
+            // Only analyze if < 100 words to avoid token limits, otherwise slice
+            const aiLinks = await generateKnowledgeGraphReferences(vocabList, settings);
+
+            // Convert AI links (front string match) to Node IDs
+            const nodeMap = new Map();
+            graphData.nodes.forEach(n => {
+                if (n.type === 'word') nodeMap.set(n.label, n.id);
+            });
+
+            const newLinks = [];
+            aiLinks.forEach(l => {
+                const sourceId = nodeMap.get(l.source);
+                const targetId = nodeMap.get(l.target);
+                if (sourceId && targetId) {
+                    newLinks.push({
+                        source: sourceId,
+                        target: targetId,
+                        type: 'ai_semantic', // New type
+                        reason: l.reason,
+                        distance: 50
+                    });
+                }
+            });
+
+            if (newLinks.length === 0) {
+                toast.success("AI 未发现更深层的语义关联", { id: 'ai_graph' });
+            } else {
+                setGraphData(prev => ({
+                    ...prev,
+                    links: [...prev.links, ...newLinks]
+                }));
+                setLinkMode('ai_semantic');
+                toast.success(`AI 构建了 ${newLinks.length} 条语义连接!`, { id: 'ai_graph' });
+            }
+
+        } catch (e) {
+            console.error(e);
+            toast.error("AI 分析失败: " + e.message, { id: 'ai_graph' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Filter Logic
     const filteredData = useMemo(() => {
         let { nodes, links } = graphData;
@@ -389,6 +446,7 @@ export default function KnowledgeGraphView() {
                 linkColor={link => {
                     if (link.type === 'spelling') return LINK_COLORS.spelling;
                     if (link.type === 'meaning') return LINK_COLORS.meaning;
+                    if (link.type === 'ai_semantic') return '#8b5cf6'; // Violet for AI
                     if (link.type === 'folder') return LINK_COLORS.folder;
                     return LINK_COLORS.default;
                 }}
@@ -417,6 +475,7 @@ export default function KnowledgeGraphView() {
                 linkMode={linkMode}
                 setLinkMode={setLinkMode}
                 onReset={handleReset}
+                onRunAI={handleRunAI}
             />
 
             {selectedNode && (

@@ -5,7 +5,7 @@ import ImageGalleryModal from '../components/ImageGalleryModal';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
-import { getHighlightsByDate, getFlashcards, getNotes, getHistory } from '../services/db';
+import { getHighlightsByDate, getFlashcards, getNotes, getHistory, deleteHighlight, getChatSessions } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 
 const Dashboard = ({ onNavigate }) => {
@@ -25,6 +25,14 @@ const Dashboard = ({ onNavigate }) => {
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const [todayHighlights, setTodayHighlights] = useState([]);
     const [imageStyle, setImageStyle] = useState('cyberpunk');
+    const [showHighlightManager, setShowHighlightManager] = useState(false);
+
+    const handleDeleteHighlight = async (id) => {
+        if (confirm('确定移除这条标记吗？')) {
+            await deleteHighlight(id);
+            setTodayHighlights(prev => prev.filter(h => h.id !== id));
+        }
+    };
 
     // --- Stats & Local State ---
     const [todayStats, setTodayStats] = useState({
@@ -60,15 +68,27 @@ const Dashboard = ({ onNavigate }) => {
                 const allNotes = await getNotes();
                 const allHistory = await getHistory();
 
+                const allChat = await getChatSessions();
+
+                // Filter today's data
                 const todayCards = allCards.filter(c => c.lastReview && c.lastReview.startsWith(today));
                 const todayNotes = allNotes.filter(n => n.date && n.date.startsWith(today));
                 const todayArticles = allHistory.filter(h => h.date && h.date.startsWith(today));
+
+                // Approximations for Chat & Writing
+                // 1. Chat: Sessions updated today
+                const todayChats = allChat.filter(c => c.updatedAt && new Date(c.updatedAt).toISOString().startsWith(today));
+
+                // 2. Writing: Simple word count of notes created today
+                const writingWordCount = todayNotes.reduce((acc, n) => acc + (n.content ? n.content.split(/\s+/).length : 0), 0);
 
                 setTodayStats({
                     wordsLearned: todayCards.reduce((acc, c) => acc + (c.reviews || 1), 0),
                     articlesRead: todayArticles.length,
                     notesCreated: todayNotes.length,
-                    flashcardsReviewed: todayCards.length
+                    flashcardsReviewed: todayCards.length,
+                    questionsAsked: todayChats.length, // Using session count as proxy for 'interactions' for now
+                    writingCount: writingWordCount
                 });
             } catch (e) {
                 console.error('Stats loading error:', e);
@@ -78,8 +98,10 @@ const Dashboard = ({ onNavigate }) => {
     }, []);
 
     const handleGenerateImage = async () => {
-        if (!todayHighlights.length && !todayStats.articlesRead) {
-            alert('今日暂无标记内容或学习数据。请先在各模块中学习并标记重点！');
+        const hasActivity = todayStats.wordsLearned > 0 || todayStats.articlesRead > 0 || todayStats.notesCreated > 0 || todayStats.questionsAsked > 0;
+
+        if (!todayHighlights.length && !hasActivity) {
+            alert('今日暂无任何学习数据（单词、阅读、笔记或对话）。请先开始学习！');
             return;
         }
         // Run in background (Global Context)
@@ -154,9 +176,39 @@ const Dashboard = ({ onNavigate }) => {
                                 <HistoryIcon size={18} />
                             </button>
                         </div>
-                        <div className="text-indigo-300 text-sm">
-                            今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容
+                        <div className="text-indigo-300 text-sm flex items-center gap-2">
+                            <span>今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容</span>
+                            <button
+                                onClick={() => setShowHighlightManager(!showHighlightManager)}
+                                className="text-xs px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-indigo-200 transition-colors"
+                            >
+                                {showHighlightManager ? '收起' : '管理'}
+                            </button>
                         </div>
+
+                        {/* Highlight Manager List */}
+                        {showHighlightManager && (
+                            <div className="mt-3 bg-black/20 rounded-xl p-3 max-h-40 overflow-y-auto custom-scrollbar backdrop-blur-sm border border-white/5">
+                                {todayHighlights.length === 0 ? (
+                                    <div className="text-xs text-white/40 text-center py-2">暂无标记</div>
+                                ) : (
+                                    todayHighlights.map(h => (
+                                        <div key={h.id} className="flex items-center justify-between gap-3 text-xs text-indigo-200 py-1.5 border-b border-white/5 last:border-0 hover:bg-white/5 px-2 rounded">
+                                            <div className="truncate flex-1">
+                                                <span className="opacity-50 inline-block w-4">[{h.type === 'note' ? '注' : h.type === 'card' ? '卡' : '文'}]</span>
+                                                {h.content}
+                                            </div>
+                                            <button
+                                                onClick={() => handleDeleteHighlight(h.id)}
+                                                className="text-red-400 hover:text-red-300 opacity-60 hover:opacity-100"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Style Selector */}

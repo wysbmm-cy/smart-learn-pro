@@ -731,9 +731,16 @@ export const generatePlanInsight = async (history, userGoal = null, recentLogs =
 export const extractVocabulary = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
+  const countTarget = settings.vocabCount || "all valid words (up to 50)";
+
   const prompt = `
   Role: Expert Language Teacher.
-  Task: Extract 10-20 most important/challenging vocabulary words from the text below.
+  Task: Create "Flashcards" for the vocabulary provided in the text.
+  
+  Input Context:
+  - If the text is a LIST of words: Generate a card for EACH word in the list.
+  - If the text is an ARTICLE/PASSAGE: Extract the best ${countTarget} vocabulary words.
+
   Output Format: JSON Array of "Flashcards".
   [
     { "front": "English Word", "back": "Chinese Meaning + Example Sentence (En/Cn)" }
@@ -741,8 +748,8 @@ export const extractVocabulary = async (text, settings) => {
   Requirements:
   - "front": The word or short phrase.
   - "back": Concise definition (CN) followed by a short example.
-  - Filter: CEFR B2-C2 level words. Skip very simple words (like 'the', 'is', 'happy').
-  - Count: Return at least 10, max 30.
+  - Filter: CEFR B2-C2 level words are preferred, but if the user provided a specific list, process ALL of them regardless of difficulty.
+  - Count: ${countTarget}.
   `;
 
   const safeText = text.substring(0, 4000);
@@ -1202,23 +1209,26 @@ export const generateDailySummaryImage = async (highlights, settings, style = 'c
   const isSiliconFlow = cleanUrl.includes('siliconflow');
 
   // Build stats display text
-  const statsText = `Words: ${todayStats.wordsLearned || 0}, Articles: ${todayStats.articlesRead || 0}, Notes: ${todayStats.notesCreated || 0}, Flashcards: ${todayStats.flashcardsReviewed || 0}`;
+  const statsText = `Words: ${todayStats.wordsLearned || 0}, Articles: ${todayStats.articlesRead || 0}, Notes: ${todayStats.notesCreated || 0} (${todayStats.writingCount || 0} words), Chats: ${todayStats.questionsAsked || 0}`;
 
   // === STEP 1: Use Main AI to Analyze Highlights ===
   const highlightContent = highlights?.length
     ? highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')
-    : '今日暂无标记内容，但用户有学习活动';
+    : '今日未标记特定重点，但用户进行了大量基于数据的学习活动。请根据统计数据生成抽象总结。';
 
   const analysisPrompt = `你是一个学习助手，请分析以下今日学习内容，并提取用于生成图片的关键元素。
 
 今日学习统计：
 - 学习单词数: ${todayStats.wordsLearned || 0}
 - 阅读文章数: ${todayStats.articlesRead || 0}
-- 创建笔记数: ${todayStats.notesCreated || 0}
-- 复习卡片数: ${todayStats.flashcardsReviewed || 0}
+- 创建笔记数: ${todayStats.notesCreated || 0} (写作量: ${todayStats.writingCount || 0} 词)
+- 对话互动数: ${todayStats.questionsAsked || 0} (次会话)
 
 今日标记内容：
 ${highlightContent}
+
+即使没有具体标记内容，也请根据统计数据（学习量的多少）来构建画面。
+如果学习量很大，画面应体现“充实、爆发、能量”；如果量小，体现“积累、起步、精致”。
 
 请以JSON格式返回以下信息：
 {
@@ -1289,6 +1299,54 @@ ${highlightContent}
   return data.data?.[0]?.url || data.data?.[0]?.b64_json;
 };
 
+// Generate Semantic Knowledge Graph Connections
+export const generateKnowledgeGraphReferences = async (vocabList, settings) => {
+  if (!settings.apiKey) throw new Error("API Key required");
+
+  // optimize payload: only send front/back pairs
+  const simplifiedList = vocabList.map(v => `${v.front} (${v.back})`).slice(0, 50); // Limit to 50 for now to avoid context limit
+
+  const systemPrompt = `
+  Role: Linguistic Knowledge Graph Architect.
+  Task: Analyze the provided vocabulary list and identify strong semantic relationships.
+  
+  Relationships to find:
+  1. Synonyms (Similar meaning)
+  2. Antonyms (Opposite meaning)
+  3. Collocations (Words that often appear together)
+  4. Root/Affix (Shared etymological root)
+  5. Thematic (Belong to same specific field, e.g., 'Physics')
+
+  Input Vocabulary:
+  ${JSON.stringify(simplifiedList)}
+
+  Output Format (JSON):
+  {
+      "links": [
+          { "source": "word_A_front", "target": "word_B_front", "type": "synonym", "reason": "Both mean..." },
+          ...
+      ]
+  }
+  
+  Constraints:
+  - Only link provided words.
+  - Return empty list if no strong connections found.
+  - Max 20 strongest links.
+  `;
+
+  try {
+    const response = await fetchFromAI([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: "Generate graph connections." }
+    ], settings, true); // JSON mode
+
+    return JSON.parse(response).links || [];
+  } catch (e) {
+    console.error("AI Graph Gen Error", e);
+    return [];
+  }
+};
+
 // =====================================================
 // COMIC STYLES LIBRARY - 40+ Art Styles
 // =====================================================
@@ -1296,7 +1354,7 @@ const COMIC_STYLES = {
   // 日漫风格
   shonen: { name: '少年热血风', prompt: 'Shonen manga style, dynamic action poses, exaggerated muscles, intense battle expressions, bold linework like Dragon Ball or One Piece' },
   shojo: { name: '少女唯美风', prompt: 'Shojo manga style, huge sparkling eyes, flowery decorations, delicate lines, soft colors like Sailor Moon' },
-  seinen: { name: '写实青年风', prompt: 'Seinen manga realistic style, precise human anatomy, detailed backgrounds, mature themes like Slam Dunk or Berserk' },
+  seinen: { name: '写实青年风', prompt: 'Seinen manga realistic style, precise human anatomy, detailed backgrounds, mature themes like Slam Dunk' },
   ghibli: { name: '吉卜力风', prompt: 'Studio Ghibli style, warm hand-painted feel, natural lighting, cozy atmosphere, like Spirited Away' },
   moe: { name: '萌系风格', prompt: 'Moe anime style, chibi proportions, big eyes small mouth, pastel colors, cute expressions' },
   gekiga: { name: '暗黑剧画风', prompt: 'Gekiga style, harsh shadows, cinematic composition, gritty realistic feel like Akira by Otomo' },

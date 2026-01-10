@@ -9,7 +9,7 @@ import {
     PanelLeft, Eye, EyeOff, FileText, MoreVertical, FileDown, ChevronRight, ChevronDown, Bookmark
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { saveHighlight } from '../services/db';
+import { saveHighlight, getFolders, saveFolder } from '../services/db';
 
 const NotesView = () => {
     const { loadUserNotes, saveToNotes, removeNoteItem } = useApp();
@@ -33,15 +33,23 @@ const NotesView = () => {
     }, []);
 
     const refreshNotes = async () => {
-        const data = await loadUserNotes();
-        setNotes(data);
+        const [noteData, folderData] = await Promise.all([
+            loadUserNotes(),
+            getFolders()
+        ]);
+        setNotes(noteData);
 
-        // Extract unique folders
+        // Extract unique folders from both Notes (legacy string) and DB (objects)
         const uniqueFolders = new Set(['Uncategorized']);
-        data.forEach(n => {
+
+        // 1. Add folders from DB
+        folderData.forEach(f => uniqueFolders.add(f.name));
+
+        // 2. Add ad-hoc folders from existing notes (in case they differ)
+        noteData.forEach(n => {
             if (n.folder) uniqueFolders.add(n.folder);
-            else uniqueFolders.add('Uncategorized');
         });
+
         setFolders(Array.from(uniqueFolders));
     };
 
@@ -59,10 +67,16 @@ const NotesView = () => {
         setViewMode('edit'); // Switch to edit on create
     };
 
-    const handleCreateFolder = () => {
+    const handleCreateFolder = async () => {
         const name = prompt("Enter new folder name:");
         if (name && !folders.includes(name)) {
-            setFolders(prev => [...prev, name]);
+            // Persist folder
+            await saveFolder({
+                id: crypto.randomUUID(),
+                name: name,
+                type: 'notebook'
+            });
+            await refreshNotes();
             setActiveFolder(name);
         }
     };
