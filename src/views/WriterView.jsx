@@ -8,6 +8,8 @@ import { writingTemplates } from '../data/writingTemplates';
 import DiffViewer from '../components/DiffViewer';
 import PolishChatModal from '../components/PolishChatModal';
 import toast from 'react-hot-toast';
+import FixedTooltip from '../components/FixedTooltip';
+import SelectionActionBtn from '../components/SelectionActionBtn';
 
 const WriterView = () => {
     const { settings, toggleChat, setCurrentArticle } = useApp();
@@ -38,6 +40,10 @@ const WriterView = () => {
     const [selection, setSelection] = useState(null);
     const [showPolishModal, setShowPolishModal] = useState(false);
     const textareaRef = useRef(null);
+
+    // V2.1 Interaction State
+    const [tooltipData, setTooltipData] = useState(null); // {x, y, issue}
+    const [selectionData, setSelectionData] = useState(null); // {x, y, text}
 
     // Persist draft
     useEffect(() => {
@@ -290,70 +296,60 @@ const WriterView = () => {
                 }
                 const textSegment = content.substring(start, i);
 
-                let colorClass = "bg-amber-500/10 text-amber-200 decoration-amber-500/30"; // Default: Block style (Improvement)
+                let colorClass = "bg-amber-500/10 text-amber-200 decoration-amber-500/30";
                 let badgeColor = "text-amber-400";
 
                 const s = (issue.severity || '').toLowerCase();
                 if (s.includes('critical')) {
-                    // Critical: Red Wavy Underline (No background) to mimic error
                     colorClass = "underline decoration-wavy decoration-red-500 decoration-2 text-red-200 decoration-offset-4";
                     badgeColor = "text-red-400";
                 }
                 else if (s.includes('style')) {
-                    // Style: Purple Block
                     colorClass = "bg-purple-500/20 text-purple-200 border-b-2 border-purple-500/30 px-1 rounded mx-0.5";
                     badgeColor = "text-purple-400";
                 } else {
-                    // Improvement: Amber Block
                     colorClass = "bg-amber-500/10 text-amber-200 border-b-2 border-amber-500/30 px-1 rounded mx-0.5";
                 }
 
                 output.push(
                     <span
                         key={start}
-                        className={`cursor-pointer relative group transition-all ${colorClass}`}
+                        className={`cursor-pointer transition-all ${colorClass}`}
+                        onMouseEnter={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            // Calculate optimal position (centered above/below)
+                            setTooltipData({
+                                x: rect.left + rect.width / 2,
+                                y: rect.bottom + 10,
+                                issue
+                            });
+                        }}
+                        onMouseLeave={() => setTooltipData(null)}
                     >
                         {textSegment}
-                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-0 bg-slate-900 shadow-2xl rounded-xl border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity z-50 overflow-hidden">
-                            {/* Tooltip Header */}
-                            <div className="flex justify-between items-center p-3 bg-slate-950/50 border-b border-white/10">
-                                <div className="flex items-center gap-2">
-                                    <span className={`font-bold text-xs uppercase tracking-wider ${badgeColor}`}>{issue.type}</span>
-                                    <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded text-slate-400 font-mono">{issue.severity}</span>
-                                </div>
-                            </div>
-
-                            {/* Tooltip Content */}
-                            <div className="p-4 space-y-3">
-                                <div className="text-sm text-slate-300 leading-relaxed font-sans">{issue.reason}</div>
-
-                                {/* Fix Preview */}
-                                <div className="flex items-center gap-2 text-sm bg-black/20 p-2 rounded-lg border border-white/5 font-mono">
-                                    <span className="text-red-400/70 line-through decoration-red-500/30 selection:bg-red-900/30">{issue.original}</span>
-                                    <ChevronRight size={12} className="text-slate-500" />
-                                    <span className="text-emerald-400 font-bold selection:bg-emerald-900/30">{issue.fixed}</span>
-                                </div>
-
-                                {/* Apply Button */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleApplyFix(issue);
-                                    }}
-                                    className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-emerald-900/20 active:scale-95"
-                                >
-                                    <CheckCircle size={14} />
-                                    Click to Apply Fix
-                                </button>
-                            </div>
-                        </span>
                     </span>
                 );
             }
         }
 
         return (
-            <div className="bg-slate-800/50 rounded-xl p-6 border border-white/10 font-serif text-lg leading-loose text-slate-300 whitespace-pre-wrap">
+            <div
+                className="bg-slate-800/50 rounded-xl p-6 border border-white/10 font-serif text-lg leading-loose text-slate-300 whitespace-pre-wrap relative"
+                onMouseUp={() => {
+                    const sel = window.getSelection();
+                    if (sel && sel.toString().trim().length >= 2) {
+                        const range = sel.getRangeAt(0);
+                        const rect = range.getBoundingClientRect();
+                        setSelectionData({
+                            x: rect.left + rect.width / 2,
+                            y: rect.top,
+                            text: sel.toString()
+                        });
+                    } else {
+                        setSelectionData(null);
+                    }
+                }}
+            >
                 {output}
             </div>
         );
@@ -940,6 +936,31 @@ const WriterView = () => {
                     </div>
                 </>
             )}
+
+            {/* Fixed Helpers (Portals) */}
+            <FixedTooltip data={tooltipData} onApply={handleApplyFix} />
+
+            <SelectionActionBtn
+                data={selectionData}
+                onReanalyze={(text) => {
+                    // Quick Analysis for Selection
+                    setMobileTab('analysis');
+                    analyzeWriting(text, settings, 'polish').then(res => {
+                        // Merge logic: append new issues to existing list
+                        const mergedIssues = [...(analysis?.issues || []), ...res.issues];
+                        // Deduplicate roughly by original text + start index? Hard to track index.
+                        // Just append for now, user can see more.
+                        setAnalysis({
+                            ...analysis,
+                            issues: mergedIssues,
+                            // Update tips too
+                            improvement_tips: [...(analysis?.improvement_tips || []), ...(res.improvement_tips || [])]
+                        });
+                        toast.success("Added new analysis to the list!");
+                        setSelectionData(null);
+                    }).catch(err => toast.error("Re-analysis failed: " + err.message));
+                }}
+            />
         </div>
     );
 };
