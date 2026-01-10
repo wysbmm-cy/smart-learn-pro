@@ -178,34 +178,61 @@ const Dashboard = ({ onNavigate }) => {
                         </div>
                         <div className="text-indigo-300 text-sm flex items-center gap-2">
                             <span>今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容</span>
-                            <button
-                                onClick={() => setShowHighlightManager(!showHighlightManager)}
-                                className="text-xs px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-indigo-200 transition-colors"
-                            >
-                                {showHighlightManager ? '收起' : '管理'}
-                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setShowHighlightManager(!showHighlightManager)}
+                                    className="text-xs px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-lg text-indigo-200 transition-colors flex items-center gap-1"
+                                >
+                                    {showHighlightManager ? '收起列表' : '管理/删除标记'}
+                                </button>
+                                {todayHighlights.length > 0 && (
+                                    <button
+                                        onClick={async () => {
+                                            if (confirm('确定清空今日所有标记吗？')) {
+                                                for (const h of todayHighlights) {
+                                                    await deleteHighlight(h.id);
+                                                }
+                                                setTodayHighlights([]);
+                                            }
+                                        }}
+                                        className="text-xs px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-200 transition-colors"
+                                    >
+                                        清空
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Highlight Manager List */}
                         {showHighlightManager && (
-                            <div className="mt-3 bg-black/20 rounded-xl p-3 max-h-40 overflow-y-auto custom-scrollbar backdrop-blur-sm border border-white/5">
+                            <div className="mt-3 bg-slate-900/60 rounded-xl p-4 max-h-60 overflow-y-auto custom-scrollbar border border-white/10 shadow-inner">
                                 {todayHighlights.length === 0 ? (
-                                    <div className="text-xs text-white/40 text-center py-2">暂无标记</div>
+                                    <div className="text-sm text-slate-400 text-center py-4">
+                                        暂无标记内容。去阅读或学习时选中文字标记吧！
+                                    </div>
                                 ) : (
-                                    todayHighlights.map(h => (
-                                        <div key={h.id} className="flex items-center justify-between gap-3 text-xs text-indigo-200 py-1.5 border-b border-white/5 last:border-0 hover:bg-white/5 px-2 rounded">
-                                            <div className="truncate flex-1">
-                                                <span className="opacity-50 inline-block w-4">[{h.type === 'note' ? '注' : h.type === 'card' ? '卡' : '文'}]</span>
-                                                {h.content}
+                                    <div className="space-y-2">
+                                        {todayHighlights.map(h => (
+                                            <div key={h.id} className="flex items-start justify-between gap-3 text-sm text-slate-200 bg-white/5 p-3 rounded-lg hover:bg-white/10 transition-colors group">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${h.type === 'note' ? 'bg-blue-500/30 text-blue-300' : h.type === 'card' ? 'bg-green-500/30 text-green-300' : 'bg-purple-500/30 text-purple-300'}`}>
+                                                            {h.type === 'note' ? 'NOTE' : h.type === 'card' ? 'CARD' : 'TEXT'}
+                                                        </span>
+                                                        <span className="text-xs text-slate-500">{new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                    <p className="line-clamp-2 leading-relaxed opacity-90">{h.content}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeleteHighlight(h.id)}
+                                                    className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                                                    title="移除此标记"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
-                                            <button
-                                                onClick={() => handleDeleteHighlight(h.id)}
-                                                className="text-red-400 hover:text-red-300 opacity-60 hover:opacity-100"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ))
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         )}

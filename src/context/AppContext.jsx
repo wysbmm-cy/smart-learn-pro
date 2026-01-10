@@ -127,11 +127,25 @@ export const AppProvider = ({ children }) => {
             setBgTasks(prev => ({ ...prev, dailyImage: { status: 'done', url } }));
 
             if (url) {
+                // Fix: Convert URL to Base64 to persist permanently
+                let savedUrl = url;
+                try {
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    savedUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (err) {
+                    console.error("Failed to convert image to Base64, saving original URL", err);
+                }
+
                 await saveDailyImage({
                     id: Date.now().toString(),
                     date: new Date().toISOString().split('T')[0],
                     type: 'summary',
-                    url: url,
+                    url: savedUrl,
                     style: style,
                     metadata: { stats: todayStats },
                     createdAt: new Date().toISOString()
@@ -151,11 +165,25 @@ export const AppProvider = ({ children }) => {
 
             // Persist to Gallery
             if (result?.imageUrl) {
+                // Fix: Convert URL to Base64 to persist permanently
+                let savedUrl = result.imageUrl;
+                try {
+                    const response = await fetch(result.imageUrl);
+                    const blob = await response.blob();
+                    savedUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (err) {
+                    console.error("Failed to convert image to Base64, saving original URL", err);
+                }
+
                 await saveDailyImage({
                     id: Date.now().toString(),
                     date: new Date().toISOString().split('T')[0],
                     type: 'comic',
-                    url: result.imageUrl,
+                    url: savedUrl,
                     style: result.styleName,
                     metadata: { title: result.storyTitle },
                     createdAt: new Date().toISOString()

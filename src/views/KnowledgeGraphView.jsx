@@ -169,6 +169,7 @@ const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onRe
 
 export default function KnowledgeGraphView() {
     const fgRef = useRef();
+    const { settings } = useApp(); // Fix: Get settings from context
     const [graphData, setGraphData] = useState({ nodes: [], links: [] });
     const [loading, setLoading] = useState(true);
     const [showFolders, setShowFolders] = useState(true);
