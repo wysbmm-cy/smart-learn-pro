@@ -1,17 +1,17 @@
-
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { Sparkles } from 'lucide-react';
 
 const SelectionActionBtn = ({ data, onReanalyze }) => {
     if (!data) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div
             style={{
                 top: data.y - 40, // Float above selection
                 left: data.x
             }}
-            className="fixed z-[100] transform -translate-x-1/2 animate-in fade-in zoom-in duration-200"
+            className="fixed z-[9999] transform -translate-x-1/2 animate-in fade-in zoom-in duration-200 pointer-events-auto"
         >
             <button
                 onClick={(e) => {
@@ -23,7 +23,8 @@ const SelectionActionBtn = ({ data, onReanalyze }) => {
                 <Sparkles size={14} className="animate-pulse" />
                 重新批注选段
             </button>
-        </div>
+        </div>,
+        document.body
     );
 };
 

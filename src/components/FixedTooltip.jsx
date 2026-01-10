@@ -28,6 +28,8 @@ const FixedTooltip = ({ data, onApply }) => {
                 maxWidth: '320px'
             }}
             className="fixed z-[9999] transform -translate-x-1/2 mt-2 pointer-events-none"
+            onMouseEnter={data.onMouseEnter}
+            onMouseLeave={data.onMouseLeave}
         >
             {/* Tooltip Card (Pointer events auto to allow clicking button) */}
             <div className={`pointer-events-auto bg-slate-900/95 backdrop-blur-xl rounded-xl shadow-2xl border ${borderColor} ring-1 ring-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>

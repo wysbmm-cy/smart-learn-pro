@@ -316,15 +316,23 @@ const WriterView = () => {
                         key={start}
                         className={`cursor-pointer transition-all ${colorClass}`}
                         onMouseEnter={(e) => {
+                            if (window.tooltipTimer) clearTimeout(window.tooltipTimer);
                             const rect = e.currentTarget.getBoundingClientRect();
-                            // Calculate optimal position (centered above/below)
                             setTooltipData({
                                 x: rect.left + rect.width / 2,
                                 y: rect.bottom + 10,
-                                issue
+                                issue,
+                                onMouseEnter: () => {
+                                    if (window.tooltipTimer) clearTimeout(window.tooltipTimer);
+                                },
+                                onMouseLeave: () => {
+                                    window.tooltipTimer = setTimeout(() => setTooltipData(null), 300);
+                                }
                             });
                         }}
-                        onMouseLeave={() => setTooltipData(null)}
+                        onMouseLeave={() => {
+                            window.tooltipTimer = setTimeout(() => setTooltipData(null), 300);
+                        }}
                     >
                         {textSegment}
                     </span>
