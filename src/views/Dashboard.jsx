@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon } from 'lucide-react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';

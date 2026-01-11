@@ -1517,3 +1517,72 @@ Create a single comic panel illustration. Dynamic composition, expressive charac
     storyTitle: storyResult.storyTitle
   };
 };
+
+// Helper to check API Key
+function checkApiKey(settings) {
+  return settings?.apiKey && settings.apiKey.length > 5;
+}
+
+/**
+ * Generates Deep Learning Notes in Markdown format
+ * @param {string} word - The vocabulary word
+ * @param {string} context - Original context sentence (optional)
+ * @param {object} settings - User settings for API key
+ * @returns {Promise<string>} Markdown content
+ */
+export async function generateDeepNotes(word, context, settings) {
+  if (!checkApiKey(settings)) {
+    console.warn("API Key check failed in generateDeepNotes");
+    return null;
+  }
+
+  const prompt = `
+  Role: Expert English Teacher.
+  Task: Create a "Deep Dive Vocabulary Note" for the word: "${word}".
+  Context: The word appears in this sentence: "${context || 'No specific context'}".
+
+  Output Format: Markdown (Strictly follow this structure):
+
+  ## ${word}
+  ### 1. 词性与词源
+  *   **词性：** [e.g. Noun/Verb]
+  *   **词源：** [Brief etymology]
+
+  ### 2. 核心释义
+  1.  **[Meaning 1]：** [Definition]
+  2.  **[Meaning 2]：** [Definition]
+
+  ### 3. 常见搭配与用法
+  *   **[Collocation 1]**：[CN Meaning]
+  *   **[Collocation 2]**：[CN Meaning]
+      > [Example sentence]
+
+  ### 4. 同/近义词辨析
+  | 单词 | 侧重点 | 例句 |
+  | :--- | :--- | :--- |
+  | **${word}** | ... | ... |
+  | **[Synonym]** | ... | ... |
+
+  ### 5. 例句展示
+  1.  [Sentence 1] ([CN Translation])
+  2.  [Sentence 2] ([CN Translation])
+
+  **记忆要点：** [Mnemonic or key takeaway]
+
+  ### 6. 考试应用与备考策略
+  - **考察频率：** [High/Medium]
+  - **写作/翻译提分点：** [Tips]
+  `;
+
+  try {
+    const markdown = await fetchFromAI([
+      { role: "system", content: "You are a helpful linguistic assistant. Output clean Markdown." },
+      { role: "user", content: prompt }
+    ], settings, false); // false = text/markdown mode, not JSON
+
+    return markdown;
+  } catch (error) {
+    console.error("Deep Notes Generation Error:", error);
+    return null;
+  }
+}
