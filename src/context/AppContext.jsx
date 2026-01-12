@@ -157,10 +157,10 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const runStoryComicGeneration = async (highlights) => {
+    const runStoryComicGeneration = async (highlights, options = {}) => {
         setBgTasks(prev => ({ ...prev, storyComic: { status: 'loading', data: null } }));
         try {
-            const result = await generateStoryComic(highlights, settings, settings.customStyles || []);
+            const result = await generateStoryComic(highlights, settings, settings.customStyles || [], options);
             setBgTasks(prev => ({ ...prev, storyComic: { status: 'done', data: result } }));
 
             // Persist to Gallery

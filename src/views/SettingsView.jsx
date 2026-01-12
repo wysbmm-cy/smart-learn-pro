@@ -221,7 +221,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Audio API Card */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="audio" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-pink-50 text-pink-600 rounded-lg">
                             <Mic size={20} />
@@ -305,7 +305,7 @@ const SettingsView = () => {
 
 
                 {/* TTS API Card (Output) */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="tts" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
                             <Volume2 size={20} />
@@ -402,7 +402,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Image Generation API Card */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="image" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
                             <ImageIcon size={20} />
@@ -489,7 +489,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* System Prompt Card */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="system" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
                             <Settings size={20} />
@@ -525,7 +525,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Efficiency Tools Card */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="tools" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
                             <Clock size={20} />
@@ -574,7 +574,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Modules Card */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="modules" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
                             <Box size={20} />
@@ -621,7 +621,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Custom Comic Styles Settings */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="styles" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-pink-50 text-pink-600 rounded-lg">
                             <BookMarked size={20} />
@@ -710,7 +710,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Smart Drill Cards Settings */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="drills" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
                             <Box size={20} />
@@ -794,7 +794,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Appearance Card (Zen Mode) */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="appearance" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-rose-50 text-rose-600 rounded-lg">
                             <Palette size={20} />
@@ -892,7 +892,7 @@ const SettingsView = () => {
                 </div>
 
                 {/* Data Management Card */}
-                <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                <div id="general" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
                     <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
                             <Database size={20} />

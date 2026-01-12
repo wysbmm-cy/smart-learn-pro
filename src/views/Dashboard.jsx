@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2 } from 'lucide-react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
 import { getHighlightsByDate, getFlashcards, getNotes, getHistory, deleteHighlight, getChatSessions } from '../services/db';
-import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
+import { generateDailySummaryImage, generateStoryComic, COMIC_STYLES } from '../services/ai';
 import { Skeleton } from '../components/SkeletonLoader';
 
 const Dashboard = ({ onNavigate }) => {
@@ -28,6 +28,11 @@ const Dashboard = ({ onNavigate }) => {
     const [imageStyle, setImageStyle] = useState('cyberpunk');
     const [showHighlightManager, setShowHighlightManager] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Comic generation options
+    const [showComicSettings, setShowComicSettings] = useState(false);
+    const [selectedComicStyle, setSelectedComicStyle] = useState('random');
+    const [selectedComicFormat, setSelectedComicFormat] = useState('random');
 
     const handleDeleteHighlight = async (id) => {
         if (confirm('确定移除这条标记吗？')) {
@@ -113,14 +118,33 @@ const Dashboard = ({ onNavigate }) => {
         runDailyImageGeneration(todayHighlights, imageStyle, todayStats);
     };
 
-    // Generate Story Comic (random style)
+    // Generate Story Comic (with options)
     const handleGenerateComic = async () => {
         if (!todayHighlights.length) {
             alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
             return;
         }
-        // Run in background (Global Context)
-        runStoryComicGeneration(todayHighlights);
+        // Run in background with selected options
+        runStoryComicGeneration(todayHighlights, {
+            style: selectedComicStyle,
+            format: selectedComicFormat
+        });
+    };
+
+    // Save comic image
+    const handleSaveComic = async () => {
+        if (!storyComic?.imageUrl) return;
+        try {
+            const link = document.createElement('a');
+            link.href = storyComic.imageUrl;
+            link.download = `comic_${storyComic.storyTitle || 'story'}_${Date.now()}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (e) {
+            console.error('Save failed:', e);
+            alert('保存失败: ' + e.message);
+        }
     };
 
     return (
@@ -288,7 +312,7 @@ const Dashboard = ({ onNavigate }) => {
                 )}
             </div>
 
-            {/* ⭐ 3. Story Comic - Random Art Style */}
+            {/* ⭐ 3. Story Comic - With Style Selection */}
             <div className="bg-gradient-to-br from-rose-950 via-purple-950 to-indigo-950 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-purple-500/10 border border-purple-500/20 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-64 h-64 bg-pink-500 opacity-5 rounded-full blur-3xl -ml-20 -mt-20 pointer-events-none"></div>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 relative z-10">
@@ -300,26 +324,91 @@ const Dashboard = ({ onNavigate }) => {
                             今日故事漫画
                         </div>
                         <div className="text-purple-300 text-sm">
-                            AI 将标记内容变成冒险故事，随机画风生成
+                            AI 将标记内容变成你的学习故事
                             {storyComic?.styleName && <span className="ml-2 px-2 py-0.5 bg-pink-500/20 text-pink-300 rounded-lg text-xs">{storyComic.styleName}</span>}
                         </div>
                     </div>
 
-                    <button
-                        onClick={handleGenerateComic}
-                        disabled={isGeneratingComic || !todayHighlights.length}
-                        className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingComic ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-400 hover:to-purple-400 text-white shadow-pink-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
-                    >
-                        {isGeneratingComic ? (
-                            <><Loader2 size={18} className="animate-spin" /> AI 编剧+随机画风生成...</>
-                        ) : (
-                            <><BookMarked size={18} /> 生成故事漫画</>
-                        )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Settings Button */}
+                        <button
+                            onClick={() => setShowComicSettings(!showComicSettings)}
+                            className="p-3 rounded-xl bg-white/10 hover:bg-white/20 text-purple-300 transition-all"
+                            title="设置风格和格式"
+                        >
+                            <Settings size={18} />
+                        </button>
+
+                        <button
+                            onClick={handleGenerateComic}
+                            disabled={isGeneratingComic || !todayHighlights.length}
+                            className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingComic ? 'bg-slate-700 text-slate-400' : todayHighlights.length ? 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-400 hover:to-purple-400 text-white shadow-pink-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                        >
+                            {isGeneratingComic ? (
+                                <><Loader2 size={18} className="animate-spin" /> 生成中...</>
+                            ) : (
+                                <><BookMarked size={18} /> 生成漫画</>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
+                {/* Settings Panel */}
+                {showComicSettings && (
+                    <div className="mb-6 p-4 bg-white/5 rounded-xl border border-white/10 relative z-10">
+                        <div className="flex justify-between items-center mb-4">
+                            <span className="text-white font-bold text-sm">漫画设置</span>
+                            <button onClick={() => setShowComicSettings(false)} className="text-purple-300 hover:text-white">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Style Selector */}
+                            <div>
+                                <label className="block text-xs text-purple-300 mb-2">画风</label>
+                                <select
+                                    value={selectedComicStyle}
+                                    onChange={(e) => setSelectedComicStyle(e.target.value)}
+                                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-pink-400"
+                                >
+                                    <option value="random" className="bg-slate-800">🎲 随机</option>
+                                    <optgroup label="日漫" className="bg-slate-800">
+                                        {Object.entries(COMIC_STYLES).slice(0, 7).map(([key, style]) => (
+                                            <option key={key} value={key} className="bg-slate-800">{style.name}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="美漫" className="bg-slate-800">
+                                        {Object.entries(COMIC_STYLES).slice(7, 12).map(([key, style]) => (
+                                            <option key={key} value={key} className="bg-slate-800">{style.name}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="国漫/儿童卡通/特殊" className="bg-slate-800">
+                                        {Object.entries(COMIC_STYLES).slice(12).map(([key, style]) => (
+                                            <option key={key} value={key} className="bg-slate-800">{style.name}</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+                            </div>
+                            {/* Format Selector */}
+                            <div>
+                                <label className="block text-xs text-purple-300 mb-2">格式</label>
+                                <select
+                                    value={selectedComicFormat}
+                                    onChange={(e) => setSelectedComicFormat(e.target.value)}
+                                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-pink-400"
+                                >
+                                    <option value="random" className="bg-slate-800">🎲 随机</option>
+                                    <option value="single" className="bg-slate-800">🖼️ 单图</option>
+                                    <option value="2panel" className="bg-slate-800">📖 两格漫画</option>
+                                    <option value="4panel" className="bg-slate-800">📚 四格漫画</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {storyComic?.imageUrl ? (
-                    <div className="space-y-3">
+                    <div className="space-y-3 relative z-10">
                         <div className="text-center text-white font-bold text-lg">{storyComic.storyTitle}</div>
                         <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
                             <img
@@ -328,12 +417,20 @@ const Dashboard = ({ onNavigate }) => {
                                 className="w-full h-auto object-cover"
                             />
                         </div>
+                        {/* Save Button */}
+                        <button
+                            onClick={handleSaveComic}
+                            className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all border border-white/10"
+                        >
+                            <Download size={16} />
+                            保存图片
+                        </button>
                     </div>
                 ) : (
-                    <div className="h-56 rounded-2xl bg-white/5 border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-purple-300">
+                    <div className="h-56 rounded-2xl bg-white/5 border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-purple-300 relative z-10">
                         <BookMarked size={56} className="opacity-20 mb-4" />
-                        <p className="text-base font-medium">AI 将学习内容变成冒险故事</p>
-                        <p className="text-xs text-purple-400 mt-2">支持 22+ 漫画画风：日漫 / 美漫 / 国漫 / 儿童卡通 / 特殊风格</p>
+                        <p className="text-base font-medium">AI 将学习内容变成你的故事</p>
+                        <p className="text-xs text-purple-400 mt-2">支持 22+ 漫画画风，可选单图/两格/四格</p>
                     </div>
                 )}
             </div>
@@ -420,7 +517,7 @@ const Dashboard = ({ onNavigate }) => {
                 )}
 
             </div>
-        </div>
+        </div >
     );
 };
 

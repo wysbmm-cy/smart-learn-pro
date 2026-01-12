@@ -1371,7 +1371,7 @@ export const generateKnowledgeGraphReferences = async (vocabList, settings) => {
 // =====================================================
 // COMIC STYLES LIBRARY - 40+ Art Styles
 // =====================================================
-const COMIC_STYLES = {
+export const COMIC_STYLES = {
   // 日漫风格
   shonen: { name: '少年热血风', prompt: 'Shonen manga style, dynamic action poses, exaggerated muscles, intense battle expressions, bold linework like Dragon Ball or One Piece' },
   shojo: { name: '少女唯美风', prompt: 'Shojo manga style, huge sparkling eyes, flowery decorations, delicate lines, soft colors like Sailor Moon' },
@@ -1412,9 +1412,12 @@ const COMIC_STYLES = {
 
 /**
  * Generate Story Comic - Creates a story-based comic from highlights
- * Uses a random art style and generates a narrative
+ * @param {Array} highlights - Today's learning highlights
+ * @param {Object} settings - User settings with API keys
+ * @param {Array} customStyles - User's custom comic styles
+ * @param {Object} options - { style: 'random'|styleKey, format: 'random'|'single'|'2panel'|'4panel' }
  */
-export const generateStoryComic = async (highlights, settings, customStyles = []) => {
+export const generateStoryComic = async (highlights, settings, customStyles = [], options = {}) => {
   const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
   const apiKey = settings.imageGenApiKey || settings.apiKey;
   const model = settings.imageGenModel || 'dall-e-3';
@@ -1423,7 +1426,7 @@ export const generateStoryComic = async (highlights, settings, customStyles = []
     return null;
   }
 
-  // === STEP 1: Pick Random Art Style ===
+  // === STEP 1: Pick Art Style ===
   let stylePool = { ...COMIC_STYLES };
 
   // Merge custom styles
@@ -1436,42 +1439,75 @@ export const generateStoryComic = async (highlights, settings, customStyles = []
     });
   }
 
-  const styleKeys = Object.keys(stylePool);
-  const randomKey = styleKeys[Math.floor(Math.random() * styleKeys.length)];
-  const selectedStyle = stylePool[randomKey];
+  // Select style based on options
+  let selectedStyle;
+  if (options.style && options.style !== 'random' && stylePool[options.style]) {
+    selectedStyle = stylePool[options.style];
+  } else {
+    const styleKeys = Object.keys(stylePool);
+    const randomKey = styleKeys[Math.floor(Math.random() * styleKeys.length)];
+    selectedStyle = stylePool[randomKey];
+  }
 
-  // === STEP 2: Use AI to Generate Story Scene ===
+  // === STEP 2: Determine Format ===
+  const validFormats = ['single', '2panel', '4panel'];
+  let format = options.format;
+  if (!format || format === 'random') {
+    format = validFormats[Math.floor(Math.random() * validFormats.length)];
+  }
+
+  // Format-specific prompt instructions
+  const formatInstructions = {
+    single: '创作一个完整的单张漫画场景，一个画面讲述完整故事。',
+    '2panel': '创作一个两格漫画（左右两个场景），展示"之前/之后"或"问题/解决"的对比。',
+    '4panel': '创作一个四格漫画（起承转合），用四个连续场景讲述一个小故事。'
+  };
+  const formatLayoutInstructions = {
+    single: 'Single comic panel illustration.',
+    '2panel': '2-panel comic strip layout (side by side), showing a before/after or cause/effect narrative.',
+    '4panel': '4-panel comic strip layout (2x2 grid), classic 4-koma style: setup, development, twist, punchline.'
+  };
+
+  // === STEP 3: Use AI to Generate Story Scene ===
   const storyPrompt = `你是一个创意漫画编剧。请根据以下学习内容，创作一个有趣的漫画场景描述。
 
 今日学习标记：
 ${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
 
-请将这些内容转化为一个有趣的冒险故事场景。主角是一个正在学习的冒险者。
+格式要求：${formatInstructions[format]}
+
+规则：
+1. 围绕这些学习内容本身来创作故事，不要加入龙、怪物、魔法等奇幻元素
+2. 主角是"我"——一个正在学习这些内容的普通人（学生/上班族）
+3. 场景可以是：教室、图书馆、咖啡馆、书房、地铁上看书等现代生活场景
+4. 把学习内容拟人化或具象化，让它们成为场景的一部分（比如单词变成可爱的小精灵、语法规则变成路标、知识点变成建筑物等）
+5. 保持温馨、有趣、贴近生活的基调
+
 用JSON格式返回：
 {
-  "scene": "场景描述（英文，100词以内，描述画面应该是什么样子，包括角色动作、环境、物品等）",
+  "scene": "场景描述（英文，100词以内，描述画面构图、人物动作、周围元素等）",
   "storyTitle": "故事标题（中文，简短有趣）"
 }`;
 
   let storyResult;
   try {
     const storyJson = await fetchFromAI([
-      { role: "system", content: "你是一个创意漫画编剧，擅长把学习内容变成有趣的冒险故事。只输出JSON。" },
+      { role: "system", content: "你是一个创意漫画编剧，擅长把学习内容变成温馨有趣的漫画故事。主角是学习者本人。只输出JSON。" },
       { role: "user", content: storyPrompt }
     ], settings, true);
     storyResult = JSON.parse(storyJson);
   } catch (e) {
     console.error("Story generation error:", e);
     storyResult = {
-      scene: "A young adventurer reading an ancient scroll in a mystical library, magical knowledge floating around as glowing symbols",
-      storyTitle: "知识冒险者"
+      scene: "A student sitting in a cozy cafe, surrounded by floating vocabulary words that have turned into cute little characters. The student is smiling while taking notes, and the word-characters are playfully interacting with each other on the notebook pages.",
+      storyTitle: "单词咖啡馆"
     };
   }
 
-  // === STEP 3: Build Final Image Prompt ===
+  // === STEP 4: Build Final Image Prompt ===
   const finalPrompt = `${selectedStyle.prompt}. 
 SCENE: ${storyResult.scene}
-Create a single comic panel illustration. Dynamic composition, expressive characters, rich details. The image should tell a story visually. 8k quality, --ar 9:16`;
+${formatLayoutInstructions[format]} Dynamic composition, expressive characters, rich details. The image should tell a story visually. 8k quality, --ar 9:16`;
 
   // === STEP 4: Generate Image ===
   const cleanUrl = apiUrl.replace(/\/+$/, '');
