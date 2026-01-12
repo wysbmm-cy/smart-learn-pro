@@ -9,10 +9,23 @@ const GlobalPlayer = () => {
     const [rate, setRate] = useState(1.0);
     const [isMinimized, setIsMinimized] = useState(false);
 
+    // Progress State
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const progressRef = useRef(null);
+
     // Draggable State
     const [position, setPosition] = useState({ x: window.innerWidth - 340, y: window.innerHeight - 150 });
     const [isDragging, setIsDragging] = useState(false);
     const dragOffset = useRef({ x: 0, y: 0 });
+
+    // Format time helper
+    const formatTime = (seconds) => {
+        if (!seconds || isNaN(seconds)) return '0:00';
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
 
     // Handle Window Resize to keep in bounds (basic)
     useEffect(() => {
@@ -110,7 +123,34 @@ const GlobalPlayer = () => {
         if (e.type === 'play') toggleAudioPlay(true);
     };
 
+    // Progress update handler
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+        }
+    };
+
+    // Duration loaded handler
+    const handleLoadedMetadata = () => {
+        if (audioRef.current) {
+            setDuration(audioRef.current.duration);
+        }
+    };
+
+    // Seek handler
+    const handleProgressClick = (e) => {
+        if (!progressRef.current || !audioRef.current || !duration) return;
+        const rect = progressRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const percentage = clickX / rect.width;
+        const newTime = percentage * duration;
+        audioRef.current.currentTime = newTime;
+        setCurrentTime(newTime);
+    };
+
     if (!audioState.file) return null;
+
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return ReactDOM.createPortal(
         <div
@@ -128,6 +168,8 @@ const GlobalPlayer = () => {
                 onPlay={handleAudioEvents}
                 onPause={handleAudioEvents}
                 onEnded={() => toggleAudioPlay(false)}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
                 className="hidden"
             />
 
@@ -145,7 +187,7 @@ const GlobalPlayer = () => {
 
                     {/* Hover Actions for Minimized */}
                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                        Double click/Click to expand
+                        点击展开
                     </div>
                 </div>
             ) : (
@@ -164,14 +206,14 @@ const GlobalPlayer = () => {
                             <button
                                 onClick={() => setIsMinimized(true)}
                                 className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
-                                title="Minimize"
+                                title="最小化"
                             >
                                 <Minimize2 size={16} />
                             </button>
                             <button
                                 onClick={closeAudio}
                                 className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500"
-                                title="Close"
+                                title="关闭"
                             >
                                 <X size={16} />
                             </button>
@@ -187,12 +229,34 @@ const GlobalPlayer = () => {
                         {/* Info */}
                         <div className="flex-1 min-w-0">
                             <h4 className="font-bold text-slate-800 text-xs truncate scroll-m-2">{audioState.file.name}</h4>
-                            <p className="text-[10px] text-slate-500 truncate">Audio Player</p>
+                            <p className="text-[10px] text-slate-500 truncate">音频播放器</p>
+                        </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="px-1">
+                        <div
+                            ref={progressRef}
+                            className="h-1.5 w-full bg-slate-200 rounded-full cursor-pointer group relative"
+                            onClick={handleProgressClick}
+                        >
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-150 relative"
+                                style={{ width: `${progress}%` }}
+                            >
+                                {/* Drag Handle Dot */}
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-blue-500 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                        </div>
+                        {/* Time Display */}
+                        <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+                            <span>{formatTime(currentTime)}</span>
+                            <span>{formatTime(duration)}</span>
                         </div>
                     </div>
 
                     {/* Controls */}
-                    <div className="flex items-center justify-around bg-slate-50 rounded-xl p-1 mt-1">
+                    <div className="flex items-center justify-around bg-slate-50 rounded-xl p-1">
                         <button
                             onClick={cycleSpeed}
                             className="text-[10px] font-bold text-slate-500 hover:text-blue-600 px-2 py-1 transition-colors"
@@ -217,3 +281,4 @@ const GlobalPlayer = () => {
 };
 
 export default GlobalPlayer;
+

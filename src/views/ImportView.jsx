@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { analyzeText, transcribeAudio, extractVocabulary } from '../services/ai';
 import { extractTextFromPDF } from '../services/pdf';
 import { saveFlashcard, saveFolder as dbSaveFolder, getFolders } from '../services/db';
+import toast from 'react-hot-toast';
 
 const ImportView = ({ onAnalyzeSuccess }) => {
     const {
@@ -69,7 +70,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                 setInputText(text);
                 setProgressMsg("PDF Text Extracted!");
             } catch (err) {
-                alert("PDF Extraction Failed: " + err.message);
+                toast.error("PDF 提取失败: " + err.message);
             } finally {
                 setIsAnalyzing(false);
             }
@@ -208,13 +209,13 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                 count++;
             }
 
-            alert(`Successfully imported ${count} cards!`);
+            toast.success(`成功导入 ${count} 张卡片！`);
             setVocabList(null); // Reset
             setInputText("");
             loadFolderList(); // Refresh folders
 
         } catch (e) {
-            alert("Save failed: " + e.message);
+            toast.error("保存失败: " + e.message);
         } finally {
             setIsAnalyzing(false);
         }

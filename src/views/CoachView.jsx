@@ -3,6 +3,7 @@ import { Mic, Square, Volume2, User, Bot, Loader2, Play, Settings, Trash2, Histo
 import { useApp } from '../context/AppContext';
 import { transcribeAudio, sendChatMessage, synthesizeSpeech } from '../services/ai';
 import { saveChatSession, getChatSessions, deleteChatSession } from '../services/db';
+import toast from 'react-hot-toast';
 
 const personas = [
     { id: 'ielts', name: '雅思考官 (IELTS)', prompt: "You are a strict but fair IELTS examiner. Correct my grammar and vocabulary usage. Maintain a formal yet encouraging tone. Ask follow-up questions." },
@@ -124,7 +125,7 @@ const CoachView = () => {
 
             setAnalysisResult({ target: text, feedback });
         } catch (e) {
-            alert("Analysis failed: " + e.message);
+            toast.error("分析失败: " + e.message);
         } finally {
             setStatus('idle');
         }
@@ -149,7 +150,7 @@ const CoachView = () => {
             setStatus('recording');
         } catch (err) {
             console.error("Mic Error:", err);
-            alert("无法访问麦克风，请检查权限。");
+            toast.error("无法访问麦克风，请检查权限。");
         }
     };
 
@@ -215,7 +216,7 @@ const CoachView = () => {
                 errMsg += "\n\n(提示: 请检查设置中的 TTS Model Name 是否正确。)";
             }
 
-            alert("对话处理出错: " + errMsg);
+            toast.error("对话处理出错: " + errMsg);
             setStatus('idle');
         }
     };

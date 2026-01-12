@@ -7,6 +7,7 @@ import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
 import { getHighlightsByDate, getFlashcards, getNotes, getHistory, deleteHighlight, getChatSessions } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
+import { Skeleton } from '../components/SkeletonLoader';
 
 const Dashboard = ({ onNavigate }) => {
     const {
@@ -26,6 +27,7 @@ const Dashboard = ({ onNavigate }) => {
     const [todayHighlights, setTodayHighlights] = useState([]);
     const [imageStyle, setImageStyle] = useState('cyberpunk');
     const [showHighlightManager, setShowHighlightManager] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     const handleDeleteHighlight = async (id) => {
         if (confirm('确定移除这条标记吗？')) {
@@ -54,6 +56,7 @@ const Dashboard = ({ onNavigate }) => {
 
     useEffect(() => {
         const load = async () => {
+            setIsLoading(true);
             const cards = await loadUserFlashcards();
             setFlashcards(cards);
 
@@ -92,6 +95,8 @@ const Dashboard = ({ onNavigate }) => {
                 });
             } catch (e) {
                 console.error('Stats loading error:', e);
+            } finally {
+                setIsLoading(false);
             }
         };
         load();
@@ -355,42 +360,64 @@ const Dashboard = ({ onNavigate }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* Card 2: Streak (Orange Theme) */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 hover:shadow-md transition-all flex flex-col justify-between h-[180px]">
-                    <div className="flex justify-between items-start">
-                        <div className="p-3 bg-orange-50 text-orange-500 rounded-2xl">
-                            <Activity size={24} strokeWidth={2.5} />
+                {isLoading ? (
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 h-[180px]">
+                        <div className="flex justify-between items-start mb-6">
+                            <Skeleton className="h-12 w-12 rounded-2xl bg-slate-100" />
+                            <Skeleton className="h-4 w-16 bg-slate-100" />
                         </div>
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
+                        <Skeleton className="h-10 w-24 mb-2 bg-slate-100" />
+                        <Skeleton className="h-4 w-32 bg-slate-100" />
                     </div>
-                    <div>
-                        <div className="flex items-baseline gap-1 mb-2">
-                            <span className="text-4xl font-bold text-slate-800">{stats.streak}</span>
-                            <span className="text-lg text-slate-400 font-medium">days</span>
+                ) : (
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 hover:shadow-md transition-all flex flex-col justify-between h-[180px]">
+                        <div className="flex justify-between items-start">
+                            <div className="p-3 bg-orange-50 text-orange-500 rounded-2xl">
+                                <Activity size={24} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
                         </div>
-                        <div className="text-sm text-slate-500 font-medium">连续学习天数</div>
+                        <div>
+                            <div className="flex items-baseline gap-1 mb-2">
+                                <span className="text-4xl font-bold text-slate-800">{stats.streak}</span>
+                                <span className="text-lg text-slate-400 font-medium">days</span>
+                            </div>
+                            <div className="text-sm text-slate-500 font-medium">连续学习天数</div>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Card 3: Plan (Purple Theme) */}
-                <div
-                    onClick={() => onNavigate('plan')}
-                    className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 hover:shadow-md hover:border-blue-100 transition-all cursor-pointer flex flex-col justify-between h-[180px] group"
-                >
-                    <div className="flex justify-between items-start">
-                        <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-100 transition-colors">
-                            <Calendar size={24} strokeWidth={2.5} />
+                {isLoading ? (
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 h-[180px]">
+                        <div className="flex justify-between items-start mb-6">
+                            <Skeleton className="h-12 w-12 rounded-2xl bg-slate-100" />
+                            <Skeleton className="h-6 w-6 bg-slate-100" />
                         </div>
-                        <ChevronRight className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                        <Skeleton className="h-6 w-36 mb-2 bg-slate-100" />
+                        <Skeleton className="h-4 w-full bg-slate-100" />
                     </div>
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg font-bold text-slate-800">查看智能计划</span>
+                ) : (
+                    <div
+                        onClick={() => onNavigate('plan')}
+                        className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100/50 hover:shadow-md hover:border-blue-100 transition-all cursor-pointer flex flex-col justify-between h-[180px] group"
+                    >
+                        <div className="flex justify-between items-start">
+                            <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-100 transition-colors">
+                                <Calendar size={24} strokeWidth={2.5} />
+                            </div>
+                            <ChevronRight className="text-slate-300 group-hover:text-blue-500 transition-colors" />
                         </div>
-                        <div className="text-sm text-slate-500 leading-relaxed">
-                            AI 已根据进度调整复习队列，点击开始今日复习。
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg font-bold text-slate-800">查看智能计划</span>
+                            </div>
+                            <div className="text-sm text-slate-500 leading-relaxed">
+                                AI 已根据进度调整复习队列，点击开始今日复习。
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
 
             </div>
         </div>

@@ -188,7 +188,7 @@ const UserGuideModal = ({ onClose }) => {
                 <div className="w-64 bg-slate-50 border-r border-slate-100 p-4 flex flex-col gap-2 shrink-0">
                     <div className="px-4 py-4 mb-2">
                         <h2 className="font-bold text-slate-800 text-xl tracking-tight">新手指南</h2>
-                        <p className="text-xs text-slate-400 mt-1">SmartLearn Pro v1.0</p>
+                        <p className="text-xs text-slate-400 mt-1">SmartLearn Pro v0.1.8</p>
                     </div>
 
                     <TabButton id="start" icon={Key} label="第一步：启动 AI" />

@@ -9,6 +9,7 @@ import DrillCard from '../components/DrillCard';
 import RemediationHub from '../components/RemediationHub';
 import { saveFolder, getFolders, deleteFolder, getRecentDrillLogs, getDiagnosis, saveDiagnosis } from '../services/db';
 import { generateDrillCards, generateDiagnosis, generateRemediationDrills, generateDeepNotes } from '../services/ai';
+import toast from 'react-hot-toast';
 
 const FlashcardView = () => {
     const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState, settings, saveToNotes, loadUserNotes } = useApp();
@@ -436,7 +437,6 @@ const FlashcardView = () => {
         } else if (targetFolder === 'today') {
             const now = Date.now();
             candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
-            candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
         } else if (targetFolder === 'flagged') {
             candidates = allCards.filter(c => c.isFlagged);
         } else {
@@ -444,7 +444,7 @@ const FlashcardView = () => {
         }
 
         if (candidates.length === 0) {
-            alert("没有找到符合条件的卡片！");
+            toast.error("没有找到符合条件的卡片！");
             return;
         }
 
@@ -1312,6 +1312,32 @@ const FlashcardView = () => {
                                 <span className="text-lg">简单 (4)</span>
                                 <span className="text-[10px] font-mono text-slate-400">3.5x</span>
                             </button>
+                        </div>
+                    )}
+
+                    {/* Keyboard Shortcut Hints */}
+                    {mode === 'study' && !isDrillMode && (
+                        <div className="py-3 px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-6 text-xs text-slate-400">
+                            <span className="flex items-center gap-1.5">
+                                <kbd className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">Space</kbd>
+                                翻转
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">1-4</kbd>
+                                评分
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">S</kbd>
+                                标记
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">Z</kbd>
+                                撤销
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">Esc</kbd>
+                                退出
+                            </span>
                         </div>
                     )}
 

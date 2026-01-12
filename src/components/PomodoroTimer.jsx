@@ -259,9 +259,4 @@ const PomodoroTimer = () => {
     );
 };
 
-// Start logic to auto import Maximize2 if missing? 
-// Ah, I missed importing Maximize2 in the top.
-// The user doesn't check imports but Babel will fail.
-// I imported Minimize2, GripHorizontal. Need Maximize2.
-
 export default PomodoroTimer;
