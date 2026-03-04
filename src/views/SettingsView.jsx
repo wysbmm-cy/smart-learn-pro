@@ -14,6 +14,7 @@ const sections = [
     { id: 'modules', label: '分析模块', icon: Box },
     { id: 'styles', label: '漫画风格', icon: BookMarked },
     { id: 'drills', label: '智能练习', icon: Hash },
+    { id: 'review', label: '复习设置', icon: Clock },
     { id: 'general', label: '通用设置', icon: Box },
     { id: 'appearance', label: '外观设置', icon: Palette },
 ];
@@ -570,6 +571,25 @@ const SettingsView = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Vocabulary Import Limit */}
+                        <div className="pt-4 border-t border-slate-100">
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                词汇批量导入上限 (Vocabulary Import Limit)
+                            </label>
+                            <select
+                                value={settings.vocabLimit || ''}
+                                onChange={(e) => updateSetting('vocabLimit', e.target.value ? parseInt(e.target.value) : null)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-medium text-slate-700"
+                            >
+                                <option value="">无限制 (No Limit)</option>
+                                <option value="50">50 词</option>
+                                <option value="100">100 词</option>
+                                <option value="200">200 词</option>
+                                <option value="500">500 词</option>
+                            </select>
+                            <p className="text-[11px] text-slate-400 mt-2 ml-1">限制每次批量导入提取的最大词汇数量，设置上限可加快处理速度</p>
+                        </div>
                     </div>
                 </div>
 
@@ -887,6 +907,35 @@ const SettingsView = () => {
                                 className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-rose-500"
                             />
                             <p className="text-[11px] text-slate-400 mt-2 ml-1">Controls the "fog" density over the background image.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Review Settings Card */}
+                <div id="review" className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 scroll-mt-4">
+                    <div className="flex items-center gap-3 text-slate-800 font-bold border-b border-slate-100 pb-4 mb-6">
+                        <div className="p-2 bg-violet-50 text-violet-600 rounded-lg">
+                            <Clock size={20} />
+                        </div>
+                        <h3 className="text-lg">复习设置</h3>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium text-slate-700 mb-1 block">每次复习上限</label>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="200"
+                                    value={settings.maxReviewCards || 0}
+                                    onChange={e => updateSetting('maxReviewCards', parseInt(e.target.value) || 0)}
+                                    className="w-24 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                                />
+                                <span className="text-sm text-slate-500">张 (0 = 不限制)</span>
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-2 ml-1">
+                                首页「开始复习」按钮每次最多复习的卡片数量。设为 0 则复习全部到期卡片。
+                            </p>
                         </div>
                     </div>
                 </div>

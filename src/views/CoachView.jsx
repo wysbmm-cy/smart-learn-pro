@@ -22,6 +22,9 @@ const CoachView = () => {
     const [sessions, setSessions] = useState([]);
     const [currentSessionId, setCurrentSessionId] = useState(null);
 
+    // Agent Topic State
+    const [agentTopic, setAgentTopic] = useState(null);
+
     // State for analysis modal/result
     const [analysisResult, setAnalysisResult] = useState(null);
 
@@ -30,9 +33,26 @@ const CoachView = () => {
     const audioChunksRef = useRef([]);
     const audioPlayerRef = useRef(new Audio());
 
-    // Load history list on mount
+    // Load history list on mount & check agent topic
     useEffect(() => {
         loadHistoryList();
+        // Check for agent-set topic
+        try {
+            const stored = localStorage.getItem('agent_coach_topic');
+            if (stored) {
+                const topicData = JSON.parse(stored);
+                setAgentTopic(topicData);
+                // Create a custom persona from agent topic
+                const agentPersona = {
+                    id: 'agent_custom',
+                    name: `🎯 ${topicData.topic}`,
+                    prompt: topicData.systemPrompt || `You are a friendly English tutor. The topic is: ${topicData.topic}. ${topicData.scenario ? 'Scenario: ' + topicData.scenario + '. ' : ''}Help the student practice speaking about this topic. ${topicData.vocabulary?.length ? 'Encourage using these words: ' + topicData.vocabulary.join(', ') + '.' : ''}`
+                };
+                setSelectedPersona(agentPersona);
+                // Clear after reading so it doesn't persist across sessions
+                localStorage.removeItem('agent_coach_topic');
+            }
+        } catch (e) { console.error("Agent topic parse error:", e); }
     }, []);
 
     // Auto-save when messages change (debounce could be better, but simple for now)
@@ -300,9 +320,16 @@ const CoachView = () => {
                     <span className="text-slate-400 text-sm hidden sm:inline">当前模式:</span>
                     <select
                         value={selectedPersona.id}
-                        onChange={(e) => setSelectedPersona(personas.find(p => p.id === e.target.value))}
+                        onChange={(e) => {
+                            const allPersonas = agentTopic ? [...personas, { id: 'agent_custom', name: `🎯 ${agentTopic.topic}`, prompt: selectedPersona.id === 'agent_custom' ? selectedPersona.prompt : '' }] : personas;
+                            const found = allPersonas.find(p => p.id === e.target.value);
+                            if (found) setSelectedPersona(found);
+                        }}
                         className="bg-slate-800/50 text-white border border-white/10 rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition-colors"
                     >
+                        {agentTopic && (
+                            <option value="agent_custom">🎯 {agentTopic.topic}</option>
+                        )}
                         {personas.map(p => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
@@ -358,8 +385,30 @@ const CoachView = () => {
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                     {messages.length === 0 && (
                         <div className="text-center text-slate-500 mt-10">
-                            <p>点击下方麦克风开始对话</p>
-                            <p className="text-xs mt-2 opacity-60">请确保已在设置中配置 Audio API Key</p>
+                            {agentTopic && selectedPersona.id === 'agent_custom' ? (
+                                <div className="max-w-sm mx-auto">
+                                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 mb-4 text-left">
+                                        <p className="text-violet-400 font-medium text-sm mb-2">🎯 Agent 推荐话题</p>
+                                        <p className="text-slate-300 text-sm font-medium">{agentTopic.topic}</p>
+                                        {agentTopic.scenario && (
+                                            <p className="text-slate-400 text-xs mt-1">场景: {agentTopic.scenario}</p>
+                                        )}
+                                        {agentTopic.vocabulary?.length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                                {agentTopic.vocabulary.map((v, i) => (
+                                                    <span key={i} className="px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded text-xs">{v}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-sm">点击下方麦克风，开始练习口语！</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <p>点击下方麦克风开始对话</p>
+                                    <p className="text-xs mt-2 opacity-60">请确保已在设置中配置 Audio API Key</p>
+                                </>
+                            )}
                         </div>
                     )}
 

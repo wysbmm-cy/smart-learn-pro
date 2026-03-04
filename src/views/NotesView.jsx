@@ -11,7 +11,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { saveHighlight, getFolders, saveFolder } from '../services/db';
 
-const NotesView = () => {
+const NotesView = ({ params }) => {
     const { loadUserNotes, saveToNotes, removeNoteItem } = useApp();
     const [notes, setNotes] = useState([]);
     const [activeNote, setActiveNote] = useState(null);
@@ -31,6 +31,18 @@ const NotesView = () => {
     useEffect(() => {
         refreshNotes();
     }, []);
+
+    // Handle deep linking from Agent
+    useEffect(() => {
+        if (params?.id && notes.length > 0) {
+            const targetNote = notes.find(n => n.id === params.id);
+            if (targetNote && targetNote.id !== activeNote?.id) {
+                setActiveNote(targetNote);
+                if (targetNote.folder) setActiveFolder(targetNote.folder);
+                setViewMode('read');
+            }
+        }
+    }, [params, notes]);
 
     const refreshNotes = async () => {
         const [noteData, folderData] = await Promise.all([

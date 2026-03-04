@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 12; // Bumped for Daily Images Gallery
+const DB_VERSION = 13; // Bumped for Translation Logs
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -97,6 +97,12 @@ export const initDB = () => {
             // Learning Diagnosis (Daily reports)
             if (!db.objectStoreNames.contains('learning_diagnosis')) {
                 const diagnosisStore = db.createObjectStore('learning_diagnosis', { keyPath: 'date' }); // YYYY-MM-DD
+            }
+            // --- NEW V13 STORE ---
+            // Translation Practice Logs
+            if (!db.objectStoreNames.contains('translation_logs')) {
+                const transLogStore = db.createObjectStore('translation_logs', { keyPath: 'id' });
+                transLogStore.createIndex('createdAt', 'createdAt', { unique: false });
             }
 
             // --- NEW V11 STORE (Daily Summary Highlights) ---
@@ -720,4 +726,43 @@ export const getAllData = async () => {
     } catch (err) {
         throw err;
     }
+};
+
+// ============ Translation Practice Logs ============
+
+export const saveTranslationLog = async (log) => {
+    const db = await initDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('translation_logs', 'readwrite');
+        const store = tx.objectStore('translation_logs');
+        const record = {
+            ...log,
+            id: log.id || Date.now().toString(),
+            createdAt: log.createdAt || Date.now()
+        };
+        const request = store.put(record);
+        request.onsuccess = () => resolve(record);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getTranslationLogs = async (limit = 10) => {
+    const db = await initDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('translation_logs', 'readonly');
+        const store = tx.objectStore('translation_logs');
+        const index = store.index('createdAt');
+        const request = index.openCursor(null, 'prev'); // Newest first
+        const results = [];
+        request.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor && results.length < limit) {
+                results.push(cursor.value);
+                cursor.continue();
+            } else {
+                resolve(results);
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
 };

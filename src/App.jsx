@@ -48,9 +48,25 @@ const LoadingFallback = () => <SkeletonLoader />;
 
 function AppContent() {
     const [currentView, setCurrentView] = useState('dashboard');
+    const [viewParams, setViewParams] = useState({});
     const [secondaryView, setSecondaryView] = useState('notes');
     const [isSplit, setIsSplit] = useState(false);
-    const { settings } = useApp();
+    const { settings, navigateRef } = useApp();
+
+    const handleNavigate = (viewOrObj) => {
+        if (typeof viewOrObj === 'string') {
+            setCurrentView(viewOrObj);
+            setViewParams({});
+        } else {
+            setCurrentView(viewOrObj.view);
+            setViewParams(viewOrObj.params || {});
+        }
+    };
+
+    // Register navigation for Agent Mode
+    React.useEffect(() => {
+        navigateRef.current = handleNavigate;
+    }, [navigateRef]);
 
     useEffect(() => {
         if (settings.preloadAll) {
@@ -71,9 +87,9 @@ function AppContent() {
             case 'library':
                 return <LibraryView />;
             case 'notes':
-                return <NotesView />;
+                return <NotesView params={viewParams} />;
             case 'flashcards':
-                return <FlashcardView />;
+                return <FlashcardView params={viewParams} />;
             case 'settings':
                 return <SettingsView />;
             case 'plan':
@@ -83,7 +99,7 @@ function AppContent() {
             case 'video':
                 return <VideoView />;
             case 'writer':
-                return <WriterView />;
+                return <WriterView params={viewParams} />;
             case 'exam':
                 return <ExamView onNavigate={setCurrentView} />;
             case 'knowledge':

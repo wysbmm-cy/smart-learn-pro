@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X } from 'lucide-react';
+import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X, Play } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import ImageGalleryModal from '../components/ImageGalleryModal';
 import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
+import DailySummaryCard from '../components/DailySummaryCard';
 import { getHighlightsByDate, getFlashcards, getNotes, getHistory, deleteHighlight, getChatSessions } from '../services/db';
-import { generateDailySummaryImage, generateStoryComic, COMIC_STYLES } from '../services/ai';
+import { generateStoryComic, COMIC_STYLES } from '../services/ai';
 import { Skeleton } from '../components/SkeletonLoader';
 
 const Dashboard = ({ onNavigate }) => {
@@ -23,11 +23,10 @@ const Dashboard = ({ onNavigate }) => {
     const hasKey = !!settings.apiKey;
     const [flashcards, setFlashcards] = useState([]);
     const [showGuide, setShowGuide] = useState(false);
-    const [isGalleryOpen, setIsGalleryOpen] = useState(false);
     const [todayHighlights, setTodayHighlights] = useState([]);
-    const [imageStyle, setImageStyle] = useState('cyberpunk');
     const [showHighlightManager, setShowHighlightManager] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [dueCount, setDueCount] = useState(0);
 
     // Comic generation options
     const [showComicSettings, setShowComicSettings] = useState(false);
@@ -50,11 +49,9 @@ const Dashboard = ({ onNavigate }) => {
     });
 
     // Check if tasks are running globally
-    const isGeneratingImage = bgTasks.dailyImage?.status === 'loading';
     const isGeneratingComic = bgTasks.storyComic?.status === 'loading';
 
     // Get results from global state
-    const dailyImage = bgTasks.dailyImage?.url;
     const storyComic = bgTasks.storyComic?.data;
 
 
@@ -73,6 +70,10 @@ const Dashboard = ({ onNavigate }) => {
             // Calculate today's stats
             try {
                 const allCards = await getFlashcards();
+                // Calculate FSRS due cards
+                const now = Date.now();
+                const dueCards = allCards.filter(c => !c.nextReview || c.nextReview <= now);
+                setDueCount(dueCards.length);
                 const allNotes = await getNotes();
                 const allHistory = await getHistory();
 
@@ -107,16 +108,7 @@ const Dashboard = ({ onNavigate }) => {
         load();
     }, []);
 
-    const handleGenerateImage = async () => {
-        const hasActivity = todayStats.wordsLearned > 0 || todayStats.articlesRead > 0 || todayStats.notesCreated > 0 || todayStats.questionsAsked > 0;
 
-        if (!todayHighlights.length && !hasActivity) {
-            alert('今日暂无任何学习数据（单词、阅读、笔记或对话）。请先开始学习！');
-            return;
-        }
-        // Run in background (Global Context)
-        runDailyImageGeneration(todayHighlights, imageStyle, todayStats);
-    };
 
     // Generate Story Comic (with options)
     const handleGenerateComic = async () => {
@@ -168,7 +160,19 @@ const Dashboard = ({ onNavigate }) => {
                         }
                     </p>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                        {dueCount > 0 && (
+                            <button
+                                onClick={() => {
+                                    setFlashcardStartupState({ mode: 'study', folder: 'today' });
+                                    onNavigate('flashcards');
+                                }}
+                                className="bg-amber-400 text-amber-900 px-8 py-3.5 rounded-full font-bold text-sm hover:bg-amber-300 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2 animate-pulse hover:animate-none"
+                            >
+                                <Play size={18} strokeWidth={2.5} />
+                                开始复习 ({dueCount})
+                            </button>
+                        )}
                         <button
                             onClick={() => onNavigate('import')}
                             className="bg-white text-blue-600 px-8 py-3.5 rounded-full font-bold text-sm hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2"
@@ -187,130 +191,20 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
             </div>
 
-            {/* ⭐ 2. Daily Summary Image - PROMINENT POSITION */}
-            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-900 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-indigo-500/10 border border-indigo-500/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500 opacity-5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 relative z-10">
-                    <div>
-                        <div className="flex items-center gap-3 text-white font-bold text-xl mb-2">
-                            <div className="p-2 bg-amber-500/20 rounded-xl">
-                                <ImageIcon size={24} className="text-amber-400" />
-                            </div>
-                            每日学习总结
-                            <button
-                                onClick={() => setIsGalleryOpen(true)}
-                                className="ml-2 p-1.5 bg-white/10 hover:bg-white/20 rounded-full text-indigo-200 hover:text-white transition-colors cursor-pointer"
-                                title="查看历史图片"
-                            >
-                                <HistoryIcon size={18} />
-                            </button>
-                        </div>
-                        <div className="text-indigo-300 text-sm flex items-center gap-2">
-                            <span>今日已标记 <span className="font-bold text-amber-400 text-lg">{todayHighlights.length}</span> 条重点内容</span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setShowHighlightManager(!showHighlightManager)}
-                                    className="text-xs px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-lg text-indigo-200 transition-colors flex items-center gap-1"
-                                >
-                                    {showHighlightManager ? '收起列表' : '管理/删除标记'}
-                                </button>
-                                {todayHighlights.length > 0 && (
-                                    <button
-                                        onClick={async () => {
-                                            if (confirm('确定清空今日所有标记吗？')) {
-                                                for (const h of todayHighlights) {
-                                                    await deleteHighlight(h.id);
-                                                }
-                                                setTodayHighlights([]);
-                                            }
-                                        }}
-                                        className="text-xs px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-200 transition-colors"
-                                    >
-                                        清空
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Highlight Manager List */}
-                        {showHighlightManager && (
-                            <div className="mt-3 bg-slate-900/60 rounded-xl p-4 max-h-60 overflow-y-auto custom-scrollbar border border-white/10 shadow-inner">
-                                {todayHighlights.length === 0 ? (
-                                    <div className="text-sm text-slate-400 text-center py-4">
-                                        暂无标记内容。去阅读或学习时选中文字标记吧！
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {todayHighlights.map(h => (
-                                            <div key={h.id} className="flex items-start justify-between gap-3 text-sm text-slate-200 bg-white/5 p-3 rounded-lg hover:bg-white/10 transition-colors group">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${h.type === 'note' ? 'bg-blue-500/30 text-blue-300' : h.type === 'card' ? 'bg-green-500/30 text-green-300' : 'bg-purple-500/30 text-purple-300'}`}>
-                                                            {h.type === 'note' ? 'NOTE' : h.type === 'card' ? 'CARD' : 'TEXT'}
-                                                        </span>
-                                                        <span className="text-xs text-slate-500">{new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                    </div>
-                                                    <p className="line-clamp-2 leading-relaxed opacity-90">{h.content}</p>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleDeleteHighlight(h.id)}
-                                                    className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                                                    title="移除此标记"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Style Selector */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setImageStyle('cyberpunk')}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${imageStyle === 'cyberpunk' ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400/50' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
-                        >
-                            💠 赛博霓虹
-                        </button>
-                        <button
-                            onClick={() => setImageStyle('popart')}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${imageStyle === 'popart' ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-400/50' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
-                        >
-                            💥 波普漫画
-                        </button>
-                        <button
-                            onClick={handleGenerateImage}
-                            disabled={isGeneratingImage || (!todayHighlights.length && !todayStats.articlesRead)}
-                            className={`px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isGeneratingImage ? 'bg-slate-700 text-slate-400' : (todayHighlights.length || todayStats.articlesRead) ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 shadow-amber-500/30' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
-                        >
-                            {isGeneratingImage ? (
-                                <><Loader2 size={18} className="animate-spin" /> AI 分析+生图中...</>
-                            ) : (
-                                <><Sparkles size={18} /> 生成每日总结图</>
-                            )}
-                        </button>
-                    </div>
-                </div>
-
-                {dailyImage ? (
-                    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                        <img
-                            src={dailyImage}
-                            alt="Daily Summary"
-                            className="w-full h-auto object-cover"
-                        />
-                    </div>
-                ) : (
-                    <div className="h-56 rounded-2xl bg-white/5 border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-indigo-300">
-                        <ImageIcon size={56} className="opacity-20 mb-4" />
-                        <p className="text-base font-medium">在各模块标记重点 → 点击生成专属学习总结图</p>
-                        <p className="text-xs text-indigo-400 mt-2">支持 OpenRouter / SiliconFlow / OpenAI 图像模型</p>
-                    </div>
-                )}
-            </div>
+            {/* ⭐ 2. Code-Based Dynamic Summary Card */}
+            <DailySummaryCard
+                stats={todayStats}
+                highlights={todayHighlights}
+                onDeleteHighlight={handleDeleteHighlight}
+                onClearHighlights={async () => {
+                    if (confirm('确定清空今日所有标记吗？')) {
+                        for (const h of todayHighlights) {
+                            await deleteHighlight(h.id);
+                        }
+                        setTodayHighlights([]);
+                    }
+                }}
+            />
 
             {/* ⭐ 3. Story Comic - With Style Selection */}
             <div className="bg-gradient-to-br from-rose-950 via-purple-950 to-indigo-950 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-purple-500/10 border border-purple-500/20 relative overflow-hidden">
@@ -438,11 +332,6 @@ const Dashboard = ({ onNavigate }) => {
             {/* 4. Study Heatmap */}
             <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
 
-            {/* Gallery Modal */}
-            <ImageGalleryModal
-                isOpen={isGalleryOpen}
-                onClose={() => setIsGalleryOpen(false)}
-            />
 
             {/* 3. Forgetting Curve & Today's Task */}
             <ForgettingCurveChart

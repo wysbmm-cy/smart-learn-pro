@@ -731,57 +731,149 @@ export const generatePlanInsight = async (history, userGoal = null, recentLogs =
 export const extractVocabulary = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
-  const countTarget = settings.vocabCount || "all valid words (up to 50)";
+  // Split input into words/phrases (comma or newline separated)
+  const rawItems = text.split(/[,，\n\r]+/).map(s => s.trim()).filter(s => s.length > 0);
+
+  // If it looks like a word list (more than 5 comma/newline separated items)
+  const isWordList = rawItems.length > 5;
+
+  if (isWordList) {
+    console.log(`Detected word list with ${rawItems.length} items, processing in batches...`);
+    return await extractVocabularyBatched(rawItems, settings);
+  }
+
+  // For articles/short texts, use single request
+  return await extractVocabularySingle(text, settings);
+};
+
+// Process word list in batches
+const extractVocabularyBatched = async (words, settings) => {
+  const BATCH_SIZE = 40; // 40 words per batch to avoid API limits
+  const batches = [];
+
+  for (let i = 0; i < words.length; i += BATCH_SIZE) {
+    batches.push(words.slice(i, i + BATCH_SIZE));
+  }
+
+  console.log(`Processing ${batches.length} batches of ${BATCH_SIZE} words each...`);
+
+  const allResults = [];
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    console.log(`Processing batch ${i + 1}/${batches.length}: ${batch.length} words`);
+
+    const prompt = `
+    Role: Expert Language Teacher.
+    Task: Create a flashcard for EACH word in the list below.
+    
+    WORDS TO PROCESS (${batch.length} words):
+    ${batch.join(', ')}
+    
+    Output: JSON array with exactly ${batch.length} flashcards.
+    [
+      { "front": "word", "back": "中文释义" },
+      ...
+    ]
+    
+    Rules:
+    - One flashcard per word, no skipping.
+    - "back": ONLY Chinese definition, no English, no examples.
+    - Output ONLY the JSON array.
+    `;
+
+    try {
+      const jsonStr = await fetchFromAI([
+        { role: "system", content: prompt },
+        { role: "user", content: "Generate flashcards now." }
+      ], settings, true);
+
+      const parsed = parseVocabResponse(jsonStr);
+      allResults.push(...parsed);
+      console.log(`Batch ${i + 1} returned ${parsed.length} cards`);
+    } catch (e) {
+      console.error(`Batch ${i + 1} failed:`, e.message);
+      // Continue with other batches even if one fails
+    }
+
+    // Small delay between batches to avoid rate limiting
+    if (i < batches.length - 1) {
+      await delay(500);
+    }
+  }
+
+  console.log(`Total extracted: ${allResults.length} flashcards`);
+  return allResults;
+};
+
+// Single request for articles or short texts
+const extractVocabularySingle = async (text, settings) => {
+  const countTarget = settings.vocabLimit
+    ? `up to ${settings.vocabLimit} words`
+    : "all vocabulary words";
 
   const prompt = `
   Role: Expert Language Teacher.
-  Task: Create "Flashcards" for the vocabulary provided in the text.
+  Task: Extract vocabulary from the text and create flashcards.
   
-  Input Context:
-  - If the text is a LIST of words: Generate a card for EACH word in the list.
-  - If the text is an ARTICLE/PASSAGE: Extract the best ${countTarget} vocabulary words.
-
-  Output Format: JSON Array of "Flashcards".
+  Output Format: JSON Array
   [
-    { "front": "English Word", "back": "Chinese Meaning + Example Sentence (En/Cn)" }
+    { "front": "English Word", "back": "中文释义" }
   ]
+  
   Requirements:
-  - "front": The word or short phrase.
-  - "back": Concise definition (CN) followed by a short example.
-  - Filter: CEFR B2-C2 level words are preferred, but if the user provided a specific list, process ALL of them regardless of difficulty.
-  - Count: ${countTarget}.
+  - Extract ${countTarget}.
+  - "back": Concise Chinese definition ONLY.
+  - Output ONLY the JSON array.
   `;
 
-  const safeText = text.substring(0, 4000);
+  const safeText = text.substring(0, 8000);
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: prompt },
+    { role: "user", content: safeText }
+  ], settings, true);
+
+  return parseVocabResponse(jsonStr);
+};
+
+// Helper: Parse AI response into flashcard array
+const parseVocabResponse = (jsonStr) => {
+  console.log("AI Raw Response (first 300 chars):", jsonStr.substring(0, 300));
+
+  // Clean up common JSON issues
+  let cleaned = jsonStr
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/gi, '')
+    .trim();
 
   try {
-    const jsonStr = await fetchFromAI([
-      { role: "system", content: prompt },
-      { role: "user", content: safeText }
-    ], settings, true);
+    const parsed = JSON.parse(cleaned);
 
-    try {
-      const parsed = JSON.parse(jsonStr);
-      // Handle if AI wraps in wrapper object key
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed.flashcards && Array.isArray(parsed.flashcards)) return parsed.flashcards;
-      if (parsed.vocabulary && Array.isArray(parsed.vocabulary)) return parsed.vocabulary;
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed.flashcards && Array.isArray(parsed.flashcards)) return parsed.flashcards;
+    if (parsed.vocabulary && Array.isArray(parsed.vocabulary)) return parsed.vocabulary;
+    if (parsed.cards && Array.isArray(parsed.cards)) return parsed.cards;
+    if (parsed.words && Array.isArray(parsed.words)) return parsed.words;
+    if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
 
-      // Fallback: Check for array in keys
-      const values = Object.values(parsed);
-      const arr = values.find(v => Array.isArray(v));
-      if (arr) return arr;
+    const values = Object.values(parsed);
+    const arr = values.find(v => Array.isArray(v));
+    if (arr) return arr;
 
-      throw new Error("Invalid Array Format");
-    } catch (e) {
-      // Fallback Regex
-      const match = jsonStr.match(/\[[\s\S]*\]/);
-      if (match) return JSON.parse(match[0]);
-      throw e;
+    if (parsed.front && parsed.back) return [parsed];
+
+    throw new Error("Invalid Array Format");
+  } catch (e) {
+    // Regex fallback
+    const match = jsonStr.match(/\[\s*\{[\s\S]*?\}\s*(?:,\s*\{[\s\S]*?\}\s*)*\]/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch (parseErr) {
+        console.error("Regex fallback failed:", parseErr);
+      }
     }
-  } catch (error) {
-    console.error("Vocab Extraction Error:", error);
-    throw error;
+    throw new Error(`JSON解析失败: ${e.message}`);
   }
 };
 
@@ -795,20 +887,51 @@ export const generateTranslationChallenge = async (vocabList, settings) => {
 
   const targetStr = targets.map(v => `${v.front} (${v.back})`).join(', ');
 
+  // 场景库：15+个生活化情景
+  const SCENARIOS = [
+    '超市购物结账时与收银员的对话',
+    '餐厅点餐时与服务员的交流',
+    '问路时与路人的对话',
+    '去医院看病时与医生的沟通',
+    '快递员送货上门时的对话',
+    '面试时与HR的问答',
+    '工作会议中的汇报发言',
+    '给客户写商务邮件的内容',
+    '课堂讨论时发表观点',
+    '论文答辩时回答问题',
+    '机场安检或值机的对话',
+    '酒店入住登记的交流',
+    '旅游景点咨询的对话',
+    '朋友聚会闲聊的话题',
+    '家庭聚餐时的温馨对话',
+    '网购咨询客服的聊天',
+    '健身房办卡时的沟通',
+    '银行办理业务的对话',
+    '新闻时事评论的表达'
+  ];
+
+  const randomScenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+
   const systemPrompt = `
-  Role: Creative Examination Question Generator.
-  Task: Create a Chinese sentence that implicitly requires using specific English vocabulary to translate correctly.
-  Target Vocabulary: [${targetStr || "Random Daily Topic"}]
+  Role: Creative Language Practice Generator.
+  Task: Create a natural Chinese sentence/paragraph for translation practice.
+  
+  Target Vocabulary: [${targetStr || "Any common words"}]
+  Scenario: ${randomScenario}
 
   Requirements:
-  1. Output a single natural Chinese sentence (or short paragraph 30-50 words).
-  2. The Chinese should strongly hint at the usage of the target words without being a direct dictionary definition.
-  3. Context: Daily life, Academic, or Workplace.
-  4. Output Format: JSON
+  1. Write a natural Chinese paragraph (40-60 words) that fits the scenario.
+  2. The context should implicitly require using the target vocabulary when translated.
+  3. Make it conversational and realistic - like something you'd actually say in real life.
+  4. DO NOT make it sound like a textbook exercise.
+  5. Include emotional elements, reactions, or small details to make it vivid.
+  
+  Output Format: JSON
   {
     "chinese": "...",
     "targetWords": ["word1", "word2"],
-    "hint": "Try to use the target vocabulary!"
+    "hint": "提示：试着使用目标词汇！",
+    "scenario": "${randomScenario}"
   }
   `;
 
@@ -821,6 +944,7 @@ export const generateTranslationChallenge = async (vocabList, settings) => {
     const data = JSON.parse(jsonStr);
     // Ensure targetWords is array
     if (!data.targetWords) data.targetWords = targets.map(t => t.front);
+    if (!data.scenario) data.scenario = randomScenario;
     return data;
   } catch (e) {
     console.error("Trans Gen Error", e);
@@ -828,7 +952,8 @@ export const generateTranslationChallenge = async (vocabList, settings) => {
     return {
       chinese: "请尝试使用最近学过的单词造句。",
       targetWords: targets.map(t => t.front),
-      hint: "AI Generation Failed, free mode."
+      hint: "AI Generation Failed, free mode.",
+      scenario: randomScenario
     };
   }
 };
@@ -1365,6 +1490,162 @@ export const generateKnowledgeGraphReferences = async (vocabList, settings) => {
   } catch (e) {
     console.error("AI Graph Gen Error", e);
     return [];
+  }
+};
+
+// =====================================================
+// AGENT MODE: Function Calling Chat
+// =====================================================
+import { AGENT_TOOLS, AGENT_SYSTEM_PROMPT, executeAgentTool } from './agentTools';
+
+/**
+ * Stream an Agent chat with function calling support.
+ * The AI can request tool calls; we execute them and feed results back.
+ * 
+ * @param {Array} messages - Chat history
+ * @param {Object} settings - API settings
+ * @param {Function} onDelta - Called with text content deltas
+ * @param {Function} onToolCall - Called with { name, status } for UI visualization
+ */
+export const streamAgentChat = async (messages, settings, onDelta, onToolCall) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+  const { apiKey, apiBaseUrl, modelName } = settings;
+  const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+
+  const finalMessages = [
+    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    ...messages
+  ];
+
+  // Helper: non-streaming request with tools
+  const callWithTools = async (msgs) => {
+    const response = await fetch(`${cleanUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: modelName || "gpt-3.5-turbo",
+        messages: msgs,
+        tools: AGENT_TOOLS,
+        tool_choice: "auto",
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`API Error: ${response.status} - ${err}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message;
+  };
+
+  // Helper: streaming request without tools (for final response)
+  const streamFinalResponse = async (msgs) => {
+    const response = await fetch(`${cleanUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: modelName || "gpt-3.5-turbo",
+        messages: msgs,
+        stream: true,
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`API Error: ${response.status} - ${err}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let done = false;
+
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const content = data.choices[0]?.delta?.content || '';
+              if (content) onDelta(content);
+            } catch (e) {
+              // skip parse errors
+            }
+          }
+        }
+      }
+    }
+  };
+
+  try {
+    // Step 1: Call AI with tools enabled (non-streaming to capture tool_calls)
+    let assistantMsg = await callWithTools(finalMessages);
+    let loopMessages = [...finalMessages, assistantMsg];
+
+    // Step 2: Loop to handle tool calls (max 5 rounds)
+    let rounds = 0;
+    while (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0 && rounds < 5) {
+      rounds++;
+
+      for (const toolCall of assistantMsg.tool_calls) {
+        const toolName = toolCall.function.name;
+        let toolArgs = {};
+        try {
+          toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+        } catch (e) { /* empty args */ }
+
+        // Notify UI
+        if (onToolCall) onToolCall({ name: toolName, status: 'calling' });
+
+        // Execute tool
+        const result = await executeAgentTool(toolName, toolArgs);
+
+        // Notify UI done (pass result for action detection)
+        if (onToolCall) onToolCall({ name: toolName, status: 'done', result });
+
+        // Add tool result to conversation
+        loopMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result)
+        });
+      }
+
+      // Call AI again with tool results
+      assistantMsg = await callWithTools(loopMessages);
+      loopMessages.push(assistantMsg);
+    }
+
+    // Step 3: If AI returned content directly (no more tool calls), stream it
+    if (assistantMsg.content) {
+      // AI already generated the text, emit it character by character for smooth display
+      const content = assistantMsg.content;
+      const chunkSize = 3;
+      for (let i = 0; i < content.length; i += chunkSize) {
+        onDelta(content.slice(i, i + chunkSize));
+        await new Promise(r => setTimeout(r, 10)); // smooth animation
+      }
+    } else if (!assistantMsg.tool_calls) {
+      // No content and no tool calls — stream the final response
+      await streamFinalResponse(loopMessages);
+    }
+
+  } catch (error) {
+    console.error("Agent Stream Error:", error);
+    throw error;
   }
 };
 

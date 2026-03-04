@@ -1,6 +1,55 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
+import { FSRS, Rating, createEmptyCard, State, generatorParameters } from 'ts-fsrs';
+
+// ===== FSRS Algorithm Setup =====
+const fsrsParams = generatorParameters({ request_retention: 0.9 });
+const fsrs = new FSRS(fsrsParams);
+
+/**
+ * Restore a FSRS Card object from database card fields.
+ * If the card has no FSRS data (old cards), creates a new empty card.
+ */
+function restoreFSRSCard(card) {
+    if (card && card.fsrs_stability !== undefined) {
+        return {
+            due: new Date(card.fsrs_due),
+            stability: card.fsrs_stability,
+            difficulty: card.fsrs_difficulty,
+            elapsed_days: card.fsrs_elapsed_days || 0,
+            scheduled_days: card.fsrs_scheduled_days || 0,
+            reps: card.fsrs_reps || 0,
+            lapses: card.fsrs_lapses || 0,
+            state: card.fsrs_state ?? State.New,
+            last_review: card.fsrs_last_review
+                ? new Date(card.fsrs_last_review) : undefined,
+            learning_steps: card.fsrs_learning_steps ?? 0,
+        };
+    }
+    return createEmptyCard(new Date());
+}
+
+/**
+ * Serialize FSRS Card object back to flat database fields.
+ */
+function serializeFSRSCard(fsrsCard) {
+    return {
+        fsrs_stability: fsrsCard.stability,
+        fsrs_difficulty: fsrsCard.difficulty,
+        fsrs_state: fsrsCard.state,
+        fsrs_reps: fsrsCard.reps,
+        fsrs_lapses: fsrsCard.lapses,
+        fsrs_due: fsrsCard.due.getTime(),
+        fsrs_last_review: fsrsCard.last_review?.getTime(),
+        fsrs_elapsed_days: fsrsCard.elapsed_days,
+        fsrs_scheduled_days: fsrsCard.scheduled_days,
+        fsrs_learning_steps: fsrsCard.learning_steps,
+    };
+}
+
+// Export for use in FlashcardView (preview intervals)
+export { fsrs, restoreFSRSCard, Rating, State };
 
 const AppContext = createContext();
 
@@ -16,6 +65,7 @@ const DEFAULT_SETTINGS = {
     showCollocations: true,
     showEtymology: false,
     preloadAll: true,
+    maxReviewCards: 0,  // 0 = unlimited, otherwise cap per session
     writingLevel: "CET-6",
     writingPrompt: "Strict examiner mode. Find all errors.",
     vocabCount: "10-15",
@@ -77,6 +127,9 @@ const DEFAULT_ANALYSIS = {
 };
 
 export const AppProvider = ({ children }) => {
+    // --- Navigation Ref (for Agent Mode) ---
+    const navigateRef = React.useRef(null);
+
     // --- Persistent Settings ---
     const [settings, setSettings] = useState(() => {
         const saved = localStorage.getItem('smartlearn_settings');
@@ -196,64 +249,37 @@ export const AppProvider = ({ children }) => {
     };
 
     // --- Core Action Wrappers ---
-    // SRS Algorithm: Enhanced SM-2 (4 Levels)
+    // SRS Algorithm: FSRS (Free Spaced Repetition Scheduler)
     // Quality: 1=Again, 2=Hard, 3=Good, 4=Easy
     const updateFlashcardProgress = async (id, quality) => {
         const cards = await getFlashcards();
         const card = cards.find(c => c.id === id);
         if (!card) return;
 
-        let { interval, repetitions, easeFactor } = card;
-        easeFactor = easeFactor || 2.5;
-        interval = interval || 0;
-        repetitions = repetitions || 0;
+        // Rating mapping: 1→Again, 2→Hard, 3→Good, 4→Easy
+        const ratingMap = {
+            1: Rating.Again,
+            2: Rating.Hard,
+            3: Rating.Good,
+            4: Rating.Easy
+        };
 
-        // Algorithm Logic
-        if (quality === 1) { // Again (Forgot)
-            repetitions = 0;
-            interval = 0; // Immediate review (or 1 day if strict) - handled by queue usually
-            easeFactor = Math.max(1.3, easeFactor - 0.2); // Punish EF
-        } else {
-            // Success (Hard, Good, Easy)
-            if (repetitions === 0) {
-                interval = 1;
-            } else if (repetitions === 1) {
-                interval = 6;
-            } else {
-                // Growth Multiplier based on Quality
-                let modifier = 1;
-                if (quality === 2) modifier = 1.2; // Hard: Slow growth
-                if (quality === 3) modifier = 2.5; // Good: Standard
-                if (quality === 4) modifier = 3.5; // Easy: Fast growth
+        // Restore FSRS Card from database and compute next state
+        const fsrsCard = restoreFSRSCard(card);
+        const result = fsrs.next(fsrsCard, new Date(), ratingMap[quality]);
+        const newCard = result.card;
 
-                interval = Math.round(interval * easeFactor * modifier);
-            }
-            repetitions += 1;
-
-            // EF Adjustment
-            // SM-2: EF' = EF + (0.1 - (5-q)*(0.08+(5-q)*0.02))
-            // We simplify slightly for our 4-level system map:
-            // 4 (Easy) -> q=5: +0.1
-            // 3 (Good) -> q=4: +0.0 (Std)
-            // 2 (Hard) -> q=3: -0.14
-            let q_map = quality === 4 ? 5 : (quality === 3 ? 4 : 3);
-            easeFactor = easeFactor + (0.1 - (5 - q_map) * (0.08 + (5 - q_map) * 0.02));
-        }
-
-        if (easeFactor < 1.3) easeFactor = 1.3;
-
-        // Schedule next review
-        // If interval is 0 (Again), we generally want it 'now', so nextReview <= now.
-        // If interval >= 1, it's future days.
-        const nextReview = Date.now() + (interval * 24 * 60 * 60 * 1000);
+        // Keep weaknessScore for backward-compatible UI sorting
+        let weaknessScore = card.weaknessScore || 0;
+        const WEAKNESS_DELTA = { 1: 5, 2: 3, 3: 1, 4: -2 };
+        weaknessScore = Math.max(0, Math.min(100, weaknessScore + WEAKNESS_DELTA[quality]));
 
         const updatedCard = {
             ...card,
-            interval,
-            repetitions,
-            easeFactor,
-            nextReview,
-            lastReviewed: Date.now()
+            ...serializeFSRSCard(newCard),
+            nextReview: newCard.due.getTime(),   // Compatible with existing filter
+            lastReviewed: Date.now(),
+            weaknessScore,
         };
 
         await saveFlashcard(updatedCard);
@@ -643,7 +669,9 @@ export const AppProvider = ({ children }) => {
 
         runStoryComicGeneration,
         getDailyImages,
-        deleteDailyImage
+        deleteDailyImage,
+        // Navigation (Agent Mode)
+        navigateRef
     };
 
     return (

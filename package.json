@@ -52,7 +52,8 @@
     "rehype-raw": "^7.0.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "ts-fsrs": "^5.2.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",

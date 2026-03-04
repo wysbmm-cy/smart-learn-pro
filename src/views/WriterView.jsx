@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
-import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, ArrowRightLeft, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen, Bookmark } from 'lucide-react';
-import { saveWriting, getWritings, deleteWriting, saveNote, getFolders, getFlashcards, saveHighlight } from '../services/db';
+import { PenTool, Save, RotateCcw, Sparkles, CheckCircle, AlertCircle, FileText, Eraser, Trash2, X, Loader2, Layout, Maximize2, Minimize2, ArrowRightLeft, ChevronLeft, ChevronRight, Wand2, Layers, BarChart3, History, BookOpen, Bookmark, TrendingUp } from 'lucide-react';
+import { saveWriting, getWritings, deleteWriting, saveNote, getFolders, getFlashcards, saveHighlight, saveTranslationLog, getTranslationLogs } from '../services/db';
 import { analyzeWriting, generateTranslationChallenge, gradeTranslation } from '../services/ai';
 import { writingTemplates } from '../data/writingTemplates';
 import DiffViewer from '../components/DiffViewer';
@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import FixedTooltip from '../components/FixedTooltip';
 import SelectionActionBtn from '../components/SelectionActionBtn';
 
-const WriterView = () => {
+const WriterView = ({ params }) => {
     const { settings, toggleChat, setCurrentArticle } = useApp();
     const [content, setContent] = useState(() => localStorage.getItem('draft_writer_content') || '');
     const [title, setTitle] = useState(() => localStorage.getItem('draft_writer_title') || '');
@@ -35,6 +35,7 @@ const WriterView = () => {
     // Translation Challenge State
     const [isTranslationMode, setIsTranslationMode] = useState(false);
     const [challengeData, setChallengeData] = useState(null); // { chinese: "...", targetWords: [...] }
+    const [translationStats, setTranslationStats] = useState({ logs: [], avgScore: 0, errorTypes: {} });
 
     // Sentence Polish State
     const [selection, setSelection] = useState(null);
@@ -57,13 +58,59 @@ const WriterView = () => {
     // Stats
     const wordCount = content.trim().split(/\s+/).filter(w => w.length > 0).length;
 
+    // Keyboard shortcuts: Ctrl+S save, Esc exit focus mode
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ctrl+S: Save
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                handleSave();
+            }
+            // Esc: Exit focus mode
+            if (e.key === 'Escape' && isFocusMode) {
+                setIsFocusMode(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isFocusMode, content, title, currentId]);
+
     useEffect(() => {
         loadWritings();
+        loadTranslationStats();
     }, []);
+
+    // Handle Deep Linking
+    useEffect(() => {
+        if (params?.id && writings.length > 0) {
+            const target = writings.find(w => w.id === params.id);
+            if (target && target.id !== currentId) {
+                handleLoad(target);
+            }
+        }
+    }, [params, writings]);
 
     const loadWritings = async () => {
         const list = await getWritings();
         setWritings(list);
+    };
+
+    const loadTranslationStats = async () => {
+        try {
+            const logs = await getTranslationLogs(10);
+            if (logs.length > 0) {
+                const avgScore = Math.round(logs.reduce((sum, l) => sum + (l.score || 0), 0) / logs.length);
+                const errorTypes = {};
+                logs.forEach(l => {
+                    (l.errorTypes || []).forEach(type => {
+                        errorTypes[type] = (errorTypes[type] || 0) + 1;
+                    });
+                });
+                setTranslationStats({ logs, avgScore, errorTypes });
+            }
+        } catch (e) {
+            console.error("Load translation stats failed:", e);
+        }
     };
 
     const handleSave = async () => {
@@ -208,6 +255,21 @@ const WriterView = () => {
                     knowledge_summary: `## Translation Review\n\n**Original:** ${challengeData.chinese}\n\n**Your Translation:** ${content}\n\n**Better Version:** ${result.improved_version}\n\n**Vocab Usage:**\n${(result.vocab_check || []).map(v => `* ${v.word}: ${v.used ? (v.correctly ? '✅' : '⚠️') : '❌'}`).join('\n')}`
                 };
                 setAnalysis(normalized);
+
+                // Save translation log for statistics
+                const errorTypes = normalized.issues
+                    .filter(i => i.severity === 'critical')
+                    .map(i => i.type);
+                await saveTranslationLog({
+                    score: normalized.score,
+                    chinese: challengeData.chinese,
+                    userTranslation: content,
+                    targetWords: challengeData.targetWords,
+                    scenario: challengeData.scenario,
+                    errorTypes: [...new Set(errorTypes)]
+                });
+                loadTranslationStats(); // Refresh stats
+
                 toast.success("Translation Graded!");
                 setMobileTab('analysis'); // Auto switch to analysis
 
@@ -417,7 +479,7 @@ const WriterView = () => {
 
             {/* Translation Mode Toggle */}
             <button
-                onClick={handleStartChallenge}
+                onClick={isTranslationMode ? () => { setIsTranslationMode(false); setChallengeData(null); } : handleStartChallenge}
                 className={`w-full py-2 rounded-lg text-sm font-bold mb-4 flex items-center justify-center gap-2 shadow-lg transition-all ${isTranslationMode
                     ? 'bg-amber-600 text-white shadow-amber-900/20'
                     : 'bg-slate-800 text-slate-400 hover:text-amber-400 hover:bg-slate-700'
@@ -513,13 +575,14 @@ const WriterView = () => {
                         )}
                         <div className="flex items-center bg-slate-800 rounded-lg p-1 mr-2 border border-slate-700">
                             {[
-                                { id: 'grammar', label: '语法' },
-                                { id: 'polish', label: '润色' },
-                                { id: 'academic', label: '学术' }
+                                { id: 'grammar', label: '语法', tip: '检查语法错误和拼写问题' },
+                                { id: 'polish', label: '润色', tip: '优化表达，让文章更流畅自然' },
+                                { id: 'academic', label: '学术', tip: '改写为正式学术风格' }
                             ].map(m => (
                                 <button
                                     key={m.id}
                                     onClick={() => setAnalysisMode(m.id)}
+                                    title={m.tip}
                                     className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisMode === m.id ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
                                 >
                                     {m.label}
@@ -577,15 +640,38 @@ const WriterView = () => {
                     <div className="mx-4 mt-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-2 opacity-20"><BookOpen size={64} className="text-amber-500" /></div>
                         <div className="relative z-10">
-                            <h3 className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-2">Translation Challenge</h3>
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-amber-400 text-xs font-bold uppercase tracking-wider">Translation Challenge</h3>
+                                {challengeData.scenario && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">📍 {challengeData.scenario}</span>
+                                )}
+                            </div>
                             <p className="text-xl font-serif text-amber-100 mb-3 leading-relaxed tracking-wide">
                                 {challengeData.chinese}
                             </p>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                <span className="text-[10px] text-amber-400 mr-2">目标词汇：</span>
                                 {challengeData.targetWords.map((w, i) => (
                                     <span key={i} className="px-2 py-1 bg-black/30 rounded text-amber-200 text-xs font-mono border border-amber-500/20">{w}</span>
                                 ))}
                             </div>
+                            {/* Translation Stats */}
+                            {translationStats.logs.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-amber-500/20 flex items-center gap-4 text-[10px] text-amber-300/70">
+                                    <div className="flex items-center gap-1">
+                                        <TrendingUp size={10} />
+                                        <span>近{translationStats.logs.length}次平均: <strong className="text-amber-200">{translationStats.avgScore}/15</strong></span>
+                                    </div>
+                                    {Object.keys(translationStats.errorTypes).length > 0 && (
+                                        <div className="flex items-center gap-1">
+                                            <span>常见问题:</span>
+                                            {Object.entries(translationStats.errorTypes).slice(0, 2).map(([type, count]) => (
+                                                <span key={type} className="px-1.5 py-0.5 bg-red-500/20 text-red-300 rounded">{type} ({count})</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -599,6 +685,10 @@ const WriterView = () => {
                     className="w-full h-full min-h-[500px] p-6 md:p-8 bg-transparent text-base md:text-lg leading-loose text-slate-300 focus:text-slate-100 focus:outline-none resize-none font-serif placeholder:text-slate-700"
                     spellCheck="false"
                 />
+                {/* Auto-save indicator */}
+                <div className="absolute bottom-2 right-4 text-[10px] text-slate-600 flex items-center gap-1">
+                    <CheckCircle size={10} /> 草稿已自动保存
+                </div>
             </div>
         </div>
     );

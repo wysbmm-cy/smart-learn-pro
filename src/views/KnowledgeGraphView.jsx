@@ -62,12 +62,12 @@ const LINK_COLORS = {
 
 // --- Components ---
 
-const DetailPanel = ({ node, onClose, onStudy }) => {
+const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDeleteLink }) => {
     if (!node || node.type !== 'word') return null;
     const percentage = Math.round(node.mastery * 100);
 
     return (
-        <div className="absolute top-4 right-4 w-72 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 animate-in slide-in-from-right-10 z-50">
+        <div className="absolute top-4 right-4 w-80 max-h-[80vh] bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 animate-in slide-in-from-right-10 z-50 overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
                 <h3 className="text-xl font-bold text-white break-words pr-4">{node.label}</h3>
                 <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={16} /></button>
@@ -92,12 +92,48 @@ const DetailPanel = ({ node, onClose, onStudy }) => {
                         style={{ width: `${percentage}%` }}
                     />
                 </div>
-
-                <div className="flex gap-2 text-xs text-slate-500 mt-2">
-                    <span className="bg-slate-800 px-2 py-1 rounded">拼写相似: {node.spellingLinks || 0}</span>
-                    <span className="bg-slate-800 px-2 py-1 rounded">含义关联: {node.meaningLinks || 0}</span>
-                </div>
             </div>
+
+            {/* Related Words Section */}
+            {relatedNodes && relatedNodes.length > 0 && (
+                <div className="mb-4">
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <Share2 size={12} /> 关联单词 ({relatedNodes.length})
+                    </div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {relatedNodes.map((related, idx) => (
+                            <div
+                                key={idx}
+                                className="flex items-center justify-between p-2 bg-slate-800/50 rounded-lg hover:bg-slate-700/50 group transition-colors"
+                            >
+                                <button
+                                    onClick={() => onSelectNode(related.node)}
+                                    className="flex-1 text-left text-sm text-slate-200 hover:text-white flex items-center gap-2"
+                                >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${related.type === 'spelling' ? 'bg-red-400' :
+                                        related.type === 'meaning' ? 'bg-emerald-400' :
+                                            related.type === 'ai_semantic' ? 'bg-violet-400' : 'bg-slate-400'
+                                        }`} />
+                                    <span className="font-medium">{related.node.label}</span>
+                                    <span className="text-[10px] text-slate-500">
+                                        {related.type === 'spelling' ? '形近' :
+                                            related.type === 'meaning' ? '含义' :
+                                                related.type === 'ai_semantic' ? 'AI' : ''}
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={() => onDeleteLink(node.id, related.node.id, related.type)}
+                                    className="p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="删除此关联"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-2">点击单词跳转查看，点击 × 删除关联</p>
+                </div>
+            )}
 
             <button
                 onClick={() => onStudy(node)}
@@ -206,13 +242,18 @@ export default function KnowledgeGraphView() {
             // 2. Create Word Nodes
             // Calculate keywords for each card for synonym/meaning matching
             const processedCards = cards.map(card => {
+                const ease = parseFloat(card.easeFactor) || 2.5;
                 const mastery = (!card.easeFactor) ? 0 :
-                    Math.min(1, Math.max(0, ((card.easeFactor || 2.5) - 1.3) / 1.7));
+                    Math.min(1, Math.max(0, (ease - 1.3) / 1.7));
+
+                // Safe extraction avoiding null/undefined
+                const safeFront = card.front || '';
+                const safeBack = card.back || '';
 
                 return {
                     ...card,
                     mastery,
-                    keywords: extractKeywords(card.back + ' ' + card.front) // Extract from front and back
+                    keywords: extractKeywords(safeBack + ' ' + safeFront) // Extract from front and back safely
                 };
             });
 
@@ -249,6 +290,10 @@ export default function KnowledgeGraphView() {
                 for (let j = i + 1; j < processedCards.length; j++) {
                     const a = processedCards[i];
                     const b = processedCards[j];
+
+                    // Safety check for missing front text
+                    if (!a.front || !b.front) continue;
+
                     const idA = `word_${a.id}`;
                     const idB = `word_${b.id}`;
 
@@ -387,6 +432,49 @@ export default function KnowledgeGraphView() {
         }
     }, []);
 
+    // Get related nodes for selected node
+    const getRelatedNodes = useCallback((node) => {
+        if (!node || node.type !== 'word') return [];
+
+        const related = [];
+        const nodeMap = new Map(graphData.nodes.map(n => [n.id, n]));
+
+        graphData.links.forEach(link => {
+            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+
+            if (link.type === 'folder') return; // Skip folder links
+
+            let relatedNodeId = null;
+            if (sourceId === node.id) relatedNodeId = targetId;
+            else if (targetId === node.id) relatedNodeId = sourceId;
+
+            if (relatedNodeId && nodeMap.has(relatedNodeId)) {
+                const relatedNode = nodeMap.get(relatedNodeId);
+                if (relatedNode.type === 'word') {
+                    related.push({ node: relatedNode, type: link.type });
+                }
+            }
+        });
+
+        return related;
+    }, [graphData]);
+
+    // Delete a link between nodes
+    const handleDeleteLink = useCallback((sourceId, targetId, linkType) => {
+        setGraphData(prev => ({
+            ...prev,
+            links: prev.links.filter(link => {
+                const sId = typeof link.source === 'object' ? link.source.id : link.source;
+                const tId = typeof link.target === 'object' ? link.target.id : link.target;
+                // Remove if matches either direction
+                const isMatch = (sId === sourceId && tId === targetId) || (sId === targetId && tId === sourceId);
+                return !(isMatch && link.type === linkType);
+            })
+        }));
+        toast.success('关联已删除');
+    }, []);
+
     // Custom Paint for 2D Nodes
     const paintNode = useCallback((node, ctx, globalScale) => {
         const isSelected = selectedNode === node;
@@ -484,6 +572,9 @@ export default function KnowledgeGraphView() {
                     node={selectedNode}
                     onClose={() => setSelectedNode(null)}
                     onStudy={() => toast.success(`开始复习: ${selectedNode.label}`)}
+                    relatedNodes={getRelatedNodes(selectedNode)}
+                    onSelectNode={handleNodeClick}
+                    onDeleteLink={handleDeleteLink}
                 />
             )}
 

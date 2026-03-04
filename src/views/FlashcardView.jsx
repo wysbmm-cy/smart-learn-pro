@@ -1,17 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap, Brain, Loader2, PanelRightClose, PanelRightOpen, Lightbulb, MessageSquare, Edit3, BookOpen, Sparkles, Link as LinkIcon, FileText, Search, X, Maximize2, Minimize2, MoreHorizontal, Settings } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { useApp } from '../context/AppContext';
+import remarkGfm from 'remark-gfm';
+import { useApp, fsrs, restoreFSRSCard, Rating } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
 import DifficultyPieChart from '../components/DifficultyPieChart';
 import StudyTrendChart from '../components/StudyTrendChart';
 import DrillCard from '../components/DrillCard';
 import RemediationHub from '../components/RemediationHub';
+import ConfirmDialog from '../components/ConfirmDialog';
+import NotesEditorModal from '../components/flashcard/NotesEditorModal';
 import { saveFolder, getFolders, deleteFolder, getRecentDrillLogs, getDiagnosis, saveDiagnosis } from '../services/db';
 import { generateDrillCards, generateDiagnosis, generateRemediationDrills, generateDeepNotes } from '../services/ai';
+import {
+    UNDO_TIMEOUT_MS,
+    getEffectiveWeaknessScore,
+    getWeaknessColor,
+    getWeaknessLabel,
+    getMasteryColor,
+    getMasteryLabel,
+    getRetrievability,
+    getRetrievabilityLabel,
+    loadStudySession,
+    saveStudySession,
+    clearStudySession,
+    sortByWeaknessDesc
+} from '../utils/flashcardUtils';
 import toast from 'react-hot-toast';
 
-const FlashcardView = () => {
+const FlashcardView = ({ params }) => {
     const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState, settings, saveToNotes, loadUserNotes } = useApp();
     const [editingNoteCard, setEditingNoteCard] = useState(null); // Card being edited in modal
     const [isLinkingNote, setIsLinkingNote] = useState(false); // Toggle Note Selector
@@ -26,10 +43,18 @@ const FlashcardView = () => {
     const [selectedFolderId, setSelectedFolderId] = useState('all'); // 'all', 'today', or folder UUID
     const [isAddingFolder, setIsAddingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
-    const [isMultiSelect, setIsMultiSelect] = useState(false); // New: Toggle multi-select mode
-    const [isSwapped, setIsSwapped] = useState(false); // New: Toggle Q/A sides
-    const [showStats, setShowStats] = useState(false); // New: Toggle statistics panel
+    const [isMultiSelect, setIsMultiSelect] = useState(false); // Toggle multi-select mode
+    const [selectedCardIds, setSelectedCardIds] = useState(new Set()); // Selected cards for batch operations
+    const [showBatchMenu, setShowBatchMenu] = useState(false); // Batch folder move menu
+    const [isSwapped, setIsSwapped] = useState(false); // Toggle Q/A sides
+    const [showStats, setShowStats] = useState(false); // Toggle statistics panel
     const [sortMode, setSortMode] = useState('mastery_asc'); // 'default' | 'mastery_asc' | 'mastery_desc'
+
+    // ===== NEW: Dialog States =====
+    const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+    const [notesEditorOpen, setNotesEditorOpen] = useState(false);
+    const [editingNotesCard, setEditingNotesCard] = useState(null);
+
 
     // Manage State
     const [newFront, setNewFront] = useState("");
@@ -131,7 +156,15 @@ const FlashcardView = () => {
     useEffect(() => {
         loadData();
         loadStreak();
+        loadStudySession(); // Restore study session if exists
     }, []);
+
+    // Handle deep linking from Agent Action Card
+    useEffect(() => {
+        if (params?.folderId) {
+            setSelectedFolderId(params.folderId);
+        }
+    }, [params]);
 
     const loadStreak = () => {
         const streakData = localStorage.getItem('smartlearn_streak');
@@ -139,6 +172,74 @@ const FlashcardView = () => {
             setStudyStreak(JSON.parse(streakData));
         }
     };
+
+    // Study Session Persistence
+    const loadStudySession = () => {
+        // Skip restore if there's already a startup command (e.g. from Dashboard "开始复习")
+        if (flashcardStartupState?.mode) return;
+
+        const savedSession = localStorage.getItem('flashcard_study_session');
+        if (savedSession) {
+            try {
+                const { queueIds, index, stats, timestamp } = JSON.parse(savedSession);
+                // Only restore if session is less than 2 hours old
+                if (Date.now() - timestamp < 2 * 60 * 60 * 1000) {
+                    // We'll restore after allCards is loaded
+                    setFlashcardStartupState(prev => {
+                        // Don't override an explicit startup command
+                        if (prev?.mode) return prev;
+                        return { pendingRestore: { queueIds, index, stats } };
+                    });
+                } else {
+                    localStorage.removeItem('flashcard_study_session');
+                }
+            } catch (e) {
+                console.error("Failed to restore study session:", e);
+            }
+        }
+    };
+
+    const saveStudySession = () => {
+        if (mode === 'study' && studyQueue.length > 0) {
+            const sessionData = {
+                queueIds: studyQueue.map(c => c.id),
+                index: currentCardIndex,
+                stats: sessionStats,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('flashcard_study_session', JSON.stringify(sessionData));
+        }
+    };
+
+    const clearStudySession = () => {
+        localStorage.removeItem('flashcard_study_session');
+    };
+
+    // Save session when navigating away
+    useEffect(() => {
+        const handleBeforeUnload = () => saveStudySession();
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            saveStudySession(); // Save when component unmounts
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [mode, studyQueue, currentCardIndex, sessionStats]);
+
+    // Restore study queue after allCards is loaded
+    useEffect(() => {
+        if (allCards.length > 0 && flashcardStartupState?.pendingRestore) {
+            const { queueIds, index, stats } = flashcardStartupState.pendingRestore;
+            const restoredQueue = queueIds.map(id => allCards.find(c => c.id === id)).filter(Boolean);
+            if (restoredQueue.length > 0) {
+                setStudyQueue(restoredQueue);
+                setCurrentCardIndex(Math.min(index, restoredQueue.length - 1));
+                setSessionStats(stats || { reviewed: 0, correct: 0 });
+                setMode('study');
+                toast.success(`已恢复上次复习 (${restoredQueue.length} 张卡片)`, { id: 'restore_session' });
+            }
+            setFlashcardStartupState({ pendingRestore: null });
+        }
+    }, [allCards, flashcardStartupState]);
 
     const saveStreak = (newStreak) => {
         localStorage.setItem('smartlearn_streak', JSON.stringify(newStreak));
@@ -148,22 +249,8 @@ const FlashcardView = () => {
     // Deep Learning Panel toggle
     const [showDetailPanel, setShowDetailPanel] = useState(false);
 
-    // Mastery Color Helper
-    const getMasteryColor = (interval) => {
-        if (!interval || interval <= 1) return 'bg-white border-slate-200'; // New
-        if (interval <= 3) return 'bg-blue-50 border-blue-200'; // Learning
-        if (interval <= 7) return 'bg-indigo-50 border-indigo-200'; // Developing
-        if (interval <= 21) return 'bg-purple-50 border-purple-200'; // Proficient
-        return 'bg-amber-50 border-amber-200'; // Mastered
-    };
-
-    const getMasteryLabel = (interval) => {
-        if (!interval || interval <= 1) return 'New';
-        if (interval <= 3) return 'Learning';
-        if (interval <= 7) return 'Developing';
-        if (interval <= 21) return 'Proficient';
-        return 'Mastered';
-    };
+    // Note: getMasteryColor, getMasteryLabel, getWeaknessColor, getWeaknessLabel
+    // are now imported from '../utils/flashcardUtils'
 
     const updateStreak = () => {
         const today = new Date().toISOString().split('T')[0];
@@ -198,7 +285,7 @@ const FlashcardView = () => {
     };
 
     const handleUndo = async () => {
-        if (!lastAction || Date.now() - lastAction.timestamp > 5000) return;
+        if (!lastAction || Date.now() - lastAction.timestamp > UNDO_TIMEOUT_MS) return;
 
         // Clear timeout
         if (undoTimeout) {
@@ -315,18 +402,18 @@ const FlashcardView = () => {
         }
     };
 
-    // Handle Startup Signal (e.g. from Dashboard)
+    // Handle Startup Signal (e.g. from Dashboard "开始复习")
     useEffect(() => {
         if (flashcardStartupState && allCards.length > 0) {
             const { mode, folder } = flashcardStartupState;
-            if (folder) setSelectedFolderId(folder);
-
-            if (mode === 'study') {
-                // Determine candidates immediately
-                // We must pass folder explicitly because state update is async
-                startSession(folder);
+            if (mode === 'study' && folder) {
+                // Explicit startup from Dashboard: clear any saved session and start fresh
+                localStorage.removeItem('flashcard_study_session');
+                setSelectedFolderId(folder);
+                startSession(folder, true); // useAllCards=true for FSRS review
+                setFlashcardStartupState(null); // Consume
+                return; // Don't process pendingRestore
             }
-            setFlashcardStartupState(null); // Consume
         }
     }, [flashcardStartupState, allCards]);
 
@@ -342,11 +429,17 @@ const FlashcardView = () => {
 
     const handleDeleteFolder = async (e, id) => {
         e.stopPropagation();
-        if (confirm("确定删除此文件夹？里面的卡片将保留在“所有卡片”中。")) {
-            await deleteFolder(id);
-            if (selectedFolderId === id) setSelectedFolderId('all');
-            loadData();
-        }
+        setConfirmDialog({
+            isOpen: true,
+            title: '删除文件夹',
+            message: '确定删除此文件夹？里面的卡片将保留在"所有卡片"中。',
+            onConfirm: async () => {
+                await deleteFolder(id);
+                if (selectedFolderId === id) setSelectedFolderId('all');
+                loadData();
+                setConfirmDialog({ isOpen: false });
+            }
+        });
     };
 
     // --- Card Logic ---
@@ -367,11 +460,19 @@ const FlashcardView = () => {
 
         // Apply Sorting
         if (sortMode === 'mastery_asc') {
-            // Weakest First (Low Interval)
-            return [...result].sort((a, b) => (a.interval || 0) - (b.interval || 0));
+            // Weakest First: Use weakness score (higher = weaker, appears first)
+            return [...result].sort((a, b) => {
+                const scoreA = (a.weaknessScore || 0) + (a.notes ? 3 : 0) + (a.isFlagged ? 2 : 0);
+                const scoreB = (b.weaknessScore || 0) + (b.notes ? 3 : 0) + (b.isFlagged ? 2 : 0);
+                return scoreB - scoreA; // High weakness first (least proficient)
+            });
         } else if (sortMode === 'mastery_desc') {
-            // Strongest First (High Interval)
-            return [...result].sort((a, b) => (b.interval || 0) - (a.interval || 0));
+            // Strongest First: Low weakness score first
+            return [...result].sort((a, b) => {
+                const scoreA = (a.weaknessScore || 0) + (a.notes ? 3 : 0) + (a.isFlagged ? 2 : 0);
+                const scoreB = (b.weaknessScore || 0) + (b.notes ? 3 : 0) + (b.isFlagged ? 2 : 0);
+                return scoreA - scoreB; // Low weakness first (most proficient)
+            });
         }
 
         return result;
@@ -418,14 +519,23 @@ const FlashcardView = () => {
     };
 
     const handleDeleteCard = async (id) => {
-        if (confirm("确定删除此卡片？")) {
-            await removeFlashcard(id);
-            loadData();
-        }
+        setConfirmDialog({
+            isOpen: true,
+            title: '删除卡片',
+            message: '确定删除此卡片？此操作不可撤销。',
+            onConfirm: async () => {
+                await removeFlashcard(id);
+                loadData();
+                setConfirmDialog({ isOpen: false });
+            }
+        });
     };
 
     // --- Study Logic ---
-    const startSession = (overrideFolderId) => {
+    // Note: getEffectiveWeaknessScore is now imported from '../utils/flashcardUtils'
+
+
+    const startSession = (overrideFolderId, useAllCards = false) => {
         const targetFolder = overrideFolderId || selectedFolderId;
 
         let candidates = [];
@@ -448,9 +558,37 @@ const FlashcardView = () => {
             return;
         }
 
-        // Shuffle and limit to drawCount
-        const shuffled = [...candidates].sort(() => Math.random() - 0.5).slice(0, drawCount);
-        setStudyQueue(shuffled);
+        // ===== Weighted Shuffle by Weakness Score =====
+        // Higher weakness score = higher priority (appears earlier/more often)
+        const sortedByWeakness = [...candidates].sort((a, b) => {
+            const scoreA = getEffectiveWeaknessScore(a);
+            const scoreB = getEffectiveWeaknessScore(b);
+            // Primary: weakness score (high to low)
+            if (scoreB !== scoreA) return scoreB - scoreA;
+            // Secondary: due date (earlier first)
+            return (a.nextReview || 0) - (b.nextReview || 0);
+        });
+
+        // Take top cards: all due cards for FSRS review (with optional limit), or drawCount for manual
+        let selected;
+        if (useAllCards) {
+            const maxCards = settings?.maxReviewCards || 0;
+            selected = maxCards > 0
+                ? sortedByWeakness.slice(0, maxCards)
+                : sortedByWeakness;
+        } else {
+            selected = sortedByWeakness.slice(0, drawCount);
+        }
+
+        // Light shuffle within the selected pool (preserves general order but adds variety)
+        const lightShuffle = selected.sort((a, b) => {
+            const scoreDiff = getEffectiveWeaknessScore(b) - getEffectiveWeaknessScore(a);
+            // Only shuffle if scores are close (within 5 points)
+            if (Math.abs(scoreDiff) <= 5) return Math.random() - 0.5;
+            return scoreDiff;
+        });
+
+        setStudyQueue(lightShuffle);
         setCurrentCardIndex(0);
         setIsFlipped(false);
         setSessionStats({ reviewed: 0, correct: 0 });
@@ -500,7 +638,27 @@ const FlashcardView = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [mode, isFlipped, currentCardIndex, studyQueue, lastAction]);
 
+    // FSRS: Preview the scheduled interval for each rating
+    const getPreviewInterval = (card, rating) => {
+        if (!card) return '—';
+        try {
+            const fsrsCard = restoreFSRSCard(card);
+            const result = fsrs.next(fsrsCard, new Date(), rating);
+            const days = result.card.scheduled_days;
+            if (days < 1) {
+                // Learning step: show minutes
+                const mins = Math.round((result.card.due.getTime() - Date.now()) / 60000);
+                if (mins <= 0) return '重来';
+                return `${mins}m`;
+            }
+            return `${days}d`;
+        } catch {
+            return '—';
+        }
+    };
+
     const [isGeneratingDeepNotes, setIsGeneratingDeepNotes] = useState(false);
+
 
     const handleGenerateDeepNotes = async () => {
         if (!currentCard || isGeneratingDeepNotes) return;
@@ -548,6 +706,120 @@ const FlashcardView = () => {
         }
     };
 
+    // ============ Batch Operations ============
+    const toggleCardSelection = (cardId) => {
+        if (!cardId) return; // safety check
+        setSelectedCardIds(prev => {
+            const next = new Set(prev);
+            if (next.has(cardId)) next.delete(cardId);
+            else next.add(cardId);
+            return next;
+        });
+    };
+
+    const handleBatchDelete = async () => {
+        if (selectedCardIds.size === 0) return;
+
+        if (!window.confirm(`确定要永久删除这 ${selectedCardIds.size} 张卡片吗？操作不可恢复。`)) {
+            return;
+        }
+
+        toast.loading(`正在删除 ${selectedCardIds.size} 张卡片...`, { id: 'batch_delete' });
+        try {
+            let deletedCount = 0;
+            for (const cardId of selectedCardIds) {
+                await removeFlashcard(cardId);
+                deletedCount++;
+            }
+
+            const updated = await loadUserFlashcards(); // Refresh from DB
+            setAllCards(updated);
+            setSelectedCardIds(new Set());
+            setIsMultiSelect(false);
+            toast.success(`成功删除 ${deletedCount} 张卡片`, { id: 'batch_delete' });
+        } catch (e) {
+            console.error('Batch delete failed:', e);
+            toast.error('批量删除失败', { id: 'batch_delete' });
+        }
+    };
+
+    const handleSelectAll = () => {
+        if (selectedCardIds.size === displayCards.length) {
+            setSelectedCardIds(new Set());
+        } else {
+            setSelectedCardIds(new Set(displayCards.map(c => c.id)));
+        }
+    };
+
+    const handleBatchMoveFolder = async (targetFolderId) => {
+        if (selectedCardIds.size === 0) return;
+        toast.loading(`正在移动 ${selectedCardIds.size} 张卡片...`, { id: 'batch_move' });
+        try {
+            for (const cardId of selectedCardIds) {
+                const card = allCards.find(c => c.id === cardId);
+                if (card) {
+                    await updateFlashcard({ ...card, folderId: targetFolderId });
+                }
+            }
+            // Update local state
+            setAllCards(prev => prev.map(c =>
+                selectedCardIds.has(c.id) ? { ...c, folderId: targetFolderId } : c
+            ));
+            setSelectedCardIds(new Set());
+            setShowBatchMenu(false);
+            toast.success('移动完成！', { id: 'batch_move' });
+        } catch (e) {
+            console.error(e);
+            toast.error('移动失败', { id: 'batch_move' });
+        }
+    };
+
+    const [isBatchGenerating, setIsBatchGenerating] = useState(false);
+    const handleBatchGenerateDeepNotes = async () => {
+        if (selectedCardIds.size === 0) return;
+        if (!settings.apiKey) {
+            alert("请先在设置中配置 API Key");
+            return;
+        }
+        setIsBatchGenerating(true);
+        const cards = allCards.filter(c => selectedCardIds.has(c.id));
+        let success = 0;
+
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i];
+            toast.loading(`正在生成 (${i + 1}/${cards.length}): ${card.front}`, { id: 'batch_dn' });
+            try {
+                const markdown = await generateDeepNotes(card.front, card.context, settings);
+                if (markdown) {
+                    const updatedCard = { ...card, notes: markdown };
+                    await updateFlashcard(updatedCard);
+                    // Save to notes
+                    const noteContent = `# ${card.front}\n\n> ${card.back}\n\n${markdown}`;
+                    await saveToNotes({
+                        id: `dn_${card.id}`,
+                        title: card.front,
+                        content: noteContent,
+                        folder: '深度笔记',
+                        updatedAt: Date.now()
+                    });
+                    success++;
+                }
+            } catch (e) {
+                console.error(`Failed for ${card.front}:`, e);
+            }
+            // Small delay to avoid rate limiting
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        setIsBatchGenerating(false);
+        setSelectedCardIds(new Set());
+        setIsMultiSelect(false);
+        toast.success(`完成！成功生成 ${success}/${cards.length} 个深度笔记`, { id: 'batch_dn' });
+        // Reload cards to get updated notes
+        const updated = await loadUserFlashcards();
+        setAllCards(updated);
+    };
+
     const handleToggleFlag = async (e, card) => {
         e.stopPropagation();
         const newIsFlagged = !card.isFlagged;
@@ -591,7 +863,7 @@ const FlashcardView = () => {
 
         // Clear any existing undo timeout
         if (undoTimeout) clearTimeout(undoTimeout);
-        const timeout = setTimeout(() => setLastAction(null), 5000);
+        const timeout = setTimeout(() => setLastAction(null), UNDO_TIMEOUT_MS);
         setUndoTimeout(timeout);
 
         // SRS Update
@@ -621,6 +893,7 @@ const FlashcardView = () => {
             // Session complete!
             await loadData();
             updateStreak(); // Update daily streak
+            clearStudySession(); // Clear saved session
             setShowSessionSummary(true); // Show summary modal instead of alert
         }
     };
@@ -940,11 +1213,92 @@ const FlashcardView = () => {
                                         {sortMode === 'default' ? '默认排序' : sortMode === 'mastery_asc' ? '掌握度: 低→高' : '掌握度: 高→低'}
                                     </button>
 
+                                    {/* Batch Select Toggle */}
+                                    <button
+                                        onClick={() => {
+                                            setIsMultiSelect(!isMultiSelect);
+                                            if (isMultiSelect) setSelectedCardIds(new Set());
+                                        }}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${isMultiSelect ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-200 hover:text-purple-500'}`}
+                                    >
+                                        <LayoutGrid size={14} />
+                                        {isMultiSelect ? `已选 ${selectedCardIds.size}` : '批量选择'}
+                                    </button>
+
                                     <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
                                         <Plus size={20} />
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Batch Action Toolbar */}
+                            {isMultiSelect && selectedCardIds.size > 0 && (
+                                <div className="px-4 py-3 bg-purple-50 border-b border-purple-100 flex items-center justify-between animate-in slide-in-from-top-2">
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={handleSelectAll}
+                                            className="text-xs font-bold text-purple-600 hover:underline"
+                                        >
+                                            {selectedCardIds.size === displayCards.length ? '取消全选' : '全选'}
+                                        </button>
+                                        <span className="text-xs text-purple-500">已选中 {selectedCardIds.size} 张卡片</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {/* Move Folder */}
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowBatchMenu(!showBatchMenu)}
+                                                className="px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-xs font-bold text-purple-700 hover:bg-purple-100 flex items-center gap-1"
+                                            >
+                                                <Folder size={12} /> 移动文件夹
+                                            </button>
+                                            {showBatchMenu && (
+                                                <div className="absolute top-full mt-1 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[150px] py-1">
+                                                    <button
+                                                        onClick={() => handleBatchMoveFolder(null)}
+                                                        className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                                    >
+                                                        📂 未分类
+                                                    </button>
+                                                    {folders.map(f => (
+                                                        <button
+                                                            key={f.id}
+                                                            onClick={() => handleBatchMoveFolder(f.id)}
+                                                            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                                        >
+                                                            📁 {f.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Batch Deep Notes */}
+                                        <button
+                                            onClick={handleBatchGenerateDeepNotes}
+                                            disabled={isBatchGenerating}
+                                            className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg text-xs font-bold hover:from-purple-600 hover:to-indigo-600 flex items-center gap-1 disabled:opacity-50"
+                                        >
+                                            {isBatchGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                            批量生成深度笔记
+                                        </button>
+                                        {/* Batch Delete */}
+                                        <button
+                                            onClick={handleBatchDelete}
+                                            className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center gap-1"
+                                        >
+                                            <Trash2 size={12} />
+                                            批量删除
+                                        </button>
+                                        {/* Cancel */}
+                                        <button
+                                            onClick={() => { setIsMultiSelect(false); setSelectedCardIds(new Set()); }}
+                                            className="px-2 py-1.5 text-slate-400 hover:text-slate-600 text-xs"
+                                        >
+                                            取消
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Statistics Panel */}
                             {showStats && (
@@ -981,27 +1335,58 @@ const FlashcardView = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                     {displayCards.map(card => {
                                         const isDue = !card.nextReview || card.nextReview <= Date.now();
+                                        const isSelected = selectedCardIds.has(card.id);
+                                        const weaknessInfo = getWeaknessLabel(card);
                                         return (
-                                            <div key={card.id} className="group bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-all relative">
-                                                <div className="font-bold text-slate-800 mb-2 truncate" title={card.front}>{card.front}</div>
+                                            <div
+                                                key={card.id}
+                                                onClick={() => isMultiSelect && toggleCardSelection(card.id)}
+                                                className={`group rounded-xl p-5 shadow-sm border-2 transition-all relative ${isSelected
+                                                    ? 'border-purple-400 bg-purple-50 ring-2 ring-purple-200'
+                                                    : `${getWeaknessColor(card)} hover:shadow-md`
+                                                    } ${isMultiSelect ? 'cursor-pointer' : ''}`}
+                                            >
+                                                {/* Selection Checkbox */}
+                                                {isMultiSelect && (
+                                                    <div className={`absolute top-3 right-3 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
+                                                        ? 'bg-purple-500 border-purple-500'
+                                                        : 'bg-white border-slate-300'
+                                                        }`}>
+                                                        {isSelected && <CheckCircle size={12} className="text-white" />}
+                                                    </div>
+                                                )}
+                                                {/* Weakness Indicator */}
+                                                {!isMultiSelect && (
+                                                    <div className={`absolute top-3 right-3 text-xs font-bold ${weaknessInfo.color}`} title={`弱点分: ${card.weaknessScore || 0}`}>
+                                                        {weaknessInfo.icon}
+                                                    </div>
+                                                )}
+                                                <div className="font-bold text-slate-800 mb-2 truncate pr-6" title={card.front}>{card.front}</div>
                                                 <div className="text-sm text-slate-500 line-clamp-3 mb-4 h-12">{card.back}</div>
                                                 <div className="flex justify-between items-center">
-                                                    <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDue ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                                                        {isDue ? '到期' : '待复习'}
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDue ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                            {isDue ? '到期' : '待复习'}
+                                                        </div>
+                                                        <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${weaknessInfo.color} bg-white/50`}>
+                                                            {weaknessInfo.label}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setEditingNoteCard(card);
-                                                            }}
-                                                            className="text-slate-300 hover:text-indigo-500"
-                                                            title="深度笔记 (Deep Dive)"
-                                                        >
-                                                            <Sparkles size={14} />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteCard(card.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
-                                                    </div>
+                                                    {!isMultiSelect && (
+                                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingNoteCard(card);
+                                                                }}
+                                                                className="text-slate-300 hover:text-indigo-500"
+                                                                title="深度笔记 (Deep Dive)"
+                                                            >
+                                                                <Sparkles size={14} />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteCard(card.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )
@@ -1103,7 +1488,7 @@ const FlashcardView = () => {
                             {/* Card Container */}
                             {!isDrillMode && (
                                 <div
-                                    className={`relative w-full aspect-video rounded-3xl shadow-xl border-2 p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard?.interval)}`}
+                                    className={`relative w-full aspect-video rounded-3xl shadow-xl border-2 p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
                                     style={{ maxWidth: showDetailPanel ? '800px' : '900px' }}
                                     onClick={async () => {
                                         if (!isFlipped) {
@@ -1124,7 +1509,7 @@ const FlashcardView = () => {
                                     <div className="backface-hidden w-full h-full flex flex-col items-center justify-center relative">
                                         {/* Mastery Badge */}
                                         <div className="absolute top-0 right-0 py-1 px-3 bg-white/50 backdrop-blur rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-widest border border-slate-100">
-                                            Level: {getMasteryLabel(currentCard?.interval)}
+                                            Level: {getMasteryLabel(currentCard)}
                                         </div>
 
                                         {currentCard?.isFlagged && (
@@ -1168,16 +1553,26 @@ const FlashcardView = () => {
                                 </div>
                             )}
 
-                            {/* SRS Stats (Geeks) */}
+                            {/* FSRS R/S/D Stats */}
                             {isFlipped && !isDrillMode && (
-                                <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-[200px] opacity-60 hover:opacity-100 transition-opacity">
+                                <div className="mt-8 grid grid-cols-3 gap-4 w-full max-w-[360px] opacity-60 hover:opacity-100 transition-opacity">
                                     <div className="text-center">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase">Interval</div>
-                                        <div className="text-sm font-bold text-slate-600">{currentCard?.interval || 0}d</div>
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">记忆保留 R</div>
+                                        <div className={`text-sm font-bold ${getRetrievabilityLabel(currentCard).color}`}>
+                                            {getRetrievabilityLabel(currentCard).percent}
+                                        </div>
                                     </div>
                                     <div className="text-center">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase">Factor</div>
-                                        <div className="text-sm font-bold text-slate-600">{currentCard?.easeFactor?.toFixed(2) || '2.50'}</div>
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">稳定性 S</div>
+                                        <div className="text-sm font-bold text-slate-600">
+                                            {currentCard?.fsrs_stability ? `${currentCard.fsrs_stability.toFixed(1)}d` : '—'}
+                                        </div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">难度 D</div>
+                                        <div className="text-sm font-bold text-slate-600">
+                                            {currentCard?.fsrs_difficulty ? currentCard.fsrs_difficulty.toFixed(1) : '—'}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1242,25 +1637,83 @@ const FlashcardView = () => {
 
                                 <div className="space-y-6">
                                     {/* Consolidated Deep Note Area */}
-                                    <div className="bg-slate-50 rounded-xl p-0 border border-slate-200 overflow-hidden min-h-[400px]">
+                                    <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden min-h-[400px] flex flex-col">
                                         {currentCard?.notes ? (
-                                            <div className="prose prose-sm prose-indigo max-w-none p-4">
-                                                <ReactMarkdown>{currentCard.notes}</ReactMarkdown>
-                                                <button
-                                                    onClick={() => {
-                                                        const newVal = prompt("Edit Notes (Markdown supported):", currentCard.notes);
-                                                        if (newVal !== null) {
-                                                            const updated = { ...currentCard, notes: newVal };
-                                                            updateFlashcard(updated);
-                                                            setAllCards(prev => prev.map(c => c.id === currentCard.id ? updated : c));
-                                                            setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? updated : c));
-                                                        }
-                                                    }}
-                                                    className="mt-4 text-xs text-indigo-500 hover:underline"
-                                                >
-                                                    [Edit Manually]
-                                                </button>
-                                            </div>
+                                            <>
+                                                <div className="prose prose-sm prose-indigo max-w-none p-4 flex-1 overflow-y-auto">
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentCard.notes}</ReactMarkdown>
+                                                </div>
+                                                {/* Edit Button - Outside prose to avoid style conflicts */}
+                                                <div className="border-t border-slate-200 p-3 bg-white">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            // Create modal container
+                                                            const modal = document.createElement('div');
+                                                            modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;max-width:800px;background:white;border-radius:16px;z-index:9999;box-shadow:0 25px 50px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;';
+
+                                                            // Header
+                                                            const header = document.createElement('div');
+                                                            header.style.cssText = 'padding:16px 20px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:bold;font-size:16px;';
+                                                            header.textContent = '✏️ 编辑深度笔记 (支持 Markdown)';
+
+                                                            // Textarea
+                                                            const textarea = document.createElement('textarea');
+                                                            textarea.value = currentCard.notes;
+                                                            textarea.style.cssText = 'flex:1;min-height:400px;padding:20px;font-size:14px;line-height:1.8;border:none;outline:none;resize:none;font-family:ui-monospace,monospace;color:#1e293b;background:#f8fafc;';
+
+                                                            // Button container
+                                                            const btnContainer = document.createElement('div');
+                                                            btnContainer.style.cssText = 'padding:16px 20px;background:#f1f5f9;display:flex;justify-content:flex-end;gap:12px;border-top:1px solid #e2e8f0;';
+
+                                                            const cancelBtn = document.createElement('button');
+                                                            cancelBtn.textContent = '取消';
+                                                            cancelBtn.style.cssText = 'padding:10px 24px;background:white;color:#64748b;border:1px solid #e2e8f0;border-radius:8px;font-weight:600;cursor:pointer;';
+
+                                                            const saveBtn = document.createElement('button');
+                                                            saveBtn.textContent = '💾 保存';
+                                                            saveBtn.style.cssText = 'padding:10px 24px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;';
+
+                                                            const overlay = document.createElement('div');
+                                                            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:9998;backdrop-filter:blur(4px);';
+
+                                                            const cleanup = () => {
+                                                                document.body.removeChild(overlay);
+                                                                document.body.removeChild(modal);
+                                                            };
+
+                                                            saveBtn.onclick = async () => {
+                                                                const newVal = textarea.value;
+                                                                if (newVal !== currentCard.notes) {
+                                                                    const updated = { ...currentCard, notes: newVal };
+                                                                    await updateFlashcard(updated);
+                                                                    setAllCards(prev => prev.map(c => c.id === currentCard.id ? updated : c));
+                                                                    setStudyQueue(prev => prev.map(c => c.id === currentCard.id ? updated : c));
+                                                                    toast.success("笔记已更新");
+                                                                }
+                                                                cleanup();
+                                                            };
+
+                                                            cancelBtn.onclick = cleanup;
+                                                            overlay.onclick = cleanup;
+
+                                                            btnContainer.appendChild(cancelBtn);
+                                                            btnContainer.appendChild(saveBtn);
+                                                            modal.appendChild(header);
+                                                            modal.appendChild(textarea);
+                                                            modal.appendChild(btnContainer);
+
+                                                            document.body.appendChild(overlay);
+                                                            document.body.appendChild(modal);
+                                                            textarea.focus();
+                                                        }}
+                                                        className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium flex items-center gap-1"
+                                                    >
+                                                        <Edit3 size={12} />
+                                                        手动编辑笔记
+                                                    </button>
+                                                </div>
+                                            </>
                                         ) : (
                                             <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
                                                 <Brain size={48} className="mb-4 opacity-20" />
@@ -1274,16 +1727,16 @@ const FlashcardView = () => {
                         </div>
                     </div>
 
-                    {/* Control Buttons (4-Level SRS) moved inside container */}
+                    {/* Control Buttons (4-Level FSRS) moved inside container */}
                     {isFlipped && (
                         <div className="mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4">
                             <button
                                 onClick={() => handleNextCard(1)}
                                 className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-rose-50 text-rose-500 border border-slate-200 hover:border-rose-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-rose-300 group-hover:text-rose-400">Can't Recall</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-rose-300 group-hover:text-rose-400">Again</span>
                                 <span className="text-lg">忘记 (1)</span>
-                                <span className="text-[10px] font-mono text-slate-400">Repeat</span>
+                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Again)}</span>
                             </button>
 
                             <button
@@ -1292,7 +1745,7 @@ const FlashcardView = () => {
                             >
                                 <span className="text-xs font-black uppercase tracking-wider text-orange-300 group-hover:text-orange-400">Hard</span>
                                 <span className="text-lg">困难 (2)</span>
-                                <span className="text-[10px] font-mono text-slate-400">1.2x</span>
+                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Hard)}</span>
                             </button>
 
                             <button
@@ -1300,8 +1753,8 @@ const FlashcardView = () => {
                                 className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 border border-slate-200 hover:border-emerald-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
                             >
                                 <span className="text-xs font-black uppercase tracking-wider text-emerald-300 group-hover:text-emerald-400">Good</span>
-                                <span className="text-lg">一般 (3)</span>
-                                <span className="text-[10px] font-mono text-slate-400">2.5x</span>
+                                <span className="text-lg">良好 (3)</span>
+                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Good)}</span>
                             </button>
 
                             <button
@@ -1310,7 +1763,7 @@ const FlashcardView = () => {
                             >
                                 <span className="text-xs font-black uppercase tracking-wider text-blue-300 group-hover:text-blue-400">Easy</span>
                                 <span className="text-lg">简单 (4)</span>
-                                <span className="text-[10px] font-mono text-slate-400">3.5x</span>
+                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Easy)}</span>
                             </button>
                         </div>
                     )}
@@ -1580,7 +2033,37 @@ const FlashcardView = () => {
                     </div>
                 </div>
             )}
-        </div >
+
+            {/* ===== Confirm Dialog ===== */}
+            <ConfirmDialog
+                isOpen={confirmDialog.isOpen}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                onConfirm={confirmDialog.onConfirm}
+                onCancel={() => setConfirmDialog({ isOpen: false })}
+            />
+
+            {/* ===== Notes Editor Modal ===== */}
+            <NotesEditorModal
+                isOpen={notesEditorOpen}
+                initialNotes={editingNotesCard?.notes || ''}
+                onSave={async (newNotes) => {
+                    if (editingNotesCard && newNotes !== editingNotesCard.notes) {
+                        const updated = { ...editingNotesCard, notes: newNotes };
+                        await updateFlashcard(updated);
+                        setAllCards(prev => prev.map(c => c.id === editingNotesCard.id ? updated : c));
+                        setStudyQueue(prev => prev.map(c => c.id === editingNotesCard.id ? updated : c));
+                        toast.success("笔记已更新");
+                    }
+                    setNotesEditorOpen(false);
+                    setEditingNotesCard(null);
+                }}
+                onCancel={() => {
+                    setNotesEditorOpen(false);
+                    setEditingNotesCard(null);
+                }}
+            />
+        </div>
     );
 };
 
