@@ -224,7 +224,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
     return (
         <div className="space-y-6 animate-fade-in h-[calc(100vh-100px)] flex flex-col">
             {/* Card Container */}
-            <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex-1 flex flex-col p-8 md:p-10 relative overflow-hidden">
+            <div className="bg-phy-glass rounded-[2rem] shadow-xl shadow-slate-200/50 border border-phy-border flex-1 flex flex-col p-8 md:p-10 relative overflow-hidden">
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -242,16 +242,16 @@ const ImportView = ({ onAnalyzeSuccess }) => {
 
                 {/* Header & Tabs */}
                 <div className="mb-6 flex justify-between items-center">
-                    <div className="flex bg-slate-100 rounded-xl p-1">
+                    <div className="flex bg-phy-bg rounded-xl p-1">
                         <button
                             onClick={() => { setMode('article'); setVocabList(null); }}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'article' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'article' ? 'bg-phy-glass text-blue-600 shadow-sm' : 'text-phy-muted hover:text-phy-text'}`}
                         >
                             文章深度分析
                         </button>
                         <button
                             onClick={() => setMode('vocab')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'vocab' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'vocab' ? 'bg-phy-glass text-amber-600 shadow-sm' : 'text-phy-muted hover:text-phy-text'}`}
                         >
                             批量单词导入
                         </button>
@@ -261,19 +261,19 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                 {vocabList ? (
                     // PREVIEW MODE
                     <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-phy-text font-bold mb-4 flex items-center gap-2">
                             <CheckCircle className="text-emerald-500" />
                             已提取 {vocabList.length} 张卡片
                         </h3>
 
                         {/* Folder Selection */}
-                        <div className="flex flex-wrap gap-4 mb-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="flex flex-wrap gap-4 mb-4 items-end bg-phy-bg p-4 rounded-xl border border-phy-border">
                             <div>
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">目标文件夹</label>
+                                <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-1">目标文件夹</label>
                                 <select
                                     value={selectedFolderId}
                                     onChange={(e) => setSelectedFolderId(e.target.value)}
-                                    className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none w-48 font-medium text-slate-700"
+                                    className="bg-phy-glass border border-phy-border rounded-lg px-3 py-2 text-sm outline-none w-48 font-medium text-phy-text"
                                 >
                                     <option value="daily">📅 每日默认 (今天)</option>
                                     {folders.map(f => (
@@ -284,19 +284,19 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                             </div>
                             {selectedFolderId === 'new' && (
                                 <div className="animate-in fade-in slide-in-from-left-2">
-                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">文件夹名称</label>
+                                    <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-1">文件夹名称</label>
                                     <input
                                         type="text"
                                         value={newFolderName}
                                         onChange={(e) => setNewFolderName(e.target.value)}
                                         placeholder="例如：托福高频词汇"
-                                        className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none w-48"
+                                        className="bg-phy-glass border border-phy-border rounded-lg px-3 py-2 text-sm outline-none w-48"
                                     />
                                 </div>
                             )}
                             <div className="flex-1"></div>
                             <div className="flex gap-2">
-                                <button onClick={() => setVocabList(null)} className="px-4 py-2 text-slate-400 hover:bg-slate-200 rounded-lg text-sm font-bold">返回</button>
+                                <button onClick={() => setVocabList(null)} className="px-4 py-2 text-phy-muted hover:bg-phy-bg rounded-lg text-sm font-bold">返回</button>
                                 <button onClick={handleSaveCards} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-emerald-200">
                                     确认导入
                                 </button>
@@ -304,25 +304,25 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                         </div>
 
                         {/* List Preview */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar border rounded-xl bg-slate-50">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar border rounded-xl bg-phy-bg">
                             {vocabList.map((card, idx) => (
-                                <div key={idx} className="p-4 border-b border-slate-100 last:border-0 hover:bg-white transition-colors flex gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
+                                <div key={idx} className="p-4 border-b border-phy-border last:border-0 hover:bg-phy-glass transition-colors flex gap-4">
+                                    <div className="w-8 h-8 rounded-full bg-phy-bg flex items-center justify-center text-xs font-bold text-phy-muted shrink-0">
                                         {idx + 1}
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
                                         <div>
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold">正面</div>
-                                            <div className="font-bold text-slate-800">{card.front}</div>
+                                            <div className="text-[10px] text-phy-muted uppercase font-bold">正面</div>
+                                            <div className="font-bold text-phy-text font-bold">{card.front}</div>
                                         </div>
                                         <div>
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold">背面</div>
-                                            <div className="text-sm text-slate-600 whitespace-pre-wrap">{card.back}</div>
+                                            <div className="text-[10px] text-phy-muted uppercase font-bold">背面</div>
+                                            <div className="text-sm text-phy-muted whitespace-pre-wrap">{card.back}</div>
                                         </div>
                                     </div>
                                     <button
                                         onClick={() => setVocabList(prev => prev.filter((_, i) => i !== idx))}
-                                        className="text-slate-300 hover:text-red-500 p-1"
+                                        className="text-phy-text hover:text-red-500 p-1"
                                     >
                                         <AlertCircle size={16} />
                                     </button>
@@ -334,7 +334,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                     // INPUT MODE
                     <>
                         <textarea
-                            className="flex-1 w-full bg-slate-50 rounded-xl p-6 border-0 focus:ring-2 focus:ring-blue-500/20 resize-none font-sans text-slate-700 text-lg leading-relaxed mb-6 outline-none transition-all placeholder:text-slate-400"
+                            className="flex-1 w-full bg-phy-bg rounded-xl p-6 border-0 focus:ring-2 focus:ring-blue-500/20 resize-none font-sans text-phy-text text-lg leading-relaxed mb-6 outline-none transition-all placeholder:text-phy-muted"
                             placeholder={mode === 'article' ? "在此粘贴文章内容进行深度分析..." : "在此粘贴 单词表 / PDF 内容以批量提取闪卡..."}
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
@@ -344,14 +344,14 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                             <div className="flex gap-4">
                                 <button
                                     onClick={() => fileInputRef.current.click()}
-                                    className="text-slate-500 hover:text-blue-600 flex items-center gap-2 text-sm font-medium transition-colors px-2"
+                                    className="text-phy-muted hover:text-blue-600 flex items-center gap-2 text-sm font-medium transition-colors px-2"
                                 >
                                     <Upload size={18} />
                                     上传文档
                                 </button>
                                 <button
                                     onClick={() => mediaInputRef.current.click()}
-                                    className="text-slate-500 hover:text-purple-600 flex items-center gap-2 text-sm font-medium transition-colors px-2"
+                                    className="text-phy-muted hover:text-purple-600 flex items-center gap-2 text-sm font-medium transition-colors px-2"
                                 >
                                     <Mic size={18} />
                                     上传音视频
@@ -369,7 +369,7 @@ const ImportView = ({ onAnalyzeSuccess }) => {
                                 <button
                                     onClick={handleAction}
                                     disabled={isAnalyzing}
-                                    className={`px-8 py-3.5 rounded-full font-bold text-white flex items-center gap-2 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[200px] justify-center ${isAnalyzing ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none' :
+                                    className={`px-8 py-3.5 rounded-full font-bold text-white flex items-center gap-2 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[200px] justify-center ${isAnalyzing ? 'bg-slate-300 cursor-not-allowed text-phy-muted shadow-none' :
                                         (mode === 'article' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-200')
                                         }`}
                                 >

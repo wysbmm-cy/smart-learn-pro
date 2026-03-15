@@ -39,11 +39,11 @@ const ConfirmDialog = ({
             />
 
             {/* Dialog */}
-            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative bg-phy-glass rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Close button */}
                 <button
                     onClick={onCancel}
-                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
+                    className="absolute top-4 right-4 text-phy-muted hover:text-phy-muted transition-colors"
                 >
                     <X size={20} />
                 </button>
@@ -56,25 +56,25 @@ const ConfirmDialog = ({
                     </div>
 
                     {/* Title */}
-                    <h3 className="text-lg font-bold text-slate-800 text-center mb-2">
+                    <h3 className="text-lg font-bold text-phy-text font-bold text-center mb-2">
                         {title}
                     </h3>
 
                     {/* Message */}
-                    <p className="text-slate-500 text-center text-sm">
+                    <p className="text-phy-muted text-center text-sm">
                         {message}
                     </p>
                 </div>
 
                 {/* Actions */}
-                <div className="flex border-t border-slate-100">
+                <div className="flex border-t border-phy-border">
                     <button
                         onClick={onCancel}
-                        className="flex-1 py-4 text-slate-600 font-medium hover:bg-slate-50 transition-colors"
+                        className="flex-1 py-4 text-phy-muted font-medium hover:bg-phy-bg transition-colors"
                     >
                         {cancelText}
                     </button>
-                    <div className="w-px bg-slate-100" />
+                    <div className="w-px bg-phy-bg" />
                     <button
                         onClick={onConfirm}
                         className={`flex-1 py-4 text-white font-medium ${colorClasses[confirmColor]} transition-colors`}

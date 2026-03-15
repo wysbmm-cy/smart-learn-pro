@@ -39,15 +39,15 @@ const ForgettingCurveChart = ({ flashcards, onReviewStart }) => {
                     </div>
 
                     <div className="mt-6 flex gap-3">
-                        <div className="flex-1 bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/10">
+                        <div className="flex-1 bg-phy-glassHover rounded-xl p-3 backdrop-blur-sm border border-phy-borderHover">
                             <div className="text-xs text-indigo-200 mb-1">正在学习</div>
                             <div className="text-xl font-bold">{learning}</div>
                         </div>
-                        <div className="flex-1 bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/10">
+                        <div className="flex-1 bg-phy-glassHover rounded-xl p-3 backdrop-blur-sm border border-phy-borderHover">
                             <div className="text-xs text-indigo-200 mb-1">深度复习</div>
                             <div className="text-xl font-bold">{reviewing}</div>
                         </div>
-                        <div className="flex-1 bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/10">
+                        <div className="flex-1 bg-phy-glassHover rounded-xl p-3 backdrop-blur-sm border border-phy-borderHover">
                             <div className="text-xs text-indigo-200 mb-1">已掌握</div>
                             <div className="text-xl font-bold text-green-300">{mastered}</div>
                         </div>
@@ -55,7 +55,7 @@ const ForgettingCurveChart = ({ flashcards, onReviewStart }) => {
 
                     <button
                         onClick={onReviewStart}
-                        className="mt-6 w-full bg-white text-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors shadow-lg flex items-center justify-center gap-2"
+                        className="mt-6 w-full bg-phy-glass text-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors shadow-lg flex items-center justify-center gap-2"
                     >
                         {dueCards.length > 0 ? (
                             <>
@@ -73,8 +73,8 @@ const ForgettingCurveChart = ({ flashcards, onReviewStart }) => {
             </div>
 
             {/* Right: Memory Curve Distribution */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
-                <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-6">
+            <div className="bg-phy-glass rounded-3xl p-6 border border-phy-border shadow-sm flex flex-col">
+                <h3 className="font-bold text-phy-text flex items-center gap-2 mb-6">
                     <TrendingUp size={20} className="text-blue-500" />
                     未来7天记忆压力
                 </h3>
@@ -86,18 +86,18 @@ const ForgettingCurveChart = ({ flashcards, onReviewStart }) => {
                                 className="w-full bg-blue-100 rounded-lg relative transition-all duration-500 group-hover:bg-blue-200"
                                 style={{ height: `${(count / maxCount) * 100}%`, minHeight: '4px' }}
                             >
-                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-phy-glassHeavy text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
                                     {count}词
                                 </div>
                             </div>
-                            <div className="text-xs text-slate-400 font-medium">
+                            <div className="text-xs text-phy-muted font-medium">
                                 {i === 0 ? '明天' : `+${i + 1}天`}
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between text-xs text-slate-500">
+                <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between text-xs text-phy-muted">
                     <p>遵循艾宾浩斯遗忘曲线，今日复习效率最高。</p>
                 </div>
             </div>

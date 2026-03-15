@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap, Brain, Loader2, PanelRightClose, PanelRightOpen, Lightbulb, MessageSquare, Edit3, BookOpen, Sparkles, Link as LinkIcon, FileText, Search, X, Maximize2, Minimize2, MoreHorizontal, Settings } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import SharedMarkdown from '../components/SharedMarkdown';
 import { useApp, fsrs, restoreFSRSCard, Rating } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
 import DifficultyPieChart from '../components/DifficultyPieChart';
@@ -952,33 +951,33 @@ const FlashcardView = ({ params }) => {
         const filtered = userNotes.filter(n => n.title.toLowerCase().includes(search.toLowerCase()) || n.content.toLowerCase().includes(search.toLowerCase()));
 
         return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[70vh] animate-scale-in overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                            <LinkIcon size={18} className="text-indigo-500" /> 关联已有笔记
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-md animate-fade-in p-4">
+                <div className="glass-modal rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[70vh] animate-scale-in overflow-hidden border border-phy-border">
+                    <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur">
+                        <h3 className="font-bold text-phy-text flex items-center gap-2">
+                            <LinkIcon size={18} className="text-phy-accent" /> 关联已有笔记
                         </h3>
-                        <button onClick={() => setIsLinkingNote(false)} className="p-1 hover:bg-slate-200 rounded-full text-slate-400">
+                        <button onClick={() => setIsLinkingNote(false)} className="p-1 hover:bg-phy-glassHover rounded-full text-phy-muted transition-colors">
                             <X size={20} />
                         </button>
                     </div>
 
-                    <div className="p-3 bg-white border-b border-slate-100">
+                    <div className="p-3 bg-phy-glass border-b border-phy-border">
                         <div className="relative">
-                            <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                            <Search size={16} className="absolute left-3 top-3 text-phy-muted" />
                             <input
                                 type="text"
                                 placeholder="搜索笔记标题或内容..."
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-slate-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                className="w-full pl-9 pr-4 py-2 bg-phy-bg border border-phy-border rounded-lg text-sm text-phy-text focus:outline-none focus:border-phy-accent transition-colors"
                             />
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-2 bg-slate-50/50">
+                    <div className="flex-1 overflow-y-auto p-2 bg-phy-bg/50 backdrop-blur-sm">
                         {filtered.length === 0 ? (
-                            <div className="text-center py-10 text-slate-400">
+                            <div className="text-center py-10 text-phy-muted">
                                 <FileText size={40} className="mx-auto mb-2 opacity-20" />
                                 <p>未找到匹配笔记</p>
                             </div>
@@ -988,12 +987,12 @@ const FlashcardView = ({ params }) => {
                                     <button
                                         key={note.id}
                                         onClick={() => handleLinkNote(note)}
-                                        className="w-full text-left p-4 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-xl transition-all group group-hover:shadow-sm"
+                                        className="w-full text-left p-4 glass-panel border border-phy-border hover:border-phy-accent/50 hover:bg-phy-glassHover rounded-xl transition-all group group-hover:shadow-md"
                                     >
-                                        <div className="font-bold text-slate-700 group-hover:text-indigo-700 mb-1">{note.title}</div>
-                                        <div className="text-xs text-slate-400 line-clamp-2">{note.content.substring(0, 80)}...</div>
-                                        <div className="mt-2 flex gap-2 text-[10px] text-slate-400">
-                                            <span className="bg-slate-100 px-1.5 py-0.5 rounded">{note.folder || '默认'}</span>
+                                        <div className="font-bold text-phy-text group-hover:text-phy-accent mb-1 transition-colors">{note.title}</div>
+                                        <div className="text-xs text-phy-muted line-clamp-2">{note.content.substring(0, 80)}...</div>
+                                        <div className="mt-2 flex gap-2 text-[10px] text-phy-muted opacity-80">
+                                            <span className="bg-phy-glass px-1.5 py-0.5 rounded border border-phy-border">{note.folder || '默认'}</span>
                                             <span>{new Date(note.updatedAt).toLocaleDateString()}</span>
                                         </div>
                                     </button>
@@ -1017,10 +1016,10 @@ const FlashcardView = ({ params }) => {
     };
 
     const Sidebar = (
-        <div className="h-full flex flex-col bg-slate-50">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <Layers className="text-amber-500" />
+        <div className="h-full flex flex-col bg-phy-glass text-phy-text">
+            <div className="p-4 border-b border-phy-border flex justify-between items-center">
+                <h2 className="text-xl font-bold text-phy-text flex items-center gap-2">
+                    <Layers className="text-phy-accent" />
                     卡片库
                 </h2>
                 <button
@@ -1028,7 +1027,7 @@ const FlashcardView = ({ params }) => {
                         setIsMultiSelect(!isMultiSelect);
                         if (!isMultiSelect) setStudySelection([]); // Reset on enter
                     }}
-                    className={`text-xs px-2 py-1 rounded border ${isMultiSelect ? 'bg-indigo-100 text-indigo-600 border-indigo-200 font-bold' : 'text-slate-400 border-slate-200'}`}
+                    className={`text-xs px-2 py-1 rounded border ${isMultiSelect ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover font-bold' : 'text-phy-muted border-phy-border'}`}
                 >
                     {isMultiSelect ? 'Finish Select' : 'Multi-Select'}
                 </button>
@@ -1040,16 +1039,16 @@ const FlashcardView = ({ params }) => {
                     <>
                         <button
                             onClick={() => setSelectedFolderId('all')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'all' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'all' ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
                         >
                             <LayoutGrid size={18} />
                             所有卡片
-                            <span className="ml-auto text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">{allCards.length}</span>
+                            <span className="ml-auto text-xs bg-phy-glassHeavy px-1.5 py-0.5 rounded text-phy-muted">{allCards.length}</span>
                         </button>
 
                         <button
                             onClick={() => setSelectedFolderId('today')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'today' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'today' ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
                         >
                             <RefreshCw size={18} />
                             今日需复习
@@ -1057,24 +1056,24 @@ const FlashcardView = ({ params }) => {
 
                         <button
                             onClick={() => setSelectedFolderId('flagged')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'flagged' ? 'bg-white shadow-sm text-rose-500' : 'text-slate-600 hover:bg-slate-100'}`}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'flagged' ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
                         >
-                            <Star size={18} className={selectedFolderId === 'flagged' ? "fill-rose-500" : ""} />
+                            <Star size={18} className={selectedFolderId === 'flagged' ? "fill-phy-accent" : ""} />
                             重点标记 (Flagged)
                         </button>
                     </>
                 )}
 
-                <div className="pt-4 pb-2 px-3 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <div className="pt-4 pb-2 px-3 flex items-center justify-between text-xs font-bold text-phy-muted uppercase tracking-wider">
                     <span>{isMultiSelect ? 'Select Folders to Review' : '我的文件夹'}</span>
-                    {!isMultiSelect && <button onClick={() => setIsAddingFolder(true)} className="hover:text-blue-600"><Plus size={14} /></button>}
+                    {!isMultiSelect && <button onClick={() => setIsAddingFolder(true)} className="hover:text-phy-accent"><Plus size={14} /></button>}
                 </div>
 
                 {isAddingFolder && (
                     <div className="px-2 mb-2 animate-fade-in">
                         <input
                             autoFocus
-                            className="w-full bg-white border border-blue-200 rounded-lg px-2 py-1.5 text-sm outline-none"
+                            className="w-full bg-phy-bg border border-phy-border rounded-lg px-2 py-1.5 text-sm outline-none text-phy-text focus:border-phy-accent"
                             placeholder="输入名称..."
                             value={newFolderName}
                             onChange={(e) => setNewFolderName(e.target.value)}
@@ -1093,19 +1092,19 @@ const FlashcardView = ({ params }) => {
                         <button
                             key={folder.id}
                             onClick={() => isMultiSelect ? toggleFolderSelection(folder.id) : setSelectedFolderId(folder.id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors group ${isSelected ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors group ${isSelected ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
                         >
                             {isMultiSelect ? (
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300'}`}>
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-phy-accent border-phy-accent' : 'border-phy-border'}`}>
                                     {isSelected && <CheckCircle size={10} className="text-white" />}
                                 </div>
                             ) : (
-                                <Folder size={18} className={isSelected ? 'fill-indigo-100' : ''} />
+                                <Folder size={18} className={isSelected ? 'fill-phy-accentGlass' : ''} />
                             )}
                             <span className="truncate flex-1">{folder.name}</span>
                             {!isMultiSelect && (
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDeleteFolder(e, folder.id)}>
-                                    <Trash2 size={14} className="text-slate-300 hover:text-red-500" />
+                                    <Trash2 size={14} className="text-phy-muted hover:text-red-500" />
                                 </div>
                             )}
                         </button>
@@ -1113,16 +1112,16 @@ const FlashcardView = ({ params }) => {
                 })}
             </div>
 
-            <div className="p-4 border-t border-slate-200 bg-slate-100/50 space-y-2">
+            <div className="p-4 border-t border-phy-border bg-phy-glassHeavy space-y-2">
                 {/* A.I.R. Smart Review Button */}
                 <button
                     onClick={handleAIRClick}
                     disabled={airStatus === 'preparing'}
                     className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold shadow-md transition-all ${airStatus === 'ready'
-                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white'
+                        ? 'bg-phy-accent text-white hover:opacity-90'
                         : airStatus === 'preparing'
-                            ? 'bg-slate-200 text-slate-500 cursor-wait'
-                            : 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white'
+                            ? 'bg-phy-glass text-phy-muted cursor-wait'
+                            : 'bg-phy-accent text-white hover:opacity-90 border border-transparent'
                         }`}
                 >
                     {airStatus === 'preparing' ? (
@@ -1135,7 +1134,7 @@ const FlashcardView = ({ params }) => {
                 </button>
                 <button
                     onClick={() => setShowStudentPicker(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-slate-200 text-slate-600 text-sm font-bold shadow-sm hover:text-indigo-600 hover:border-indigo-100 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-transparent rounded-lg border border-phy-border text-phy-muted text-sm font-bold shadow-sm hover:text-phy-accent hover:border-phy-accent transition-colors hover:bg-phy-glassHover"
                 >
                     <Dices size={16} />
                     班级抽号 (Lottery)
@@ -1145,15 +1144,15 @@ const FlashcardView = ({ params }) => {
     );
 
     return (
-        <div className="h-[calc(100vh-100px)] animate-fade-in bg-white border border-slate-100 rounded-[2rem] shadow-sm overflow-hidden">
+        <div className="h-[calc(100vh-100px)] animate-fade-in glass-panel rounded-[2rem] shadow-sm overflow-hidden text-phy-text bg-phy-bg/50">
             {mode === 'manage' ? (
                 <SplitPane
                     left={Sidebar}
                     right={
-                        <div className="h-full flex flex-col bg-white">
+                        <div className="h-full flex flex-col bg-transparent">
                             {/* Toolbar */}
-                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white/80 backdrop-blur sticky top-0 z-10">
-                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur sticky top-0 z-10">
+                                <h3 className="text-lg font-bold flex items-center gap-2">
                                     {isMultiSelect
                                         ? `多选模式 (${studySelection.length} 个文件夹)`
                                         : (selectedFolderId === 'all' ? '所有卡片' :
@@ -1161,14 +1160,14 @@ const FlashcardView = ({ params }) => {
                                                 selectedFolderId === 'flagged' ? `重点标记 (${displayCards.length})` :
                                                     folders.find(f => f.id === selectedFolderId)?.name || '文件夹')
                                     }
-                                    <span className="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full text-xs">{displayCards.length}</span>
+                                    <span className="bg-phy-glass text-phy-muted px-2 py-0.5 rounded-full text-xs border border-phy-border">{displayCards.length}</span>
                                 </h3>
 
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => setMode('study')}
                                         disabled={studyQueue.length === 0 && displayCards.length === 0}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${studyQueue.length === 0 && displayCards.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95'}`}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${studyQueue.length === 0 && displayCards.length === 0 ? 'bg-phy-glassHeavy text-phy-muted border border-phy-border cursor-not-allowed' : 'bg-phy-accent text-white hover:opacity-90 active:scale-95'}`}
                                         title={displayCards.length === 0 ? "没有卡片可复习" : "开始复习当前筛选卡片"}
                                         onClickCapture={() => {
                                             if (mode === 'manage') startSession();
@@ -1179,21 +1178,21 @@ const FlashcardView = ({ params }) => {
                                     </button>
 
                                     {/* Card Count Limit Input */}
-                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 ml-2">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Count</span>
+                                    <div className="flex items-center gap-2 bg-phy-glass border border-phy-border rounded-lg px-2 py-1 ml-2">
+                                        <span className="text-[10px] font-bold text-phy-muted uppercase">Count</span>
                                         <input
                                             type="number"
                                             min="1"
                                             max="500"
                                             value={drawCount}
                                             onChange={(e) => setDrawCount(parseInt(e.target.value) || 10)}
-                                            className="w-12 bg-transparent text-sm font-bold text-slate-700 outline-none text-center"
+                                            className="w-12 bg-transparent text-sm font-bold text-phy-text outline-none text-center"
                                         />
                                     </div>
 
                                     <button
                                         onClick={() => setShowStats(!showStats)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${showStats ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-500'}`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${showStats ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
                                     >
                                         <BarChart3 size={14} />
                                         {showStats ? '隐藏统计' : '查看统计'}
@@ -1206,10 +1205,10 @@ const FlashcardView = ({ params }) => {
                                             else if (sortMode === 'mastery_asc') setSortMode('mastery_desc');
                                             else setSortMode('default');
                                         }}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${sortMode !== 'default' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-500'}`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${sortMode !== 'default' ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
                                         title="Sort by Mastery"
                                     >
-                                        <Trophy size={14} className={sortMode !== 'default' ? 'fill-indigo-500' : ''} />
+                                        <Trophy size={14} className={sortMode !== 'default' ? 'fill-phy-accent' : ''} />
                                         {sortMode === 'default' ? '默认排序' : sortMode === 'mastery_asc' ? '掌握度: 低→高' : '掌握度: 高→低'}
                                     </button>
 
@@ -1219,13 +1218,13 @@ const FlashcardView = ({ params }) => {
                                             setIsMultiSelect(!isMultiSelect);
                                             if (isMultiSelect) setSelectedCardIds(new Set());
                                         }}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${isMultiSelect ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-200 hover:text-purple-500'}`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${isMultiSelect ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
                                     >
                                         <LayoutGrid size={14} />
                                         {isMultiSelect ? `已选 ${selectedCardIds.size}` : '批量选择'}
                                     </button>
 
-                                    <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
+                                    <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-phy-glassHover rounded-full text-phy-muted hover:text-phy-text">
                                         <Plus size={20} />
                                     </button>
                                 </div>
@@ -1233,30 +1232,30 @@ const FlashcardView = ({ params }) => {
 
                             {/* Batch Action Toolbar */}
                             {isMultiSelect && selectedCardIds.size > 0 && (
-                                <div className="px-4 py-3 bg-purple-50 border-b border-purple-100 flex items-center justify-between animate-in slide-in-from-top-2">
+                                <div className="px-4 py-3 bg-phy-accentGlass border-b border-phy-border Hover flex items-center justify-between animate-in slide-in-from-top-2">
                                     <div className="flex items-center gap-3">
                                         <button
                                             onClick={handleSelectAll}
-                                            className="text-xs font-bold text-purple-600 hover:underline"
+                                            className="text-xs font-bold text-phy-accent hover:underline"
                                         >
                                             {selectedCardIds.size === displayCards.length ? '取消全选' : '全选'}
                                         </button>
-                                        <span className="text-xs text-purple-500">已选中 {selectedCardIds.size} 张卡片</span>
+                                        <span className="text-xs text-phy-accent">已选中 {selectedCardIds.size} 张卡片</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {/* Move Folder */}
                                         <div className="relative">
                                             <button
                                                 onClick={() => setShowBatchMenu(!showBatchMenu)}
-                                                className="px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-xs font-bold text-purple-700 hover:bg-purple-100 flex items-center gap-1"
+                                                className="px-3 py-1.5 bg-transparent border border-phy-border rounded-lg text-xs font-bold text-phy-accent hover:bg-phy-glassHover flex items-center gap-1"
                                             >
                                                 <Folder size={12} /> 移动文件夹
                                             </button>
                                             {showBatchMenu && (
-                                                <div className="absolute top-full mt-1 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[150px] py-1">
+                                                <div className="absolute top-full mt-1 right-0 bg-phy-glassHeavy border border-phy-border rounded-lg shadow-lg z-50 min-w-[150px] py-1 text-phy-text backdrop-blur-md">
                                                     <button
                                                         onClick={() => handleBatchMoveFolder(null)}
-                                                        className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                                        className="w-full px-3 py-2 text-left text-sm hover:bg-phy-glassHover"
                                                     >
                                                         📂 未分类
                                                     </button>
@@ -1264,7 +1263,7 @@ const FlashcardView = ({ params }) => {
                                                         <button
                                                             key={f.id}
                                                             onClick={() => handleBatchMoveFolder(f.id)}
-                                                            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                                            className="w-full px-3 py-2 text-left text-sm hover:bg-phy-glassHover"
                                                         >
                                                             📁 {f.name}
                                                         </button>
@@ -1276,7 +1275,7 @@ const FlashcardView = ({ params }) => {
                                         <button
                                             onClick={handleBatchGenerateDeepNotes}
                                             disabled={isBatchGenerating}
-                                            className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg text-xs font-bold hover:from-purple-600 hover:to-indigo-600 flex items-center gap-1 disabled:opacity-50"
+                                            className="px-3 py-1.5 bg-phy-accent text-white rounded-lg text-xs font-bold hover:opacity-90 flex items-center gap-1 disabled:opacity-50 transition-opacity shadow-sm"
                                         >
                                             {isBatchGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                             批量生成深度笔记
@@ -1284,7 +1283,7 @@ const FlashcardView = ({ params }) => {
                                         {/* Batch Delete */}
                                         <button
                                             onClick={handleBatchDelete}
-                                            className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center gap-1"
+                                            className="px-3 py-1.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg text-xs font-bold hover:bg-red-500/20 flex items-center gap-1 transition-colors"
                                         >
                                             <Trash2 size={12} />
                                             批量删除
@@ -1292,7 +1291,7 @@ const FlashcardView = ({ params }) => {
                                         {/* Cancel */}
                                         <button
                                             onClick={() => { setIsMultiSelect(false); setSelectedCardIds(new Set()); }}
-                                            className="px-2 py-1.5 text-slate-400 hover:text-slate-600 text-xs"
+                                            className="px-2 py-1.5 text-phy-muted hover:text-phy-text text-xs transition-colors"
                                         >
                                             取消
                                         </button>
@@ -1302,7 +1301,7 @@ const FlashcardView = ({ params }) => {
 
                             {/* Statistics Panel */}
                             {showStats && (
-                                <div className="p-6 bg-slate-50/50 border-b border-slate-100">
+                                <div className="p-6 bg-phy-bg/30 border-b border-phy-border">
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         <DifficultyPieChart flashcards={allCards} />
                                         <StudyTrendChart days={30} />
@@ -1311,22 +1310,22 @@ const FlashcardView = ({ params }) => {
                             )}
 
                             {/* Card Grid */}
-                            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+                            <div className="flex-1 overflow-y-auto p-6 bg-phy-bg/30">
                                 {/* Add Input */}
-                                <div className="mb-6 bg-white border border-slate-200 shadow-sm rounded-xl p-4 transition-all focus-within:ring-2 ring-blue-500/10">
+                                <div className="mb-6 bg-phy-glass border border-phy-border shadow-sm rounded-xl p-4 transition-all focus-within:ring-2 ring-phy-accent border-phy-accent">
                                     {isAddingCard ? (
                                         <div className="flex flex-col gap-3">
                                             <div className="flex gap-3">
-                                                <input value={newFront} onChange={e => setNewFront(e.target.value)} placeholder="正面内容 (Front)" className="flex-1 p-2 bg-slate-50 rounded border-none outline-none font-medium" autoFocus />
-                                                <input value={newBack} onChange={e => setNewBack(e.target.value)} placeholder="背面内容 (Back)" className="flex-1 p-2 bg-slate-50 rounded border-none outline-none" />
+                                                <input value={newFront} onChange={e => setNewFront(e.target.value)} placeholder="正面内容 (Front)" className="flex-1 p-2 bg-phy-bg rounded border-none outline-none font-medium text-phy-text placeholder:text-phy-muted" autoFocus />
+                                                <input value={newBack} onChange={e => setNewBack(e.target.value)} placeholder="背面内容 (Back)" className="flex-1 p-2 bg-phy-bg rounded border-none outline-none text-phy-text placeholder:text-phy-muted" />
                                             </div>
                                             <div className="flex justify-end gap-2">
-                                                <button onClick={() => setIsAddingCard(false)} className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:bg-slate-100 rounded">取消</button>
-                                                <button onClick={handleAddCard} className="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded hover:bg-blue-700">保存</button>
+                                                <button onClick={() => setIsAddingCard(false)} className="px-3 py-1.5 text-xs font-bold text-phy-muted hover:bg-phy-glassHover hover:text-phy-text rounded transition-colors">取消</button>
+                                                <button onClick={handleAddCard} className="px-4 py-1.5 text-xs font-bold bg-phy-accent text-white rounded hover:opacity-90 shadow-sm transition-opacity">保存</button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <button onClick={() => setIsAddingCard(true)} className="w-full py-2 text-slate-400 text-sm font-bold border-2 border-dashed border-slate-100 rounded-lg hover:border-blue-200 hover:text-blue-500 flex items-center justify-center gap-2">
+                                        <button onClick={() => setIsAddingCard(true)} className="w-full py-2 text-phy-muted text-sm font-bold border-2 border-dashed border-phy-border rounded-lg hover:border-phy-accent hover:text-phy-accent flex items-center justify-center gap-2 transition-colors">
                                             <Plus size={16} /> 添加卡片到 '{selectedFolderId === 'all' ? '未分类' : (folders.find(f => f.id === selectedFolderId)?.name || '当前')}'
                                         </button>
                                     )}
@@ -1341,34 +1340,34 @@ const FlashcardView = ({ params }) => {
                                             <div
                                                 key={card.id}
                                                 onClick={() => isMultiSelect && toggleCardSelection(card.id)}
-                                                className={`group rounded-xl p-5 shadow-sm border-2 transition-all relative ${isSelected
-                                                    ? 'border-purple-400 bg-purple-50 ring-2 ring-purple-200'
-                                                    : `${getWeaknessColor(card)} hover:shadow-md`
+                                                className={`group glass-panel rounded-xl p-5 shadow-sm border transition-all relative ${isSelected
+                                                    ? 'border-phy-accent bg-phy-accentGlass ring-2 ring-phy-accent shadow-md'
+                                                    : `border-phy-border hover:border-phy-borderHover hover:shadow-md`
                                                     } ${isMultiSelect ? 'cursor-pointer' : ''}`}
                                             >
                                                 {/* Selection Checkbox */}
                                                 {isMultiSelect && (
                                                     <div className={`absolute top-3 right-3 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
-                                                        ? 'bg-purple-500 border-purple-500'
-                                                        : 'bg-white border-slate-300'
+                                                        ? 'bg-phy-accent border-phy-accent text-white'
+                                                        : 'bg-transparent border-phy-border'
                                                         }`}>
-                                                        {isSelected && <CheckCircle size={12} className="text-white" />}
+                                                        {isSelected && <CheckCircle size={12} className="stroke-[3]" />}
                                                     </div>
                                                 )}
                                                 {/* Weakness Indicator */}
                                                 {!isMultiSelect && (
-                                                    <div className={`absolute top-3 right-3 text-xs font-bold ${weaknessInfo.color}`} title={`弱点分: ${card.weaknessScore || 0}`}>
+                                                    <div className={`absolute top-3 right-3 text-xs font-bold opacity-60 hover:opacity-100 transition-opacity`} title={`弱点分: ${card.weaknessScore || 0}`}>
                                                         {weaknessInfo.icon}
                                                     </div>
                                                 )}
-                                                <div className="font-bold text-slate-800 mb-2 truncate pr-6" title={card.front}>{card.front}</div>
-                                                <div className="text-sm text-slate-500 line-clamp-3 mb-4 h-12">{card.back}</div>
+                                                <div className="font-bold text-phy-text mb-2 truncate pr-6" title={card.front}>{card.front}</div>
+                                                <div className="text-sm text-phy-muted line-clamp-3 mb-4 h-12 break-words">{card.back}</div>
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex items-center gap-2">
-                                                        <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDue ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                        <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${isDue ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
                                                             {isDue ? '到期' : '待复习'}
                                                         </div>
-                                                        <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${weaknessInfo.color} bg-white/50`}>
+                                                        <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${weaknessInfo.color} bg-phy-glass bg-opacity-50 border-phy-border`}>
                                                             {weaknessInfo.label}
                                                         </div>
                                                     </div>
@@ -1379,12 +1378,12 @@ const FlashcardView = ({ params }) => {
                                                                     e.stopPropagation();
                                                                     setEditingNoteCard(card);
                                                                 }}
-                                                                className="text-slate-300 hover:text-indigo-500"
+                                                                className="text-phy-muted hover:text-phy-accent p-1"
                                                                 title="深度笔记 (Deep Dive)"
                                                             >
                                                                 <Sparkles size={14} />
                                                             </button>
-                                                            <button onClick={() => handleDeleteCard(card.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+                                                            <button onClick={() => handleDeleteCard(card.id)} className="text-phy-muted hover:text-red-500 p-1"><Trash2 size={14} /></button>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1395,20 +1394,20 @@ const FlashcardView = ({ params }) => {
                             </div>
                         </div>
                     }
-                    leftClassName="bg-white border-r border-slate-100"
-                    rightClassName="bg-white"
+                    leftClassName="bg-transparent border-r border-phy-border"
+                    rightClassName="bg-transparent"
                 />
             ) : (
-                <div className="h-full flex flex-col bg-white">
+                <div className="h-full flex flex-col bg-transparent">
                     {/* Toolbar */}
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            <RotateCw size={20} className="text-indigo-500" />
+                    <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur">
+                        <h3 className="text-lg font-bold text-phy-text flex items-center gap-2">
+                            <RotateCw size={20} className="text-phy-accent" />
                             复习模式 ({studyQueue.length - currentCardIndex} left)
                         </h3>
                         <button
                             onClick={() => setIsSwapped(!isSwapped)}
-                            className={`ml-4 px-3 py-1 text-xs font-bold border rounded-lg transition-all flex items-center gap-2 ${isSwapped ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-500'}`}
+                            className={`ml-4 px-3 py-1 text-xs font-bold border rounded-lg transition-all flex items-center gap-2 ${isSwapped ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
                         >
                             <RotateCw size={12} />
                             {isSwapped ? 'Answer → Question' : 'Question → Answer'}
@@ -1440,18 +1439,18 @@ const FlashcardView = ({ params }) => {
                                             .catch(err => console.error('Background drill generation failed:', err));
                                     }
                                 }}
-                                className={`ml-2 p-1.5 rounded-lg border transition-all ${currentCard.isFlagged ? 'bg-amber-50 border-amber-200 text-amber-500 shadow-sm ring-1 ring-amber-100' : 'bg-white border-slate-200 text-slate-300 hover:text-amber-400'}`}
+                                className={`ml-2 p-1.5 rounded-lg border transition-all ${currentCard.isFlagged ? 'bg-amber-500/10 border-amber-500/20 text-amber-500 shadow-sm' : 'bg-transparent border-phy-border text-phy-muted hover:text-amber-500 hover:border-amber-500/30'}`}
                                 title="标记为重点 (S)"
                             >
                                 <Star size={16} fill={currentCard.isFlagged ? "currentColor" : "none"} />
                             </button>
                         )}
                         <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-400">SESSION SCORE:</span>
-                            <span className="text-sm font-bold text-indigo-600">{sessionStats.correct}/{sessionStats.reviewed}</span>
+                            <span className="text-xs font-bold text-phy-muted">SESSION SCORE:</span>
+                            <span className="text-sm font-bold text-phy-accent">{sessionStats.correct}/{sessionStats.reviewed}</span>
                             <button
                                 onClick={() => setMode('manage')}
-                                className="ml-4 p-2 hover:bg-slate-200 rounded-full text-slate-400"
+                                className="ml-4 p-2 hover:bg-phy-glassHover rounded-full text-phy-muted hover:text-phy-text transition-colors"
                             >
                                 <XCircle size={20} />
                             </button>
@@ -1459,9 +1458,9 @@ const FlashcardView = ({ params }) => {
                     </div>
 
                     {/* Flashcard Study Area */}
-                    <div className="flex-1 flex flex-row items-stretch overflow-hidden bg-slate-100/50 relative">
+                    <div className="flex-1 flex flex-row items-stretch overflow-hidden bg-phy-bg/30 relative">
                         {/* Progress Bar */}
-                        <div className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-300 z-10" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
+                        <div className="absolute top-0 left-0 h-1 bg-phy-accent transition-all duration-300 z-10" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
 
                         {/* Left: Main Card Area */}
                         <div className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto relative perspective-1000">
@@ -1470,7 +1469,7 @@ const FlashcardView = ({ params }) => {
                             <div className="absolute top-4 right-4 z-20 flex gap-2">
                                 <button
                                     onClick={() => setShowDetailPanel(!showDetailPanel)}
-                                    className={`p-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all ${showDetailPanel ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-500 hover:text-indigo-600 shadow-sm'}`}
+                                    className={`p-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all ${showDetailPanel ? 'bg-phy-accent text-white shadow-md' : 'bg-phy-glass text-phy-muted border border-phy-border hover:text-phy-accent hover:border-phy-borderHover shadow-sm'}`}
                                 >
                                     {showDetailPanel ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                                     {showDetailPanel ? '收起详情' : '深度笔记'}
@@ -1479,7 +1478,7 @@ const FlashcardView = ({ params }) => {
 
                             {/* Drill Generating Indicator */}
                             {isGeneratingDrill && (
-                                <div className="absolute top-4 left-4 flex items-center gap-2 bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full text-xs font-bold animate-pulse z-20">
+                                <div className="absolute top-4 left-4 flex items-center gap-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1.5 rounded-full text-xs font-bold animate-pulse z-20">
                                     <Zap size={14} />
                                     生成智能练习中...
                                 </div>
@@ -1488,7 +1487,7 @@ const FlashcardView = ({ params }) => {
                             {/* Card Container */}
                             {!isDrillMode && (
                                 <div
-                                    className={`relative w-full aspect-video rounded-3xl shadow-xl border-2 p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
+                                    className={`relative w-full aspect-video rounded-3xl shadow-xl border border-phy-border p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
                                     style={{ maxWidth: showDetailPanel ? '800px' : '900px' }}
                                     onClick={async () => {
                                         if (!isFlipped) {
@@ -1508,43 +1507,44 @@ const FlashcardView = ({ params }) => {
                                     {/* Front Face */}
                                     <div className="backface-hidden w-full h-full flex flex-col items-center justify-center relative">
                                         {/* Mastery Badge */}
-                                        <div className="absolute top-0 right-0 py-1 px-3 bg-white/50 backdrop-blur rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-widest border border-slate-100">
+                                        <div className="absolute top-0 right-0 py-1 px-3 bg-phy-glass backdrop-blur rounded-full text-[10px] font-bold text-phy-muted uppercase tracking-widest border border-phy-border">
                                             Level: {getMasteryLabel(currentCard)}
                                         </div>
 
                                         {currentCard?.isFlagged && (
-                                            <div className="absolute top-0 left-0 text-amber-400 animate-pulse">
+                                            <div className="absolute top-0 left-0 text-amber-500 animate-pulse">
                                                 <Star size={24} fill="currentColor" />
                                             </div>
                                         )}
 
-                                        <div className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest opacity-60">Question</div>
-                                        <div className={`font-black text-slate-800 break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
+                                        <div className="text-xs font-bold text-phy-muted uppercase mb-4 tracking-widest opacity-60">Question</div>
+                                        <div className={`font-black text-phy-text break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
                                             {questionText}
                                         </div>
                                         <div className="mt-6 flex items-center gap-4">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); speakText(questionText); }}
-                                                className="p-3 bg-white/60 hover:bg-white text-indigo-600 rounded-full shadow-sm hover:shadow transition-all"
+                                                className="p-3 bg-phy-glassHover hover:bg-phy-accentGlass text-phy-accent rounded-full shadow-sm hover:shadow transition-all border border-transparent hover:border-phy-accent/30"
                                                 title="朗读发音"
                                             >
                                                 <Volume2 size={24} />
                                             </button>
                                         </div>
-                                        <div className="mt-8 text-xs text-slate-400 font-medium flex items-center gap-2">
+                                        <div className="mt-8 text-xs text-phy-muted font-medium flex items-center gap-2">
                                             <RotateCw size={12} /> 点击翻转 / Space
                                         </div>
                                     </div>
 
                                     {/* Back Face */}
-                                    <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center rounded-3xl p-8 bg-indigo-600 text-white leading-relaxed">
-                                        <div className="text-xs font-bold text-indigo-200 uppercase mb-4 tracking-widest">Answer</div>
-                                        <div className={`font-bold break-words w-full ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
+                                    <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center rounded-3xl p-8 bg-phy-accent text-white leading-relaxed overflow-hidden border border-phy-accentHover">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none rounded-3xl" />
+                                        <div className="text-xs font-bold text-white/70 uppercase mb-4 tracking-widest z-10">Answer</div>
+                                        <div className={`font-bold break-words w-full z-10 ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
                                             {answerText}
                                         </div>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); speakText(answerText); }}
-                                            className="mt-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur"
+                                            className="mt-6 p-3 bg-phy-glassHover hover:bg-white/20 rounded-full text-white transition-all backdrop-blur z-10 border border-white/20"
                                             title="朗读发音"
                                         >
                                             <Volume2 size={24} />
@@ -1556,21 +1556,21 @@ const FlashcardView = ({ params }) => {
                             {/* FSRS R/S/D Stats */}
                             {isFlipped && !isDrillMode && (
                                 <div className="mt-8 grid grid-cols-3 gap-4 w-full max-w-[360px] opacity-60 hover:opacity-100 transition-opacity">
-                                    <div className="text-center">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">记忆保留 R</div>
+                                    <div className="text-center font-mono">
+                                        <div className="text-[10px] font-bold text-phy-muted uppercase tracking-wider">记忆保留 R</div>
                                         <div className={`text-sm font-bold ${getRetrievabilityLabel(currentCard).color}`}>
                                             {getRetrievabilityLabel(currentCard).percent}
                                         </div>
                                     </div>
-                                    <div className="text-center">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">稳定性 S</div>
-                                        <div className="text-sm font-bold text-slate-600">
+                                    <div className="text-center font-mono">
+                                        <div className="text-[10px] font-bold text-phy-muted uppercase tracking-wider">稳定性 S</div>
+                                        <div className="text-sm font-bold text-phy-text">
                                             {currentCard?.fsrs_stability ? `${currentCard.fsrs_stability.toFixed(1)}d` : '—'}
                                         </div>
                                     </div>
-                                    <div className="text-center">
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">难度 D</div>
-                                        <div className="text-sm font-bold text-slate-600">
+                                    <div className="text-center font-mono">
+                                        <div className="text-[10px] font-bold text-phy-muted uppercase tracking-wider">难度 D</div>
+                                        <div className="text-sm font-bold text-phy-text">
                                             {currentCard?.fsrs_difficulty ? currentCard.fsrs_difficulty.toFixed(1) : '—'}
                                         </div>
                                     </div>
@@ -1582,7 +1582,7 @@ const FlashcardView = ({ params }) => {
                                 <div className="w-full max-w-3xl">
                                     {/* Drill Progress Indicator */}
                                     <div className="mb-4 flex items-center justify-between px-4">
-                                        <div className="text-sm font-bold text-emerald-600 flex items-center gap-2">
+                                        <div className="text-sm font-bold text-emerald-500 flex items-center gap-2">
                                             <Zap size={16} />
                                             智能练习 {drillIndex + 1} / {drillQueue.length}
                                         </div>
@@ -1591,8 +1591,8 @@ const FlashcardView = ({ params }) => {
                                                 <div
                                                     key={idx}
                                                     className={`w-2 h-2 rounded-full transition-all ${idx < drillIndex ? 'bg-emerald-500' :
-                                                        idx === drillIndex ? 'bg-indigo-500 scale-125' :
-                                                            'bg-slate-300'
+                                                        idx === drillIndex ? 'bg-phy-accent scale-125' :
+                                                            'bg-phy-borderHover'
                                                         }`}
                                                 />
                                             ))}
@@ -1608,18 +1608,18 @@ const FlashcardView = ({ params }) => {
                         </div>
 
                         {/* Right: Detail Panel */}
-                        <div className={`border-l border-slate-200 bg-white transition-all duration-300 flex flex-col shadow-inner z-30 ${showDetailPanel ? 'w-[400px] translate-x-0' : 'w-0 translate-x-full opacity-0'}`}>
+                        <div className={`border-l border-phy-border bg-phy-glassHeavy backdrop-blur transition-all duration-300 flex flex-col shadow-inner z-30 ${showDetailPanel ? 'w-[400px] translate-x-0' : 'w-0 translate-x-full opacity-0'}`}>
                             <div className="p-6 h-full overflow-y-auto">
-                                <h3 className="font-bold text-slate-800 mb-6 flex items-center justify-between">
+                                <h3 className="font-bold text-phy-text mb-6 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <BookOpen size={20} className="text-indigo-500" />
+                                        <BookOpen size={20} className="text-phy-accent" />
                                         深度学习笔记
                                     </div>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={handleOpenLinkModal}
                                             disabled={isGeneratingDeepNotes}
-                                            className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                                            className="text-xs px-3 py-1.5 bg-phy-glass hover:bg-phy-glassHover text-phy-text border border-phy-border hover:border-phy-borderHover rounded-full font-bold flex items-center gap-1 transition-all disabled:opacity-50"
                                         >
                                             <LinkIcon size={12} />
                                             关联笔记
@@ -1627,7 +1627,7 @@ const FlashcardView = ({ params }) => {
                                         <button
                                             onClick={handleGenerateDeepNotes}
                                             disabled={isGeneratingDeepNotes}
-                                            className="text-xs px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-full font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                                            className="text-xs px-3 py-1.5 bg-phy-accentGlass hover:bg-phy-accent/20 text-phy-accent border border-phy-accent/20 rounded-full font-bold flex items-center gap-1 transition-all disabled:opacity-50"
                                         >
                                             {isGeneratingDeepNotes ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                             AI 生成
@@ -1637,45 +1637,45 @@ const FlashcardView = ({ params }) => {
 
                                 <div className="space-y-6">
                                     {/* Consolidated Deep Note Area */}
-                                    <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden min-h-[400px] flex flex-col">
+                                    <div className="glass-panel rounded-xl border border-phy-border overflow-hidden min-h-[400px] flex flex-col">
                                         {currentCard?.notes ? (
                                             <>
-                                                <div className="prose prose-sm prose-indigo max-w-none p-4 flex-1 overflow-y-auto">
-                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentCard.notes}</ReactMarkdown>
+                                                <div className="flex-1 overflow-y-auto">
+                                                    <SharedMarkdown content={currentCard.notes} className="p-4 flex-1 overflow-y-auto" />
                                                 </div>
                                                 {/* Edit Button - Outside prose to avoid style conflicts */}
-                                                <div className="border-t border-slate-200 p-3 bg-white">
+                                                <div className="border-t border-phy-border p-3 bg-phy-glass">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
                                                             // Create modal container
                                                             const modal = document.createElement('div');
-                                                            modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;max-width:800px;background:white;border-radius:16px;z-index:9999;box-shadow:0 25px 50px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;';
+                                                            modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:70%;max-width:800px;background:var(--phy-bg);border:1px solid var(--phy-border);border-radius:16px;z-index:9999;box-shadow:0 25px 50px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;backdrop-filter:blur(16px);';
 
                                                             // Header
                                                             const header = document.createElement('div');
-                                                            header.style.cssText = 'padding:16px 20px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:bold;font-size:16px;';
+                                                            header.style.cssText = 'padding:16px 20px;background:var(--phy-glassHeavy);color:var(--phy-text);border-bottom:1px solid var(--phy-border);font-weight:bold;font-size:16px;';
                                                             header.textContent = '✏️ 编辑深度笔记 (支持 Markdown)';
 
                                                             // Textarea
                                                             const textarea = document.createElement('textarea');
                                                             textarea.value = currentCard.notes;
-                                                            textarea.style.cssText = 'flex:1;min-height:400px;padding:20px;font-size:14px;line-height:1.8;border:none;outline:none;resize:none;font-family:ui-monospace,monospace;color:#1e293b;background:#f8fafc;';
+                                                            textarea.style.cssText = 'flex:1;min-height:400px;padding:20px;font-size:14px;line-height:1.8;border:none;outline:none;resize:none;font-family:ui-monospace,monospace;color:var(--phy-text);background:var(--phy-bg);';
 
                                                             // Button container
                                                             const btnContainer = document.createElement('div');
-                                                            btnContainer.style.cssText = 'padding:16px 20px;background:#f1f5f9;display:flex;justify-content:flex-end;gap:12px;border-top:1px solid #e2e8f0;';
+                                                            btnContainer.style.cssText = 'padding:16px 20px;background:var(--phy-glass);display:flex;justify-content:flex-end;gap:12px;border-top:1px solid var(--phy-border);';
 
                                                             const cancelBtn = document.createElement('button');
                                                             cancelBtn.textContent = '取消';
-                                                            cancelBtn.style.cssText = 'padding:10px 24px;background:white;color:#64748b;border:1px solid #e2e8f0;border-radius:8px;font-weight:600;cursor:pointer;';
+                                                            cancelBtn.style.cssText = 'padding:10px 24px;background:var(--phy-glass);color:var(--phy-text);border:1px solid var(--phy-border);border-radius:8px;font-weight:600;cursor:pointer;';
 
                                                             const saveBtn = document.createElement('button');
                                                             saveBtn.textContent = '💾 保存';
-                                                            saveBtn.style.cssText = 'padding:10px 24px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;';
+                                                            saveBtn.style.cssText = 'padding:10px 24px;background:var(--phy-accent);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;';
 
                                                             const overlay = document.createElement('div');
-                                                            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:9998;backdrop-filter:blur(4px);';
+                                                            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9998;backdrop-filter:blur(4px);';
 
                                                             const cleanup = () => {
                                                                 document.body.removeChild(overlay);
@@ -1707,7 +1707,7 @@ const FlashcardView = ({ params }) => {
                                                             document.body.appendChild(modal);
                                                             textarea.focus();
                                                         }}
-                                                        className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium flex items-center gap-1"
+                                                        className="text-xs text-phy-accent hover:text-phy-text hover:underline font-medium flex items-center gap-1"
                                                     >
                                                         <Edit3 size={12} />
                                                         手动编辑笔记
@@ -1715,9 +1715,9 @@ const FlashcardView = ({ params }) => {
                                                 </div>
                                             </>
                                         ) : (
-                                            <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+                                            <div className="h-full flex flex-col items-center justify-center text-phy-muted p-8 text-center">
                                                 <Brain size={48} className="mb-4 opacity-20" />
-                                                <p className="text-sm">点击上方 "AI 生成" 获取深度学习笔记</p>
+                                                <p className="text-sm text-phy-text">点击上方 "AI 生成" 获取深度学习笔记</p>
                                                 <p className="text-xs mt-2 opacity-60">包含词源、搭配、辨析等高阶内容</p>
                                             </div>
                                         )}
@@ -1732,63 +1732,63 @@ const FlashcardView = ({ params }) => {
                         <div className="mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4">
                             <button
                                 onClick={() => handleNextCard(1)}
-                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-rose-50 text-rose-500 border border-slate-200 hover:border-rose-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-rose-500/10 text-rose-500 border border-phy-border hover:border-rose-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-rose-300 group-hover:text-rose-400">Again</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-rose-400/70 group-hover:text-rose-400">Again</span>
                                 <span className="text-lg">忘记 (1)</span>
-                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Again)}</span>
+                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Again)}</span>
                             </button>
 
                             <button
                                 onClick={() => handleNextCard(2)}
-                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-orange-50 text-orange-600 border border-slate-200 hover:border-orange-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-amber-500/10 text-amber-500 border border-phy-border hover:border-amber-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-orange-300 group-hover:text-orange-400">Hard</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-amber-400/70 group-hover:text-amber-400">Hard</span>
                                 <span className="text-lg">困难 (2)</span>
-                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Hard)}</span>
+                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Hard)}</span>
                             </button>
 
                             <button
                                 onClick={() => handleNextCard(3)}
-                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 border border-slate-200 hover:border-emerald-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-emerald-500/10 text-emerald-500 border border-phy-border hover:border-emerald-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-emerald-300 group-hover:text-emerald-400">Good</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-emerald-400/70 group-hover:text-emerald-400">Good</span>
                                 <span className="text-lg">良好 (3)</span>
-                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Good)}</span>
+                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Good)}</span>
                             </button>
 
                             <button
                                 onClick={() => handleNextCard(4)}
-                                className="flex-1 flex flex-col items-center gap-1 bg-white hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-blue-500/10 text-blue-500 border border-phy-border hover:border-blue-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-blue-300 group-hover:text-blue-400">Easy</span>
+                                <span className="text-xs font-black uppercase tracking-wider text-blue-400/70 group-hover:text-blue-400">Easy</span>
                                 <span className="text-lg">简单 (4)</span>
-                                <span className="text-[10px] font-mono text-slate-400">{getPreviewInterval(currentCard, Rating.Easy)}</span>
+                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Easy)}</span>
                             </button>
                         </div>
                     )}
 
                     {/* Keyboard Shortcut Hints */}
                     {mode === 'study' && !isDrillMode && (
-                        <div className="py-3 px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-6 text-xs text-slate-400">
+                        <div className="py-3 px-6 bg-phy-glassHeavy backdrop-blur border-t border-phy-border flex items-center justify-center gap-6 text-xs text-phy-muted">
                             <span className="flex items-center gap-1.5">
-                                <kbd className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">Space</kbd>
+                                <kbd className="px-2 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">Space</kbd>
                                 翻转
                             </span>
                             <span className="flex items-center gap-1.5">
-                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">1-4</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">1-4</kbd>
                                 评分
                             </span>
                             <span className="flex items-center gap-1.5">
-                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">S</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">S</kbd>
                                 标记
                             </span>
                             <span className="flex items-center gap-1.5">
-                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">Z</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">Z</kbd>
                                 撤销
                             </span>
                             <span className="flex items-center gap-1.5">
-                                <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-500 shadow-sm">Esc</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">Esc</kbd>
                                 退出
                             </span>
                         </div>
@@ -1805,39 +1805,39 @@ const FlashcardView = ({ params }) => {
             {/* Student Picker Modal */}
             {
                 showStudentPicker && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm animate-fade-in">
-                        <div className="bg-white rounded-3xl shadow-2xl p-8 w-96 text-center border-4 border-white ring-4 ring-indigo-50 scale-100 animate-in fade-in zoom-in duration-300">
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-md animate-fade-in">
+                        <div className="glass-modal rounded-3xl shadow-2xl p-8 w-96 text-center ring-4 ring-phy-accent/10 scale-100 animate-in fade-in zoom-in duration-300">
                             <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                    <Dices className="text-indigo-500" />
+                                <h2 className="text-xl font-bold text-phy-text flex items-center gap-2">
+                                    <Dices className="text-phy-accent" />
                                     班级抽号
                                 </h2>
-                                <button onClick={() => setShowStudentPicker(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                                <button onClick={() => setShowStudentPicker(false)} className="p-1 hover:bg-phy-glassHover rounded-full text-phy-muted transition-colors">
                                     <XCircle size={24} />
                                 </button>
                             </div>
                             <div className="mb-8">
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">选中学生</div>
-                                <div className={`text-8xl font-black text-indigo-600 font-mono transition-transform ${isRolling ? 'scale-110' : 'scale-100'}`}>
+                                <div className="text-xs font-bold text-phy-muted uppercase tracking-widest mb-2">选中学生</div>
+                                <div className={`text-8xl font-black text-phy-accent font-mono transition-transform ${isRolling ? 'scale-110' : 'scale-100'}`}>
                                     {pickedStudent !== null ? pickedStudent : '?'}
                                 </div>
                             </div>
                             <div className="flex flex-col gap-4">
-                                <div className="flex items-center justify-center gap-3 bg-slate-50 p-3 rounded-xl">
-                                    <span className="text-sm font-bold text-slate-500">学生总数:</span>
+                                <div className="flex items-center justify-center gap-3 bg-phy-glass p-3 rounded-xl border border-phy-border">
+                                    <span className="text-sm font-bold text-phy-muted">学生总数:</span>
                                     <input
                                         type="number"
                                         min="1"
                                         max="100"
                                         value={studentCount}
                                         onChange={(e) => setStudentCount(parseInt(e.target.value) || 1)}
-                                        className="w-16 bg-white border border-slate-200 rounded-lg text-center font-bold text-lg py-1 outline-indigo-500"
+                                        className="w-16 bg-phy-bg border border-phy-border rounded-lg text-center font-bold text-lg py-1 outline-none focus:border-phy-accent text-phy-text transition-colors"
                                     />
                                 </div>
                                 <button
                                     onClick={handlePickStudent}
                                     disabled={isRolling}
-                                    className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-indigo-200 transition-all active:scale-95 ${isRolling ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                    className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-phy-accent/20 transition-all active:scale-95 ${isRolling ? 'bg-phy-accent/50 cursor-not-allowed' : 'bg-phy-accent hover:opacity-90'}`}
                                 >
                                     {isRolling ? '抽号中...' : '开始抽号'}
                                 </button>
@@ -1849,41 +1849,41 @@ const FlashcardView = ({ params }) => {
 
             {/* Session Summary Modal */}
             {showSessionSummary && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-[420px] text-center border-4 border-white ring-4 ring-emerald-50 animate-in fade-in zoom-in duration-300">
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md animate-fade-in">
+                    <div className="glass-modal rounded-3xl shadow-2xl p-8 w-[420px] text-center border border-phy-border ring-4 ring-emerald-500/10 animate-in fade-in zoom-in duration-300">
                         <div className="mb-6">
-                            <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-200">
+                            <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
                                 <Trophy size={40} className="text-white" />
                             </div>
-                            <h2 className="text-2xl font-black text-slate-800">复习完成！🎉</h2>
-                            <p className="text-slate-500 text-sm mt-1">太棒了，继续保持！</p>
+                            <h2 className="text-2xl font-black text-phy-text">复习完成！🎉</h2>
+                            <p className="text-phy-muted text-sm mt-1">太棒了，继续保持！</p>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3 mb-6">
-                            <div className="bg-slate-50 rounded-xl p-4">
-                                <div className="text-3xl font-black text-indigo-600">{sessionStats.reviewed}</div>
-                                <div className="text-xs text-slate-400 font-bold">复习卡片</div>
+                            <div className="bg-phy-glass border border-phy-border rounded-xl p-4">
+                                <div className="text-3xl font-black text-phy-accent">{sessionStats.reviewed}</div>
+                                <div className="text-xs text-phy-muted font-bold">复习卡片</div>
                             </div>
-                            <div className="bg-slate-50 rounded-xl p-4">
-                                <div className="text-3xl font-black text-emerald-600">
+                            <div className="bg-phy-glass border border-phy-border rounded-xl p-4">
+                                <div className="text-3xl font-black text-emerald-500">
                                     {sessionStats.reviewed > 0 ? Math.round((sessionStats.correct / sessionStats.reviewed) * 100) : 0}%
                                 </div>
-                                <div className="text-xs text-slate-400 font-bold">正确率</div>
+                                <div className="text-xs text-phy-muted font-bold">正确率</div>
                             </div>
-                            <div className="bg-slate-50 rounded-xl p-4">
+                            <div className="bg-phy-glass border border-phy-border rounded-xl p-4">
                                 <div className="text-3xl font-black text-amber-500">
                                     {sessionStartTime ? Math.round((Date.now() - sessionStartTime) / 60000) : 0}
                                 </div>
-                                <div className="text-xs text-slate-400 font-bold">分钟</div>
+                                <div className="text-xs text-phy-muted font-bold">分钟</div>
                             </div>
                         </div>
 
                         {/* Streak Display */}
-                        <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 mb-6 flex items-center justify-center gap-3">
-                            <Flame size={28} className="text-orange-500" />
+                        <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 mb-6 flex items-center justify-center gap-3">
+                            <Flame size={28} className="text-orange-500 drop-shadow-sm" />
                             <div className="text-left">
-                                <div className="text-lg font-black text-orange-600">连续学习 {studyStreak.current} 天</div>
-                                <div className="text-xs text-orange-400">最长记录: {studyStreak.longest} 天</div>
+                                <div className="text-lg font-black text-orange-500">连续学习 {studyStreak.current} 天</div>
+                                <div className="text-xs text-orange-400/80">最长记录: {studyStreak.longest} 天</div>
                             </div>
                         </div>
 
@@ -1892,7 +1892,7 @@ const FlashcardView = ({ params }) => {
                                 setShowSessionSummary(false);
                                 setMode('manage');
                             }}
-                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                            className="w-full py-4 bg-phy-accent hover:opacity-90 text-white rounded-xl font-bold shadow-lg shadow-phy-accent/20 transition-all active:scale-95"
                         >
                             继续学习
                         </button>
@@ -1904,7 +1904,7 @@ const FlashcardView = ({ params }) => {
             {mode === 'study' && lastAction && Date.now() - lastAction.timestamp < 5000 && (
                 <button
                     onClick={handleUndo}
-                    className="fixed bottom-8 left-8 z-40 flex items-center gap-2 bg-slate-800 text-white px-4 py-3 rounded-xl shadow-lg hover:bg-slate-700 transition-all animate-fade-in"
+                    className="fixed bottom-8 left-8 z-40 flex items-center gap-2 bg-phy-text text-phy-bg px-4 py-3 rounded-xl shadow-lg hover:opacity-90 transition-all animate-fade-in"
                 >
                     <Undo2 size={18} />
                     <span className="font-bold text-sm">撤销 (Z)</span>
@@ -1929,29 +1929,29 @@ const FlashcardView = ({ params }) => {
             {/* Deep Notes Modal (Library Mode) */}
             {editingNoteCard && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col overflow-hidden animate-scale-in">
+                    <div className="glass-modal rounded-2xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col overflow-hidden animate-scale-in">
                         {/* Header */}
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                <Sparkles size={20} className="text-indigo-500" />
+                        <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur">
+                            <h3 className="font-bold text-phy-text flex items-center gap-2">
+                                <Sparkles size={20} className="text-phy-accent" />
                                 深度笔记: {editingNoteCard.front}
                             </h3>
                             <button
                                 onClick={() => setEditingNoteCard(null)}
-                                className="p-2 hover:bg-slate-200 rounded-full text-slate-400"
+                                className="p-2 hover:bg-phy-glassHover rounded-full text-phy-muted transition-colors"
                             >
                                 <XCircle size={24} />
                             </button>
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-                            <div className="bg-white rounded-xl border border-slate-200 min-h-full flex flex-col">
+                        <div className="flex-1 overflow-y-auto p-6 bg-phy-bg/50 backdrop-blur-md">
+                            <div className="glass-panel rounded-xl border border-phy-border min-h-full flex flex-col">
                                 {editingNoteCard.notes ? (
-                                    <div className="prose prose-sm prose-indigo max-w-none p-6">
-                                        <ReactMarkdown>{editingNoteCard.notes}</ReactMarkdown>
+                                    <div className="flex-1 overflow-y-auto">
+                                        <SharedMarkdown content={editingNoteCard.notes} className="p-6" />
                                         <textarea
-                                            className="w-full mt-8 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono h-32 focus:ring-indigo-500"
+                                            className="w-full mt-8 p-4 bg-phy-bg border border-phy-border rounded-lg text-sm font-mono h-32 outline-none focus:border-phy-accent text-phy-text transition-colors"
                                             value={editingNoteCard.notes}
                                             onChange={(e) => {
                                                 const val = e.target.value;
@@ -1966,10 +1966,10 @@ const FlashcardView = ({ params }) => {
                                         />
                                     </div>
                                 ) : (
-                                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-4">
+                                    <div className="flex-1 flex flex-col items-center justify-center text-phy-muted p-8 text-center gap-4">
                                         <Brain size={64} className="opacity-20" />
                                         <div>
-                                            <p className="font-bold text-slate-600 mb-1">暂无深度笔记</p>
+                                            <p className="font-bold text-phy-text mb-1">暂无深度笔记</p>
                                             <p className="text-sm opacity-60">AI 可以为您生成词源、搭配、辨析等高阶内容</p>
                                         </div>
                                     </div>
@@ -1978,16 +1978,16 @@ const FlashcardView = ({ params }) => {
                         </div>
 
                         {/* Footer / Actions */}
-                        <div className="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
+                        <div className="p-4 border-t border-phy-border flex justify-end gap-3 bg-phy-glassHeavy backdrop-blur">
                             <button
                                 onClick={handleOpenLinkModal}
-                                className="mr-auto px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg flex items-center gap-2"
+                                className="mr-auto px-4 py-2 text-phy-text font-bold hover:bg-phy-glassHover rounded-lg flex items-center gap-2 border border-transparent hover:border-phy-border transition-all"
                             >
                                 <LinkIcon size={16} /> 关联笔记
                             </button>
                             <button
                                 onClick={() => setEditingNoteCard(null)}
-                                className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-lg"
+                                className="px-4 py-2 text-phy-muted font-bold hover:bg-phy-glassHover hover:text-phy-text rounded-lg transition-colors border border-transparent hover:border-phy-border"
                             >
                                 关闭
                             </button>
@@ -2024,7 +2024,7 @@ const FlashcardView = ({ params }) => {
                                     }
                                 }}
                                 disabled={isGeneratingDeepNotes}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg shadow-indigo-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2 bg-phy-accent hover:opacity-90 text-white font-bold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                             >
                                 {isGeneratingDeepNotes ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                                 {editingNoteCard.notes ? '重新生成' : 'AI 深度生成'}

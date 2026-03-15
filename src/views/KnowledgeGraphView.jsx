@@ -67,26 +67,26 @@ const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDel
     const percentage = Math.round(node.mastery * 100);
 
     return (
-        <div className="absolute top-4 right-4 w-80 max-h-[80vh] bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 animate-in slide-in-from-right-10 z-50 overflow-y-auto">
+        <div className="absolute top-4 right-4 w-80 max-h-[80vh] bg-slate-900/95 backdrop-blur-xl border border-phy-borderHover rounded-2xl shadow-2xl p-4 animate-in slide-in-from-right-10 z-50 overflow-y-auto">
             <div className="flex justify-between items-start mb-3">
                 <h3 className="text-xl font-bold text-white break-words pr-4">{node.label}</h3>
-                <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={16} /></button>
+                <button onClick={onClose} className="text-phy-muted hover:text-white"><X size={16} /></button>
             </div>
 
             {node.definition && (
-                <div className="bg-slate-800/50 p-3 rounded-lg text-sm text-slate-300 mb-4">
+                <div className="bg-slate-800/50 p-3 rounded-lg text-sm text-phy-text mb-4">
                     {node.definition}
                 </div>
             )}
 
             <div className="space-y-3 mb-4">
                 <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">掌握程度</span>
+                    <span className="text-phy-muted">掌握程度</span>
                     <span className={percentage > 80 ? 'text-emerald-400' : percentage > 40 ? 'text-yellow-400' : 'text-red-400'}>
                         {percentage}%
                     </span>
                 </div>
-                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-phy-glassHeavy rounded-full overflow-hidden">
                     <div
                         className={`h-full ${percentage > 80 ? 'bg-emerald-500' : percentage > 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
                         style={{ width: `${percentage}%` }}
@@ -97,7 +97,7 @@ const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDel
             {/* Related Words Section */}
             {relatedNodes && relatedNodes.length > 0 && (
                 <div className="mb-4">
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-2 flex items-center gap-2">
                         <Share2 size={12} /> 关联单词 ({relatedNodes.length})
                     </div>
                     <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -108,14 +108,14 @@ const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDel
                             >
                                 <button
                                     onClick={() => onSelectNode(related.node)}
-                                    className="flex-1 text-left text-sm text-slate-200 hover:text-white flex items-center gap-2"
+                                    className="flex-1 text-left text-sm text-phy-text hover:text-white flex items-center gap-2"
                                 >
                                     <span className={`w-1.5 h-1.5 rounded-full ${related.type === 'spelling' ? 'bg-red-400' :
                                         related.type === 'meaning' ? 'bg-emerald-400' :
                                             related.type === 'ai_semantic' ? 'bg-violet-400' : 'bg-slate-400'
                                         }`} />
                                     <span className="font-medium">{related.node.label}</span>
-                                    <span className="text-[10px] text-slate-500">
+                                    <span className="text-[10px] text-phy-muted">
                                         {related.type === 'spelling' ? '形近' :
                                             related.type === 'meaning' ? '含义' :
                                                 related.type === 'ai_semantic' ? 'AI' : ''}
@@ -123,7 +123,7 @@ const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDel
                                 </button>
                                 <button
                                     onClick={() => onDeleteLink(node.id, related.node.id, related.type)}
-                                    className="p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="p-1 text-phy-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                     title="删除此关联"
                                 >
                                     <X size={12} />
@@ -131,7 +131,7 @@ const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDel
                             </div>
                         ))}
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-2">点击单词跳转查看，点击 × 删除关联</p>
+                    <p className="text-[10px] text-phy-muted mt-2">点击单词跳转查看，点击 × 删除关联</p>
                 </div>
             )}
 
@@ -146,27 +146,27 @@ const DetailPanel = ({ node, onClose, onStudy, relatedNodes, onSelectNode, onDel
 };
 
 const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onReset, onRunAI }) => (
-    <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-xl p-3 z-50 space-y-3 min-w-[160px]">
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+    <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md border border-phy-borderHover rounded-xl p-3 z-50 space-y-3 min-w-[160px]">
+        <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-2 flex items-center gap-2">
             <Filter size={12} /> 视图控制
         </div>
 
         {/* Toggle Folders */}
-        <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white">
+        <label className="flex items-center gap-2 text-sm text-phy-text cursor-pointer hover:text-white">
             <input
                 type="checkbox"
                 checked={showFolders}
                 onChange={e => setShowFolders(e.target.checked)}
-                className="rounded border-slate-700 bg-slate-800 text-violet-600 focus:ring-violet-500"
+                className="rounded border-phy-border bg-phy-glassHeavy text-violet-600 focus:ring-violet-500"
             />
             <span>显示文件夹中心</span>
         </label>
 
-        <div className="h-px bg-white/10 my-2" />
+        <div className="h-px bg-phy-glassHover my-2" />
 
         {/* Link Modes */}
         <div className="space-y-1">
-            <div className="text-xs text-slate-500 mb-1">关联模式</div>
+            <div className="text-xs text-phy-muted mb-1">关联模式</div>
             {[
                 { id: 'all', label: '全部关联' },
                 { id: 'spelling', label: '拼写相似 (形近词)' },
@@ -177,7 +177,7 @@ const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onRe
                     onClick={() => setLinkMode(mode.id)}
                     className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${linkMode === mode.id
                         ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                        : 'text-slate-400 hover:bg-white/5'
+                        : 'text-phy-muted hover:bg-phy-glass'
                         }`}
                 >
                     {mode.label}
@@ -194,7 +194,7 @@ const ControlPanel = ({ showFolders, setShowFolders, linkMode, setLinkMode, onRe
 
         <button
             onClick={onReset}
-            className="w-full mt-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded border border-white/5 flex items-center justify-center gap-1.5"
+            className="w-full mt-2 py-1.5 bg-phy-glassHeavy hover:bg-slate-700 text-phy-text text-xs rounded border border-phy-border flex items-center justify-center gap-1.5"
         >
             <RotateCcw size={12} /> 重置视角
         </button>
@@ -514,7 +514,7 @@ export default function KnowledgeGraphView() {
     }, [selectedNode, hoverNode]);
 
     if (loading) return (
-        <div className="h-full flex items-center justify-center text-slate-400">
+        <div className="h-full flex items-center justify-center text-phy-muted">
             <div className="flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
                 <span>构建神经连接网络...</span>
@@ -523,7 +523,7 @@ export default function KnowledgeGraphView() {
     );
 
     return (
-        <div className="h-full w-full relative bg-[#0B1120] rounded-2xl overflow-hidden border border-white/5 shadow-inner">
+        <div className="h-full w-full relative bg-[#0B1120] rounded-2xl overflow-hidden border border-phy-border shadow-inner">
             <ForceGraph2D
                 ref={fgRef}
                 graphData={filteredData}
@@ -579,7 +579,7 @@ export default function KnowledgeGraphView() {
             )}
 
             {/* Legend */}
-            <div className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-sm p-3 rounded-lg border border-white/5 text-xs text-slate-400 space-y-1.5 select-none pointer-events-none">
+            <div className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-sm p-3 rounded-lg border border-phy-border text-xs text-phy-muted space-y-1.5 select-none pointer-events-none">
                 <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span> 已掌握 (Mastered)
                 </div>
@@ -589,7 +589,7 @@ export default function KnowledgeGraphView() {
                 <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]"></span> 需加强 (Weak)
                 </div>
-                <div className="h-px bg-white/10 my-1"></div>
+                <div className="h-px bg-phy-glassHover my-1"></div>
                 <div className="flex items-center gap-2">
                     <span className="w-6 h-0.5 bg-red-400/50"></span> 形近词 (Spelling)
                 </div>

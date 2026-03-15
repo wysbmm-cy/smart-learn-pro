@@ -180,13 +180,13 @@ const GlobalPlayer = () => {
                     onMouseDown={handleMouseDown}
                     onClick={handleExpandClick} // Handle click logic here
                 >
-                    <div className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center border-2 border-white cursor-grab active:cursor-grabbing hover:scale-105 transition-transform ${audioState.isPlaying ? 'bg-gradient-to-r from-blue-500 to-indigo-600 animate-spin-slow' : 'bg-slate-800'
+                    <div className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center border-2 border-white cursor-grab active:cursor-grabbing hover:scale-105 transition-transform ${audioState.isPlaying ? 'bg-gradient-to-r from-blue-500 to-indigo-600 animate-spin-slow' : 'bg-phy-glassHeavy'
                         }`}>
                         <Music size={24} className="text-white" />
                     </div>
 
                     {/* Hover Actions for Minimized */}
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-phy-glassHeavy text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                         点击展开
                     </div>
                 </div>
@@ -196,23 +196,23 @@ const GlobalPlayer = () => {
 
                     {/* Drag Handle & Header */}
                     <div
-                        className="flex items-center justify-between border-b border-slate-100 pb-2 cursor-grab active:cursor-grabbing"
+                        className="flex items-center justify-between border-b border-phy-border pb-2 cursor-grab active:cursor-grabbing"
                         onMouseDown={handleMouseDown}
                     >
-                        <div className="text-slate-400">
+                        <div className="text-phy-muted">
                             <GripHorizontal size={16} />
                         </div>
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={() => setIsMinimized(true)}
-                                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"
+                                className="p-1 hover:bg-phy-bg rounded text-phy-muted hover:text-phy-muted"
                                 title="最小化"
                             >
                                 <Minimize2 size={16} />
                             </button>
                             <button
                                 onClick={closeAudio}
-                                className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500"
+                                className="p-1 hover:bg-red-50 rounded text-phy-muted hover:text-red-500"
                                 title="关闭"
                             >
                                 <X size={16} />
@@ -228,8 +228,8 @@ const GlobalPlayer = () => {
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-slate-800 text-xs truncate scroll-m-2">{audioState.file.name}</h4>
-                            <p className="text-[10px] text-slate-500 truncate">音频播放器</p>
+                            <h4 className="font-bold text-phy-text font-bold text-xs truncate scroll-m-2">{audioState.file.name}</h4>
+                            <p className="text-[10px] text-phy-muted truncate">音频播放器</p>
                         </div>
                     </div>
 
@@ -237,7 +237,7 @@ const GlobalPlayer = () => {
                     <div className="px-1">
                         <div
                             ref={progressRef}
-                            className="h-1.5 w-full bg-slate-200 rounded-full cursor-pointer group relative"
+                            className="h-1.5 w-full bg-phy-bg rounded-full cursor-pointer group relative"
                             onClick={handleProgressClick}
                         >
                             <div
@@ -245,28 +245,28 @@ const GlobalPlayer = () => {
                                 style={{ width: `${progress}%` }}
                             >
                                 {/* Drag Handle Dot */}
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-blue-500 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-phy-glass border-2 border-blue-500 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                         </div>
                         {/* Time Display */}
-                        <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+                        <div className="flex justify-between text-[10px] text-phy-muted mt-1 font-mono">
                             <span>{formatTime(currentTime)}</span>
                             <span>{formatTime(duration)}</span>
                         </div>
                     </div>
 
                     {/* Controls */}
-                    <div className="flex items-center justify-around bg-slate-50 rounded-xl p-1">
+                    <div className="flex items-center justify-around bg-phy-bg rounded-xl p-1">
                         <button
                             onClick={cycleSpeed}
-                            className="text-[10px] font-bold text-slate-500 hover:text-blue-600 px-2 py-1 transition-colors"
+                            className="text-[10px] font-bold text-phy-muted hover:text-blue-600 px-2 py-1 transition-colors"
                         >
                             {rate}x
                         </button>
 
                         <button
                             onClick={() => toggleAudioPlay(!audioState.isPlaying)}
-                            className="p-1.5 bg-white shadow-sm border border-slate-200 text-blue-600 rounded-full hover:scale-105 active:scale-95 transition-all"
+                            className="p-1.5 bg-phy-glass shadow-sm border border-phy-border text-blue-600 rounded-full hover:scale-105 active:scale-95 transition-all"
                         >
                             {audioState.isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
                         </button>

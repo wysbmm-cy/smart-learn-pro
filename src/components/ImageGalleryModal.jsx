@@ -39,23 +39,23 @@ const ImageGalleryModal = ({ isOpen, onClose }) => {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in" style={{ animationDuration: '0.2s' }}>
             <div
-                className="bg-white dark:bg-slate-900 w-full max-w-6xl h-[85vh] rounded-[2rem] shadow-2xl flex flex-col relative overflow-hidden border border-white/10"
+                className="bg-phy-glass dark:bg-phy-glassHeavy w-full max-w-6xl h-[85vh] rounded-[2rem] shadow-2xl flex flex-col relative overflow-hidden border border-phy-borderHover"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="p-6 md:p-8 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                <div className="p-6 md:p-8 border-b border-phy-border dark:border-phy-border flex justify-between items-center bg-phy-bg dark:bg-slate-900/50">
                     <div>
-                        <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+                        <h2 className="text-2xl md:text-3xl font-bold text-phy-text font-bold dark:text-white flex items-center gap-3">
                             <span className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-500 shadow-sm border border-indigo-200/20">
                                 <Calendar size={28} />
                             </span>
                             往期每日总结
                         </h2>
-                        <p className="text-slate-500 text-sm md:text-base mt-2 ml-1">回顾你的学习旅程与冒险故事</p>
+                        <p className="text-phy-muted text-sm md:text-base mt-2 ml-1">回顾你的学习旅程与冒险故事</p>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-3 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-2xl transition-all hover:rotate-90 text-slate-500"
+                        className="p-3 hover:bg-phy-bg dark:hover:bg-phy-glassHeavy rounded-2xl transition-all hover:rotate-90 text-phy-muted"
                     >
                         <X size={24} />
                     </button>
@@ -64,13 +64,13 @@ const ImageGalleryModal = ({ isOpen, onClose }) => {
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-100/50 dark:bg-[#0B1120] scrollbar-thin">
                     {isLoading ? (
-                        <div className="flex h-full items-center justify-center text-slate-400 gap-3 text-lg">
+                        <div className="flex h-full items-center justify-center text-phy-muted gap-3 text-lg">
                             <Loader2 size={32} className="animate-spin text-indigo-500" /> 加载画廊中...
                         </div>
                     ) : images.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-60">
-                            <div className="w-24 h-24 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
-                                <Calendar size={48} className="text-slate-400" />
+                        <div className="flex flex-col items-center justify-center h-full text-phy-muted opacity-60">
+                            <div className="w-24 h-24 bg-phy-bg dark:bg-phy-glassHeavy rounded-full flex items-center justify-center mb-6">
+                                <Calendar size={48} className="text-phy-muted" />
                             </div>
                             <p className="text-xl font-bold mb-2">暂无历史图片</p>
                             <p className="text-base text-center max-w-xs">只要在首页生成过每日总结图或故事漫画，就会自动保存在这里。</p>
@@ -81,7 +81,7 @@ const ImageGalleryModal = ({ isOpen, onClose }) => {
                                 <div
                                     key={img.id}
                                     onClick={() => setSelectedImage(img)}
-                                    className="group relative aspect-[3/4] md:aspect-square rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-zoom-in hover:-translate-y-2 transition-all duration-300"
+                                    className="group relative aspect-[3/4] md:aspect-square rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl border border-phy-border dark:border-phy-border bg-phy-glass dark:bg-phy-glassHeavy cursor-zoom-in hover:-translate-y-2 transition-all duration-300"
                                 >
                                     <img
                                         src={img.url}
@@ -109,7 +109,7 @@ const ImageGalleryModal = ({ isOpen, onClose }) => {
                                             </div>
                                             <button
                                                 onClick={(e) => handleDelete(e, img.id)}
-                                                className="p-2.5 bg-white/10 hover:bg-red-500 rounded-xl text-white backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 hover:scale-110 shadow-lg"
+                                                className="p-2.5 bg-phy-glassHover hover:bg-red-500 rounded-xl text-white backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 hover:scale-110 shadow-lg"
                                                 title="删除"
                                             >
                                                 <Trash2 size={16} strokeWidth={2.5} />
@@ -118,7 +118,7 @@ const ImageGalleryModal = ({ isOpen, onClose }) => {
                                     </div>
 
                                     {/* Top Badge */}
-                                    <div className={`absolute top-4 left-4 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider backdrop-blur-xl shadow-lg border border-white/10 ${img.type === 'comic' ? 'bg-pink-500/90 text-white' : 'bg-amber-500/90 text-white'}`}>
+                                    <div className={`absolute top-4 left-4 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider backdrop-blur-xl shadow-lg border border-phy-borderHover ${img.type === 'comic' ? 'bg-pink-500/90 text-white' : 'bg-amber-500/90 text-white'}`}>
                                         {img.type === 'comic' ? 'Comic' : 'Summary'}
                                     </div>
                                 </div>
@@ -136,7 +136,7 @@ const ImageGalleryModal = ({ isOpen, onClose }) => {
                 >
                     <button
                         onClick={() => setSelectedImage(null)}
-                        className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white/70 hover:text-white transition-all hover:rotate-90 backdrop-blur-md"
+                        className="absolute top-6 right-6 p-4 bg-phy-glassHover hover:bg-white/20 rounded-full text-white/70 hover:text-white transition-all hover:rotate-90 backdrop-blur-md"
                     >
                         <X size={28} />
                     </button>

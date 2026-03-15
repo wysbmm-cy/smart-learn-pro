@@ -3,14 +3,14 @@ import { Sparkles, Activity, BookOpen, Quote, Zap, Code, Target, Trash2, Chevron
 
 const THEMES = {
     modern: {
-        wrapper: 'bg-white/80 backdrop-blur-xl border border-slate-200/50 shadow-2xl rounded-[2rem] p-8 relative overflow-hidden transition-all duration-500',
-        title: 'text-slate-800 font-black',
-        subtitle: 'text-slate-500 font-medium',
-        statBox: 'bg-slate-50 border border-slate-100 rounded-2xl p-5 hover:scale-105 transition-transform duration-300',
-        statLabel: 'text-slate-500 text-sm font-bold',
-        statValue: 'text-slate-800 text-3xl font-black mt-2',
+        wrapper: 'bg-white/80 backdrop-blur-xl border border-phy-border/50 shadow-2xl rounded-[2rem] p-8 relative overflow-hidden transition-all duration-500',
+        title: 'text-phy-text font-bold font-black',
+        subtitle: 'text-phy-muted font-medium',
+        statBox: 'bg-phy-bg border border-phy-border rounded-2xl p-5 hover:scale-105 transition-transform duration-300',
+        statLabel: 'text-phy-muted text-sm font-bold',
+        statValue: 'text-phy-text font-bold text-3xl font-black mt-2',
         iconColor: 'text-blue-500',
-        highlightBox: 'bg-white border text-sm text-slate-700 border-slate-100 rounded-xl p-4 shadow-sm',
+        highlightBox: 'bg-phy-glass border text-sm text-phy-text border-phy-border rounded-xl p-4 shadow-sm',
         accent: 'bg-blue-500'
     },
     cyber: {
@@ -28,11 +28,11 @@ const THEMES = {
         wrapper: 'bg-gradient-to-br from-stone-100 to-stone-50 border border-stone-200 shadow-xl rounded-[2rem] p-8 relative overflow-hidden transition-all duration-500',
         title: 'text-stone-800 font-serif italic',
         subtitle: 'text-stone-500 font-serif',
-        statBox: 'bg-white/50 border border-stone-200 rounded-2xl p-5 hover:bg-white transition-colors duration-300 shadow-sm hover:shadow-md',
+        statBox: 'bg-phy-glass0 border border-stone-200 rounded-2xl p-5 hover:bg-phy-glass transition-colors duration-300 shadow-sm hover:shadow-md',
         statLabel: 'text-stone-500 text-sm font-serif',
         statValue: 'text-stone-800 text-3xl font-serif mt-2',
         iconColor: 'text-amber-700',
-        highlightBox: 'bg-white border text-sm text-stone-700 border-stone-200 rounded-xl p-4 shadow-sm italic',
+        highlightBox: 'bg-phy-glass border text-sm text-stone-700 border-stone-200 rounded-xl p-4 shadow-sm italic',
         accent: 'bg-amber-700'
     }
 };
@@ -45,11 +45,11 @@ const DailySummaryCard = ({ stats, highlights, onDeleteHighlight, onClearHighlig
     return (
         <div className="space-y-4 animate-fade-in">
             <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold text-slate-500">摘要视图风格:</span>
-                <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner">
-                    <button onClick={() => setThemeKey('modern')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${themeKey === 'modern' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Modern</button>
-                    <button onClick={() => setThemeKey('cyber')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${themeKey === 'cyber' ? 'bg-slate-800 shadow text-cyan-400' : 'text-slate-500 hover:text-slate-700'}`}>Cyber</button>
-                    <button onClick={() => setThemeKey('elegant')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${themeKey === 'elegant' ? 'bg-stone-200 shadow text-stone-800' : 'text-slate-500 hover:text-slate-700'}`}>Elegant</button>
+                <span className="text-sm font-bold text-phy-muted">摘要视图风格:</span>
+                <div className="flex bg-phy-bg p-1 rounded-xl shadow-inner">
+                    <button onClick={() => setThemeKey('modern')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${themeKey === 'modern' ? 'bg-phy-glass shadow text-phy-text font-bold' : 'text-phy-muted hover:text-phy-text'}`}>Modern</button>
+                    <button onClick={() => setThemeKey('cyber')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${themeKey === 'cyber' ? 'bg-phy-glassHeavy shadow text-cyan-400' : 'text-phy-muted hover:text-phy-text'}`}>Cyber</button>
+                    <button onClick={() => setThemeKey('elegant')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${themeKey === 'elegant' ? 'bg-stone-200 shadow text-stone-800' : 'text-phy-muted hover:text-phy-text'}`}>Elegant</button>
                 </div>
             </div>
 
@@ -71,7 +71,7 @@ const DailySummaryCard = ({ stats, highlights, onDeleteHighlight, onClearHighlig
                         <h2 className={`text-2xl md:text-3xl ${theme.title}`}>Daily Learning Report</h2>
                         <p className={`mt-1 ${theme.subtitle}`}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                     </div>
-                    <div className={`p-4 rounded-full bg-white/10 backdrop-blur-md border border-white/20 shadow-xl ${theme.iconColor}`}>
+                    <div className={`p-4 rounded-full bg-phy-glassHover backdrop-blur-md border border-white/20 shadow-xl ${theme.iconColor}`}>
                         {themeKey === 'cyber' ? <Zap size={32} /> : <Sparkles size={32} />}
                     </div>
                 </div>
@@ -108,7 +108,7 @@ const DailySummaryCard = ({ stats, highlights, onDeleteHighlight, onClearHighlig
                 </div>
 
                 {highlights.length > 0 && (
-                    <div className="relative z-10 border-t border-slate-200/20 pt-6 mt-6">
+                    <div className="relative z-10 border-t border-phy-border/20 pt-6 mt-6">
                         <div className="flex items-center justify-between mb-4">
                             <div className={`flex items-center gap-2 ${theme.subtitle}`}>
                                 <Quote size={20} className={theme.iconColor} />
@@ -117,7 +117,7 @@ const DailySummaryCard = ({ stats, highlights, onDeleteHighlight, onClearHighlig
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setShowManager(!showManager)}
-                                    className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border transition-colors ${themeKey === 'cyber' ? 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20' : 'border-slate-200 text-slate-500 bg-white/50 hover:bg-white'}`}
+                                    className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border transition-colors ${themeKey === 'cyber' ? 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20' : 'border-phy-border text-phy-muted bg-phy-glass0 hover:bg-phy-glass'}`}
                                 >
                                     {showManager ? '收起列表' : '管理标记'}
                                     {showManager ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -161,7 +161,7 @@ const DailySummaryCard = ({ stats, highlights, onDeleteHighlight, onClearHighlig
                                         </div>
                                         <button
                                             onClick={() => onDeleteHighlight(h.id)}
-                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                            className="p-2 text-phy-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                                             title="移除此标记"
                                         >
                                             <Trash2 size={16} />

@@ -70,39 +70,39 @@ const ChatFlashcardWidget = ({ cards = [], onReview, onComplete }) => {
         const accuracy = results.length > 0 ? Math.round((known / results.length) * 100) : 0;
 
         return (
-            <div className="my-3 bg-white border border-emerald-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 border-b border-emerald-100">
-                    <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+            <div className="my-3 glass-panel border border-phy-border rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-phy-glassHeavy backdrop-blur px-4 py-3 border-b border-phy-border">
+                    <div className="flex items-center gap-2 text-sm font-bold text-emerald-500">
                         <Layers size={16} />
                         复习完成！
                     </div>
                 </div>
-                <div className="p-4 space-y-3">
+                <div className="p-4 space-y-3 bg-phy-bg/30">
                     {/* Stats */}
                     <div className="flex items-center justify-center gap-6 py-2">
                         <div className="text-center">
-                            <div className="text-2xl font-black text-emerald-600">{known}</div>
-                            <div className="text-[11px] text-slate-400">认识 ✅</div>
+                            <div className="text-2xl font-black text-emerald-500">{known}</div>
+                            <div className="text-[11px] text-phy-muted">认识 ✅</div>
                         </div>
-                        <div className="w-px h-8 bg-slate-200" />
+                        <div className="w-px h-8 bg-phy-border" />
                         <div className="text-center">
                             <div className="text-2xl font-black text-rose-500">{unknown}</div>
-                            <div className="text-[11px] text-slate-400">不认识 ❌</div>
+                            <div className="text-[11px] text-phy-muted">不认识 ❌</div>
                         </div>
-                        <div className="w-px h-8 bg-slate-200" />
+                        <div className="w-px h-8 bg-phy-border" />
                         <div className="text-center">
-                            <div className="text-2xl font-black text-indigo-600">{accuracy}%</div>
-                            <div className="text-[11px] text-slate-400">正确率</div>
+                            <div className="text-2xl font-black text-phy-accent">{accuracy}%</div>
+                            <div className="text-[11px] text-phy-muted">正确率</div>
                         </div>
                     </div>
 
                     {/* Detail list */}
                     {unknown > 0 && (
-                        <div className="bg-rose-50 rounded-xl p-3">
-                            <div className="text-xs font-bold text-rose-600 mb-1.5">需要巩固的词：</div>
+                        <div className="bg-rose-500/10 rounded-xl p-3 border border-rose-500/20">
+                            <div className="text-xs font-bold text-rose-400 mb-1.5">需要巩固的词：</div>
                             <div className="flex flex-wrap gap-1.5">
                                 {results.filter(r => r.quality < 3).map((r, i) => (
-                                    <span key={i} className="text-xs bg-white text-rose-600 px-2 py-0.5 rounded-full border border-rose-200">
+                                    <span key={i} className="text-xs bg-phy-glass text-rose-300 px-2 py-0.5 rounded-full border border-rose-500/20">
                                         {r.word}
                                     </span>
                                 ))}
@@ -120,81 +120,80 @@ const ChatFlashcardWidget = ({ cards = [], onReview, onComplete }) => {
     const example = currentCard.front.match(/Example:\s*(.+)/)?.[1] || '';
 
     return (
-        <div className="my-3 bg-white border border-violet-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="my-3 glass-panel border border-phy-border rounded-2xl overflow-hidden shadow-sm">
             {/* Header + Progress */}
-            <div className="bg-gradient-to-r from-violet-50 to-indigo-50 px-4 py-2.5 border-b border-violet-100">
+            <div className="bg-phy-glassHeavy backdrop-blur px-4 py-2.5 border-b border-phy-border">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold text-violet-700">
+                    <div className="flex items-center gap-2 text-xs font-bold text-phy-accent">
                         <Layers size={14} />
                         闪卡复习
-                        <span className="text-violet-400 font-normal">
+                        <span className="text-phy-muted font-normal ml-1">
                             {currentIndex + 1} / {cards.length}
                         </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 border border-phy-border/30 px-2 py-1 rounded-full bg-phy-bg/50">
                         {results.map((r, i) => (
                             <div
                                 key={i}
-                                className={`w-2 h-2 rounded-full ${r.quality >= 3 ? 'bg-emerald-400' : 'bg-rose-400'}`}
+                                className={`w-2 h-2 rounded-full ${r.quality >= 3 ? 'bg-emerald-500' : 'bg-rose-500'}`}
                             />
                         ))}
                         {Array.from({ length: cards.length - results.length }).map((_, i) => (
-                            <div key={`pending-${i}`} className="w-2 h-2 rounded-full bg-slate-200" />
+                            <div key={`pending-${i}`} className="w-2 h-2 rounded-full bg-phy-glassHover border border-phy-border/50" />
                         ))}
                     </div>
                 </div>
                 {/* Progress bar */}
-                <div className="mt-1.5 h-1 bg-violet-100 rounded-full overflow-hidden">
+                <div className="mt-2 h-1 bg-phy-glassHover rounded-full overflow-hidden">
                     <div
-                        className="h-full bg-gradient-to-r from-violet-400 to-indigo-500 rounded-full transition-all duration-500"
+                        className="h-full bg-phy-accent rounded-full transition-all duration-500"
                         style={{ width: `${progress}%` }}
                     />
                 </div>
             </div>
 
             {/* Card Body */}
-            <div className="p-4">
+            <div className="p-4 bg-phy-bg/30">
                 <div
                     onClick={handleFlip}
-                    className="relative cursor-pointer select-none min-h-[120px] flex items-center justify-center rounded-xl border-2 border-dashed transition-all duration-300 hover:shadow-md active:scale-[0.98]"
+                    className="relative cursor-pointer select-none min-h-[120px] flex items-center justify-center rounded-xl border-2 transition-all duration-300 hover:shadow-md active:scale-[0.98]"
                     style={{
-                        borderColor: isFlipped ? '#a78bfa' : '#e2e8f0',
-                        background: isFlipped
-                            ? 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)'
-                            : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
+                        borderColor: isFlipped ? 'var(--color-phy-accent)' : 'var(--color-phy-border)',
+                        background: isFlipped ? 'var(--color-phy-glassLight)' : 'var(--color-phy-glassHeavy)',
+                        borderStyle: 'dashed'
                     }}
                 >
                     {!isFlipped ? (
                         /* Front: Word */
                         <div className="text-center py-4 px-6">
-                            <div className="text-2xl font-black text-slate-800 mb-1">{word}</div>
+                            <div className="text-2xl font-black text-phy-text mb-1">{word}</div>
                             {phonetic && (
-                                <div className="text-sm text-slate-400 font-mono mb-2">{phonetic}</div>
+                                <div className="text-sm text-phy-muted font-mono mb-2 opacity-80">{phonetic}</div>
                             )}
                             {example && (
-                                <div className="text-xs text-slate-500 italic leading-relaxed mt-2 max-w-[280px]">
+                                <div className="text-xs text-phy-muted italic leading-relaxed mt-2 max-w-[280px]">
                                     "{example}"
                                 </div>
                             )}
                             <button
                                 onClick={(e) => { e.stopPropagation(); speak(currentCard.front); }}
-                                className="mt-2 p-1.5 rounded-lg bg-white/80 hover:bg-indigo-50 text-slate-400 hover:text-indigo-500 transition-colors mx-auto"
+                                className="mt-3 p-1.5 rounded-lg bg-phy-glass border border-phy-border hover:bg-phy-glassHover text-phy-muted hover:text-phy-accent transition-colors mx-auto flex"
                                 title="朗读"
                             >
                                 <Volume2 size={14} />
                             </button>
-                            <div className="text-[10px] text-slate-300 mt-3">
+                            <div className="text-[10px] text-phy-muted/60 mt-4">
                                 点击翻转查看释义 →
                             </div>
                         </div>
                     ) : (
                         /* Back: Definition */
                         <div className="text-center py-4 px-6">
-                            <div className="text-xs text-violet-400 font-bold mb-1">释义</div>
-                            <div className="text-base font-bold text-violet-800 leading-relaxed whitespace-pre-line">
+                            <div className="text-xs text-phy-accent font-bold mb-1">释义</div>
+                            <div className="text-base font-bold text-phy-text leading-relaxed whitespace-pre-line">
                                 {currentCard.back}
                             </div>
-                            <div className="text-[10px] text-violet-300 mt-3 flex items-center justify-center gap-1">
+                            <div className="text-[10px] text-phy-muted mt-4 flex items-center justify-center gap-1 opacity-80">
                                 <RotateCcw size={10} />
                                 点击翻回正面
                             </div>
@@ -204,17 +203,17 @@ const ChatFlashcardWidget = ({ cards = [], onReview, onComplete }) => {
 
                 {/* Grading Buttons — only show when flipped */}
                 {isFlipped && (
-                    <div className="flex gap-3 mt-4 animate-fade-in">
+                    <div className="flex gap-3 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <button
                             onClick={() => handleGrade(1)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-sm font-bold transition-all active:scale-95"
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-sm"
                         >
                             <X size={16} />
                             不认识
                         </button>
                         <button
                             onClick={() => handleGrade(3)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 rounded-xl text-sm font-bold transition-all active:scale-95"
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-sm"
                         >
                             <Check size={16} />
                             认识

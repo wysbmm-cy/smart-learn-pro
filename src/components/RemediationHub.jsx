@@ -200,10 +200,10 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
 
         return (
             <div className="fixed inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 flex items-center justify-center z-50 p-4">
-                <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 max-w-lg w-full border border-white/20 shadow-2xl">
+                <div className="bg-phy-glassHover backdrop-blur-xl rounded-3xl p-8 max-w-lg w-full border border-white/20 shadow-2xl">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-flex p-4 bg-white/10 rounded-full mb-4">
+                        <div className="inline-flex p-4 bg-phy-glassHover rounded-full mb-4">
                             {getWeaknessIcon()}
                         </div>
                         <h1 className="text-2xl font-bold text-white mb-2">🩺 A.I.R. 智能诊断报告</h1>
@@ -212,12 +212,12 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
 
                     {/* Diagnosis Content */}
                     <div className="space-y-4 mb-8">
-                        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                        <div className="bg-phy-glass rounded-xl p-4 border border-phy-borderHover">
                             <div className="text-xs text-indigo-300 uppercase tracking-wider mb-1">病灶诊断</div>
                             <div className="text-xl font-bold text-white">{getWeaknessLabel()}</div>
                         </div>
 
-                        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                        <div className="bg-phy-glass rounded-xl p-4 border border-phy-borderHover">
                             <div className="text-xs text-indigo-300 uppercase tracking-wider mb-1">深度分析</div>
                             <div className="text-white/90">{diagnosis?.analysis_summary}</div>
                         </div>
@@ -247,7 +247,7 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
                     <div className="flex gap-3">
                         <button
                             onClick={onClose}
-                            className="flex-1 py-3 px-4 bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-all"
+                            className="flex-1 py-3 px-4 bg-phy-glassHover hover:bg-white/20 text-white rounded-xl font-medium transition-all"
                         >
                             返回
                         </button>
@@ -273,7 +273,7 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
         return (
             <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900 z-50 overflow-auto">
                 {/* Header with Mastery Bar */}
-                <div className="sticky top-0 bg-black/30 backdrop-blur-lg border-b border-white/10 p-4">
+                <div className="sticky top-0 bg-black/30 backdrop-blur-lg border-b border-phy-borderHover p-4">
                     <div className="max-w-2xl mx-auto">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2 text-white">
@@ -289,7 +289,7 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
 
                         {/* Confidence Score Bar */}
                         <div className="relative">
-                            <div className="h-4 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-4 bg-phy-glassHover rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-gradient-to-r from-amber-500 via-emerald-500 to-emerald-400 transition-all duration-500"
                                     style={{ width: `${progressPercent}%` }}
@@ -323,7 +323,7 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
     if (phase === 'complete') {
         return (
             <div className="fixed inset-0 bg-gradient-to-br from-emerald-900 via-teal-900 to-cyan-900 flex items-center justify-center z-50 p-4">
-                <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 max-w-lg w-full border border-white/20 shadow-2xl text-center">
+                <div className="bg-phy-glassHover backdrop-blur-xl rounded-3xl p-8 max-w-lg w-full border border-white/20 shadow-2xl text-center">
                     <div className="inline-flex p-6 bg-emerald-500/20 rounded-full mb-6">
                         <Trophy className="text-emerald-400" size={48} />
                     </div>
@@ -333,15 +333,15 @@ const RemediationHub = ({ onClose, prefetchedData }) => {
 
                     {/* Stats */}
                     <div className="grid grid-cols-3 gap-4 mb-8">
-                        <div className="bg-white/5 rounded-xl p-4">
+                        <div className="bg-phy-glass rounded-xl p-4">
                             <div className="text-2xl font-bold text-emerald-400">{correctCount}</div>
                             <div className="text-xs text-white/60">正确</div>
                         </div>
-                        <div className="bg-white/5 rounded-xl p-4">
+                        <div className="bg-phy-glass rounded-xl p-4">
                             <div className="text-2xl font-bold text-rose-400">{wrongCount}</div>
                             <div className="text-xs text-white/60">错误</div>
                         </div>
-                        <div className="bg-white/5 rounded-xl p-4">
+                        <div className="bg-phy-glass rounded-xl p-4">
                             <div className="text-2xl font-bold text-amber-400">{dynamicDrillsAdded}</div>
                             <div className="text-xs text-white/60">追加题</div>
                         </div>

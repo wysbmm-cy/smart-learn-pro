@@ -65,7 +65,7 @@ const TranslationBubble = ({ initialPosition, status, result, onClose }) => {
     return (
         <div
             ref={bubbleRef}
-            className={`fixed z-50 bg-white/95 backdrop-blur-md text-slate-700 rounded-xl shadow-2xl border border-slate-200 w-80 flex flex-col transition-shadow ${isDragging ? 'cursor-grabbing shadow-3xl scale-[1.02]' : ''}`}
+            className={`fixed z-50 bg-white/95 backdrop-blur-md text-phy-text rounded-xl shadow-2xl border border-phy-border w-80 flex flex-col transition-shadow ${isDragging ? 'cursor-grabbing shadow-3xl scale-[1.02]' : ''}`}
             // Use inline styles for position to avoid re-render lag
             style={{
                 left: position.x,
@@ -77,7 +77,7 @@ const TranslationBubble = ({ initialPosition, status, result, onClose }) => {
         >
             {/* Draggable Header */}
             <div
-                className={`flex justify-between items-center p-3 border-b border-slate-100 bg-slate-50/80 rounded-t-xl select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                className={`flex justify-between items-center p-3 border-b border-phy-border bg-slate-50/80 rounded-t-xl select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                 onMouseDown={handleMouseDown}
             >
                 <div className="flex items-center gap-2 text-blue-600">
@@ -90,7 +90,7 @@ const TranslationBubble = ({ initialPosition, status, result, onClose }) => {
                     {status === 'success' && (
                         <button
                             onClick={handleCopy}
-                            className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-1.5 text-phy-muted hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                             title="Copy"
                         >
                             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -98,7 +98,7 @@ const TranslationBubble = ({ initialPosition, status, result, onClose }) => {
                     )}
                     <button
                         onClick={onClose}
-                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-1.5 text-phy-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                     >
                         <X size={16} />
                     </button>
@@ -109,16 +109,16 @@ const TranslationBubble = ({ initialPosition, status, result, onClose }) => {
             <div className="p-4 text-sm leading-relaxed min-h-[60px] max-h-[300px] overflow-y-auto custom-scrollbar">
                 {status === 'loading' ? (
                     <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-slate-500">
+                        <div className="flex items-center gap-2 text-phy-muted">
                             <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                             <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                             <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                         </div>
-                        <div className="h-2 w-3/4 bg-slate-100 rounded animate-pulse"></div>
-                        <div className="h-2 w-1/2 bg-slate-100 rounded animate-pulse"></div>
+                        <div className="h-2 w-3/4 bg-phy-bg rounded animate-pulse"></div>
+                        <div className="h-2 w-1/2 bg-phy-bg rounded animate-pulse"></div>
                     </div>
                 ) : (
-                    <p className="font-serif text-slate-800">{result}</p>
+                    <p className="font-serif text-phy-text font-bold">{result}</p>
                 )}
             </div>
         </div>

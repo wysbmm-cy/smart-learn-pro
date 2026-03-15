@@ -36,26 +36,26 @@ ${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
     const labels = { core: '核心', usage: '用法&例句', writing: '写作运用', memory: '妙记' };
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6 transition-all hover:shadow-md animate-slide-up">
+        <div className="bg-phy-glass rounded-2xl shadow-sm border border-phy-border overflow-hidden mb-6 transition-all hover:shadow-md animate-slide-up">
             {/* Header */}
-            <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-start group">
+            <div className="bg-phy-bg p-4 border-b border-phy-border flex justify-between items-start group">
                 <div>
                     <div className="flex items-baseline gap-3 flex-wrap">
-                        <h3 className="text-2xl font-bold text-slate-800">{wordData.word}</h3>
-                        <span className="text-slate-500 font-mono text-sm">{wordData.phonetic}</span>
+                        <h3 className="text-2xl font-bold text-phy-text font-bold">{wordData.word}</h3>
+                        <span className="text-phy-muted font-mono text-sm">{wordData.phonetic}</span>
                         <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
                             {wordData.level || 'Unknown'}
                         </span>
                     </div>
                     <div className="mt-1 flex items-center gap-2">
-                        <span className="italic font-serif text-slate-600">{wordData.pos}</span>
-                        <span className="text-slate-700">{wordData.meaning}</span>
+                        <span className="italic font-serif text-phy-muted">{wordData.pos}</span>
+                        <span className="text-phy-text">{wordData.meaning}</span>
                     </div>
                 </div>
 
                 <button
                     onClick={handleCopy}
-                    className="p-2 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    className="p-2 rounded-lg hover:bg-phy-bg text-phy-muted hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
                     title="Copy Word Card"
                 >
                     {isCopied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
@@ -64,14 +64,14 @@ ${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
 
             {/* Tabs */}
             <div className="p-0">
-                <div className="flex border-b border-slate-100 overflow-x-auto scrollbar-hide">
+                <div className="flex border-b border-phy-border overflow-x-auto scrollbar-hide">
                     {availableTabs.map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
                             className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab === tab
                                 ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                                : 'border-transparent text-phy-muted hover:text-phy-text'
                                 }`}
                         >
                             {labels[tab]}
@@ -84,8 +84,8 @@ ${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
                     {activeTab === 'core' && (
                         <div className="space-y-4 animate-fade-in">
                             <div>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Source Context</p>
-                                <p className="text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 italic">
+                                <p className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-1">Source Context</p>
+                                <p className="text-phy-text bg-phy-bg p-3 rounded-lg border border-phy-border italic">
                                     "{wordData.example}"
                                 </p>
                             </div>
@@ -106,7 +106,7 @@ ${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
                             {wordData.collocations && (
                                 <div>
                                     <span className="text-blue-600 font-bold text-sm">搭配: </span>
-                                    <span className="text-slate-700 text-sm">
+                                    <span className="text-phy-text text-sm">
                                         {Array.isArray(wordData.collocations) ? wordData.collocations.join(', ') : wordData.collocations}
                                     </span>
                                 </div>
@@ -114,7 +114,7 @@ ${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
                             {wordData.usage && (
                                 <div>
                                     <span className="text-blue-600 font-bold text-sm">用法: </span>
-                                    <span className="text-slate-700 text-sm">{wordData.usage}</span>
+                                    <span className="text-phy-text text-sm">{wordData.usage}</span>
                                 </div>
                             )}
                         </div>

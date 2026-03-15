@@ -1,0 +1,229 @@
+/* 
+  Phycat Theme Colors 
+  Based on obsidian-theme-phycat definitions
+*/
+
+:root {
+    /* Default/Fallback (Dark - Vampire) */
+    --phy-bg-base: #1e1e24;
+    /* Very dark grayish blue */
+    --phy-bg-glass: rgba(30, 30, 36, 0.75);
+    --phy-bg-glass-heavy: rgba(30, 30, 36, 0.9);
+    --phy-bg-card: rgba(43, 43, 54, 0.6);
+    --phy-border: rgba(255, 255, 255, 0.08);
+    --phy-border-hover: rgba(255, 255, 255, 0.15);
+
+    --phy-text-main: #e2e2e2;
+    --phy-text-muted: #9aa0a6;
+
+    --phy-accent: #f28b82;
+    /* Soft Red/Pink */
+    --phy-accent-hover: #ff9d94;
+    --phy-accent-glass: rgba(242, 139, 130, 0.15);
+}
+
+/* =========================================
+   DARK THEMES
+========================================= */
+
+/* 1. Vampire (Dark Default) */
+.theme-vampire {
+    --phy-bg-base: #1e1e24;
+    --phy-bg-glass: rgba(30, 30, 36, 0.8);
+    --phy-bg-glass-heavy: rgba(30, 30, 36, 0.95);
+    --phy-bg-card: rgba(43, 43, 54, 0.6);
+    --phy-border: rgba(255, 255, 255, 0.08);
+    --phy-border-hover: rgba(255, 255, 255, 0.15);
+
+    --phy-text-main: #e2e2e2;
+    --phy-text-muted: #9aa0a6;
+
+    --phy-accent: #f28b82;
+    --phy-accent-hover: #ff9d94;
+    --phy-accent-glass: rgba(242, 139, 130, 0.15);
+}
+
+/* 2. Abyss (Deep Blue Dark) */
+.theme-abyss {
+    --phy-bg-base: #0b1120;
+    --phy-bg-glass: rgba(11, 17, 32, 0.8);
+    --phy-bg-glass-heavy: rgba(11, 17, 32, 0.95);
+    --phy-bg-card: rgba(30, 41, 59, 0.5);
+    --phy-border: rgba(255, 255, 255, 0.05);
+    --phy-border-hover: rgba(255, 255, 255, 0.15);
+
+    --phy-text-main: #f8fafc;
+    --phy-text-muted: #94a3b8;
+
+    --phy-accent: #8b5cf6;
+    /* Violet */
+    --phy-accent-hover: #a78bfa;
+    --phy-accent-glass: rgba(139, 92, 246, 0.15);
+}
+
+/* 3. Radiation (Greenish Dark) */
+.theme-radiation {
+    --phy-bg-base: #111810;
+    --phy-bg-glass: rgba(17, 24, 16, 0.8);
+    --phy-bg-glass-heavy: rgba(17, 24, 16, 0.95);
+    --phy-bg-card: rgba(25, 38, 25, 0.6);
+    --phy-border: rgba(74, 222, 128, 0.1);
+    --phy-border-hover: rgba(74, 222, 128, 0.25);
+
+    --phy-text-main: #f0fdf4;
+    --phy-text-muted: #86efac;
+
+    --phy-accent: #4ade80;
+    /* Emerald */
+    --phy-accent-hover: #22c55e;
+    --phy-accent-glass: rgba(74, 222, 128, 0.15);
+}
+
+
+/* =========================================
+   LIGHT THEMES
+========================================= */
+
+/* 4. Sakura (Light Pink) */
+.theme-sakura {
+    --phy-bg-base: #fff5f8;
+    --phy-bg-glass: rgba(255, 245, 248, 0.8);
+    --phy-bg-glass-heavy: rgba(255, 245, 248, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(244, 114, 182, 0.15);
+    --phy-border-hover: rgba(244, 114, 182, 0.3);
+
+    --phy-text-main: #4a333f;
+    --phy-text-muted: #9d808e;
+
+    --phy-accent: #f472b6;
+    /* Pink */
+    --phy-accent-hover: #ec4899;
+    --phy-accent-glass: rgba(244, 114, 182, 0.15);
+}
+
+/* 5. Ocean (Light Blue/Mint) */
+.theme-ocean {
+    --phy-bg-base: #f0fdfa;
+    --phy-bg-glass: rgba(240, 253, 250, 0.8);
+    --phy-bg-glass-heavy: rgba(240, 253, 250, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(45, 212, 191, 0.15);
+    --phy-border-hover: rgba(45, 212, 191, 0.3);
+
+    --phy-text-main: #134e4a;
+    --phy-text-muted: #5eead4;
+
+    --phy-accent: #2dd4bf;
+    /* Teal */
+    --phy-accent-hover: #14b8a6;
+    --phy-accent-glass: rgba(45, 212, 191, 0.15);
+}
+
+/* 6. Mauve (Light Purple) */
+.theme-mauve {
+    --phy-bg-base: #faf5ff;
+    --phy-bg-glass: rgba(250, 245, 255, 0.8);
+    --phy-bg-glass-heavy: rgba(250, 245, 255, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(168, 85, 247, 0.15);
+    --phy-border-hover: rgba(168, 85, 247, 0.3);
+
+    --phy-text-main: #3b0764;
+    --phy-text-muted: #c084fc;
+
+    --phy-accent: #a855f7;
+    /* Purple */
+    --phy-accent-hover: #9333ea;
+    --phy-accent-glass: rgba(168, 85, 247, 0.15);
+}
+
+/* 7. Golden Hour (Light Warm) */
+.theme-golden {
+    --phy-bg-base: #fffbeb;
+    --phy-bg-glass: rgba(255, 251, 235, 0.8);
+    --phy-bg-glass-heavy: rgba(255, 251, 235, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(217, 119, 6, 0.15);
+    --phy-border-hover: rgba(217, 119, 6, 0.3);
+
+    --phy-text-main: #451a03;
+    --phy-text-muted: #b45309;
+
+    --phy-accent: #f59e0b;
+    /* Amber */
+    --phy-accent-hover: #d97706;
+    --phy-accent-glass: rgba(245, 158, 11, 0.15);
+}
+
+/* 8. Cheery (Light Cherry Red) */
+.theme-cheery {
+    --phy-bg-base: #fef2f2;
+    --phy-bg-glass: rgba(254, 242, 242, 0.8);
+    --phy-bg-glass-heavy: rgba(254, 242, 242, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(239, 68, 68, 0.15);
+    --phy-border-hover: rgba(239, 68, 68, 0.3);
+
+    --phy-text-main: #450a0a;
+    --phy-text-muted: #f87171;
+
+    --phy-accent: #ef4444;
+    /* Red */
+    --phy-accent-hover: #dc2626;
+    --phy-accent-glass: rgba(239, 68, 68, 0.15);
+}
+
+/* 9. Prussian (Light Blue-Grey) */
+.theme-prussian {
+    --phy-bg-base: #f1f5f9;
+    --phy-bg-glass: rgba(241, 245, 249, 0.8);
+    --phy-bg-glass-heavy: rgba(241, 245, 249, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(71, 85, 105, 0.15);
+    --phy-border-hover: rgba(71, 85, 105, 0.3);
+
+    --phy-text-main: #0f172a;
+    --phy-text-muted: #64748b;
+
+    --phy-accent: #3b82f6;
+    /* Blue */
+    --phy-accent-hover: #2563eb;
+    --phy-accent-glass: rgba(59, 130, 246, 0.15);
+}
+
+/* 10. Sky (Bright Light Blue) */
+.theme-sky {
+    --phy-bg-base: #f0f9ff;
+    --phy-bg-glass: rgba(240, 249, 255, 0.8);
+    --phy-bg-glass-heavy: rgba(240, 249, 255, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(14, 165, 233, 0.15);
+    --phy-border-hover: rgba(14, 165, 233, 0.3);
+
+    --phy-text-main: #082f49;
+    --phy-text-muted: #38bdf8;
+
+    --phy-accent: #0ea5e9;
+    /* Sky */
+    --phy-accent-hover: #0284c7;
+    --phy-accent-glass: rgba(14, 165, 233, 0.15);
+}
+
+/* 11. Forest (Light Green) */
+.theme-forest {
+    --phy-bg-base: #f0fdf4;
+    --phy-bg-glass: rgba(240, 253, 244, 0.8);
+    --phy-bg-glass-heavy: rgba(240, 253, 244, 0.95);
+    --phy-bg-card: rgba(255, 255, 255, 0.6);
+    --phy-border: rgba(34, 197, 94, 0.15);
+    --phy-border-hover: rgba(34, 197, 94, 0.3);
+
+    --phy-text-main: #052e16;
+    --phy-text-muted: #4ade80;
+
+    --phy-accent: #22c55e;
+    /* Green */
+    --phy-accent-hover: #16a34a;
+    --phy-accent-glass: rgba(34, 197, 94, 0.15);
+}

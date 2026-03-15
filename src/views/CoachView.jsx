@@ -242,47 +242,47 @@ const CoachView = () => {
     };
 
     return (
-        <div className="flex flex-col h-full max-w-4xl mx-auto animate-fade-in relative">
+        <div className="flex flex-col h-full max-w-4xl mx-auto animate-fade-in relative text-phy-text">
 
             {/* History Sidebar */}
             {historyOpen && (
                 <>
-                    <div className="absolute inset-0 z-30 bg-black/50 backdrop-blur-sm" onClick={() => setHistoryOpen(false)} />
-                    <div className="absolute top-0 right-0 bottom-0 w-80 bg-slate-900 border-l border-white/10 z-40 p-4 shadow-2xl animate-slide-in-right flex flex-col">
+                    <div className="absolute inset-0 z-30 bg-black/40 backdrop-blur-md" onClick={() => setHistoryOpen(false)} />
+                    <div className="absolute top-0 right-0 bottom-0 w-80 glass-sidebar border-l border-phy-border z-40 p-4 shadow-2xl animate-slide-in-right flex flex-col">
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                <History size={20} /> 历史记录
+                            <h2 className="text-xl font-bold text-phy-text flex items-center gap-2">
+                                <History size={20} className="text-phy-accent" /> 历史记录
                             </h2>
-                            <button onClick={() => setHistoryOpen(false)} className="p-1 hover:bg-slate-800 rounded">
-                                <X size={20} className="text-slate-400" />
+                            <button onClick={() => setHistoryOpen(false)} className="p-1 hover:bg-phy-glassHover rounded-full transition-colors text-phy-muted">
+                                <X size={20} />
                             </button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
                             {sessions.length === 0 && (
-                                <p className="text-slate-500 text-center mt-10">暂无历史记录</p>
+                                <p className="text-phy-muted text-center mt-10">暂无历史记录</p>
                             )}
                             {sessions.map(s => (
                                 <div
                                     key={s.id}
-                                    className={`p-3 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-colors group ${currentSessionId === s.id ? 'bg-violet-900/20 border-violet-500/30' : 'bg-slate-800/50'}`}
+                                    className={`p-3 rounded-2xl border cursor-pointer transition-colors group ${currentSessionId === s.id ? 'bg-phy-accentGlass border-phy-accent/30' : 'bg-phy-glass border-phy-border hover:border-phy-borderHover hover:bg-phy-glassHover'}`}
                                     onClick={() => loadSession(s)}
                                 >
                                     <div className="flex justify-between items-start mb-1">
-                                        <span className="text-xs text-violet-400 font-medium px-1.5 py-0.5 bg-violet-500/10 rounded">
+                                        <span className="text-xs text-phy-accent font-medium px-2 py-0.5 bg-phy-accentGlass rounded-full">
                                             {personas.find(p => p.id === s.personaId)?.name || 'Unknown'}
                                         </span>
                                         <button
                                             onClick={(e) => handleDeleteSession(e, s.id)}
-                                            className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="text-phy-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                         >
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
-                                    <h4 className="text-slate-200 text-sm font-medium line-clamp-2 leading-snug mb-2">
+                                    <h4 className="text-phy-text text-sm font-medium line-clamp-2 leading-snug mb-2">
                                         {s.title}
                                     </h4>
-                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <div className="flex items-center gap-2 text-xs text-phy-muted">
                                         <Calendar size={12} />
                                         {new Date(s.updatedAt).toLocaleString()}
                                     </div>
@@ -294,30 +294,29 @@ const CoachView = () => {
             )}
 
             {/* Header: Persona Selector */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 md:mb-6">
                 <div className="flex flex-col">
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-violet-500 bg-clip-text text-transparent">
+                    <h1 className="text-2xl md:text-3xl font-black text-phy-text tracking-tight">
                         AI 口语教练
                     </h1>
-                    <p className="text-slate-400 text-sm">Real-time Voice Interaction</p>
+                    <p className="text-phy-muted text-xs md:text-sm font-medium">Real-time Voice Interaction</p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
                     <button
                         onClick={() => setHistoryOpen(true)}
-                        className="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
+                        className="p-2 text-phy-muted hover:text-phy-accent hover:bg-phy-glassHover rounded-full transition-colors border border-transparent hover:border-phy-border"
                         title="历史记录"
                     >
                         <History size={20} />
                     </button>
                     <button
                         onClick={handleClear}
-                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        className="p-2 text-phy-muted hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors border border-transparent hover:border-red-500/20"
                         title="清空当前对话"
                     >
                         <Trash2 size={20} />
                     </button>
-                    <span className="text-slate-400 text-sm hidden sm:inline">当前模式:</span>
                     <select
                         value={selectedPersona.id}
                         onChange={(e) => {
@@ -325,7 +324,7 @@ const CoachView = () => {
                             const found = allPersonas.find(p => p.id === e.target.value);
                             if (found) setSelectedPersona(found);
                         }}
-                        className="bg-slate-800/50 text-white border border-white/10 rounded-lg px-3 py-2 outline-none focus:border-violet-500 transition-colors"
+                        className="flex-1 sm:flex-none bg-phy-glass text-phy-text border border-phy-border rounded-full px-4 py-2 outline-none focus:border-phy-accent transition-colors shadow-sm font-bold text-sm"
                     >
                         {agentTopic && (
                             <option value="agent_custom">🎯 {agentTopic.topic}</option>
@@ -338,22 +337,25 @@ const CoachView = () => {
             </div>
 
             {/* Main Interaction Area */}
-            <div className="flex-1 bg-slate-900/40 backdrop-blur-md rounded-3xl border border-white/5 overflow-hidden flex flex-col relative">
+            <div className="flex-1 glass-panel rounded-3xl border border-phy-border overflow-hidden flex flex-col relative shadow-sm">
 
                 {/* Analysis Result Overlay */}
                 {analysisResult && (
-                    <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-                        <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl max-w-lg w-full shadow-2xl">
-                            <h3 className="text-xl font-bold text-violet-400 mb-2">口语点评</h3>
-                            <div className="bg-slate-800/50 p-3 rounded-lg text-slate-300 text-sm mb-4 italic">
+                    <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+                        <div className="glass-modal border border-phy-border p-6 rounded-3xl max-w-lg w-full shadow-2xl">
+                            <h3 className="text-xl font-bold text-phy-accent mb-3 flex items-center gap-2">
+                                <Sparkles size={20} />
+                                口语点评
+                            </h3>
+                            <div className="bg-phy-glassHeavy border border-phy-border p-4 rounded-2xl text-phy-text text-sm mb-5 italic shadow-inner">
                                 "{analysisResult.target}"
                             </div>
-                            <div className="prose prose-invert prose-sm max-h-60 overflow-y-auto mb-6 leading-relaxed">
+                            <div className="prose prose-sm prose-phy max-h-60 overflow-y-auto mb-6 leading-relaxed text-phy-text pr-2 custom-scrollbar">
                                 <p className="whitespace-pre-wrap">{analysisResult.feedback}</p>
                             </div>
                             <button
                                 onClick={() => setAnalysisResult(null)}
-                                className="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-bold transition-colors"
+                                className="w-full py-3.5 bg-phy-accent hover:opacity-90 text-white rounded-2xl font-bold transition-all active:scale-95 shadow-lg shadow-phy-accent/20"
                             >
                                 明白了
                             </button>
@@ -362,18 +364,18 @@ const CoachView = () => {
                 )}
 
                 {/* Visualizer / Status Indicator */}
-                <div className="h-64 flex flex-col items-center justify-center border-b border-white/5 bg-gradient-to-b from-slate-900/0 to-slate-900/50">
-                    <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${status === 'recording' ? 'bg-red-500/20 shadow-[0_0_50px_rgba(239,68,68,0.3)] scale-110' :
-                        status === 'speaking' ? 'bg-violet-500/20 shadow-[0_0_50px_rgba(139,92,246,0.3)] scale-110 animate-pulse' :
-                            status === 'processing' ? 'bg-blue-500/20 animate-spin-slow' :
-                                'bg-slate-800/50'
+                <div className="h-44 md:h-64 flex flex-col items-center justify-center border-b border-phy-border bg-phy-glass">
+                    <div className={`w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center transition-all duration-500 shadow-sm ${status === 'recording' ? 'bg-red-500/20 ring-4 ring-red-500/30 scale-110' :
+                        status === 'speaking' ? 'bg-phy-accentGlass ring-4 ring-phy-accent/30 scale-110 animate-pulse' :
+                            status === 'processing' ? 'bg-blue-500/10 ring-4 ring-blue-500/20 animate-spin-slow' :
+                                'bg-phy-glass border border-phy-border'
                         }`}>
-                        {status === 'recording' && <Mic size={48} className="text-red-400 animate-pulse" />}
-                        {status === 'speaking' && <Volume2 size={48} className="text-violet-400 animate-bounce" />}
-                        {status === 'processing' && <Loader2 size={48} className="text-blue-400 animate-spin" />}
-                        {status === 'idle' && <Bot size={48} className="text-slate-500" />}
+                        {status === 'recording' && <Mic size={40} className="text-red-500 animate-pulse" />}
+                        {status === 'speaking' && <Volume2 size={40} className="text-phy-accent animate-bounce" />}
+                        {status === 'processing' && <Loader2 size={40} className="text-blue-500 animate-spin" />}
+                        {status === 'idle' && <Bot size={40} className="text-phy-muted" />}
                     </div>
-                    <p className="mt-6 text-lg font-medium text-slate-300 tracking-wide">
+                    <p className="mt-4 text-base font-bold text-phy-text tracking-wide">
                         {status === 'recording' && "正在聆听..."}
                         {status === 'speaking' && "正在回应..."}
                         {status === 'processing' && "思考中..."}
@@ -382,30 +384,30 @@ const CoachView = () => {
                 </div>
 
                 {/* Conversation Scroll */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-phy-bg/30">
                     {messages.length === 0 && (
-                        <div className="text-center text-slate-500 mt-10">
+                        <div className="text-center text-phy-muted mt-10">
                             {agentTopic && selectedPersona.id === 'agent_custom' ? (
                                 <div className="max-w-sm mx-auto">
-                                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 mb-4 text-left">
-                                        <p className="text-violet-400 font-medium text-sm mb-2">🎯 Agent 推荐话题</p>
-                                        <p className="text-slate-300 text-sm font-medium">{agentTopic.topic}</p>
+                                    <div className="bg-phy-accentGlass border border-phy-accent/20 rounded-2xl p-5 mb-5 text-left shadow-sm">
+                                        <p className="text-phy-accent font-bold text-sm mb-2 flex items-center gap-1"><Sparkles size={16} /> Agent 推荐话题</p>
+                                        <p className="text-phy-text text-base font-bold leading-tight">{agentTopic.topic}</p>
                                         {agentTopic.scenario && (
-                                            <p className="text-slate-400 text-xs mt-1">场景: {agentTopic.scenario}</p>
+                                            <p className="text-phy-muted text-sm mt-2 font-medium">场景: {agentTopic.scenario}</p>
                                         )}
                                         {agentTopic.vocabulary?.length > 0 && (
-                                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                            <div className="flex flex-wrap gap-1.5 mt-3">
                                                 {agentTopic.vocabulary.map((v, i) => (
-                                                    <span key={i} className="px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded text-xs">{v}</span>
+                                                    <span key={i} className="px-2 py-0.5 bg-phy-glass border border-phy-border text-phy-text font-mono rounded text-xs">{v}</span>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
-                                    <p className="text-sm">点击下方麦克风，开始练习口语！</p>
+                                    <p className="text-sm font-bold">点击下方麦克风，开始练习口语！</p>
                                 </div>
                             ) : (
                                 <>
-                                    <p>点击下方麦克风开始对话</p>
+                                    <p className="font-bold">点击下方麦克风开始对话</p>
                                     <p className="text-xs mt-2 opacity-60">请确保已在设置中配置 Audio API Key</p>
                                 </>
                             )}
@@ -414,14 +416,14 @@ const CoachView = () => {
 
                     {messages.map((msg, idx) => (
                         <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-slate-700 text-slate-300' : 'bg-violet-600 text-white'
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-sm border ${msg.role === 'user' ? 'bg-phy-glass text-phy-text border-phy-border' : 'bg-phy-accent text-white border-phy-accent/50'
                                 }`}>
-                                {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+                                {msg.role === 'user' ? <User size={18} /> : <Bot size={18} />}
                             </div>
                             <div className={`flex flex-col gap-2 max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                <div className={`px-4 py-3 rounded-2xl leading-relaxed ${msg.role === 'user'
-                                    ? 'bg-slate-800 text-slate-200 rounded-tr-none'
-                                    : 'bg-indigo-900/30 text-indigo-100 border border-indigo-500/20 rounded-tl-none'
+                                <div className={`px-5 py-3.5 rounded-3xl leading-relaxed shadow-sm ${msg.role === 'user'
+                                    ? 'bg-phy-glass border border-phy-border text-phy-text rounded-tr-none'
+                                    : 'bg-phy-accentGlass text-phy-text border border-phy-accent/20 rounded-tl-none'
                                     }`}>
                                     {msg.content}
                                 </div>
@@ -429,7 +431,7 @@ const CoachView = () => {
                                     {msg.audioUrl && (
                                         <button
                                             onClick={() => playAudio(msg.audioUrl)}
-                                            className="text-xs flex items-center gap-1 text-slate-400 hover:text-violet-400 transition-colors bg-slate-900/50 px-2 py-1 rounded-md"
+                                            className="text-xs flex items-center gap-1 text-phy-muted hover:text-phy-accent hover:border-phy-accent font-medium transition-colors bg-phy-glass border border-phy-border px-3 py-1.5 rounded-full"
                                         >
                                             <Play size={12} /> {msg.role === 'user' ? '回听我的' : '重播'}
                                         </button>
@@ -437,9 +439,9 @@ const CoachView = () => {
                                     {msg.role === 'user' && (
                                         <button
                                             onClick={() => handleAnalyze(msg.content)}
-                                            className="text-xs flex items-center gap-1 text-slate-400 hover:text-pink-400 transition-colors bg-slate-900/50 px-2 py-1 rounded-md"
+                                            className="text-xs flex items-center gap-1 text-phy-muted hover:text-phy-accent hover:border-phy-accent font-medium transition-colors bg-phy-glass border border-phy-border px-3 py-1.5 rounded-full"
                                         >
-                                            <Settings size={12} /> AI 点评
+                                            <Sparkles size={12} /> AI 点评
                                         </button>
                                     )}
                                 </div>
@@ -449,11 +451,11 @@ const CoachView = () => {
                 </div>
 
                 {/* Controls */}
-                <div className="p-6 flex justify-center items-center gap-6 bg-slate-950/30">
+                <div className="p-4 md:p-6 flex justify-center items-center gap-6 bg-phy-glassHeavy backdrop-blur border-t border-phy-border">
                     {status === 'recording' ? (
                         <button
                             onClick={stopRecording}
-                            className="w-16 h-16 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-500/30 transition-all hover:scale-105 active:scale-95"
+                            className="w-16 h-16 md:w-20 md:h-20 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-500/30 transition-all hover:scale-105 active:scale-95"
                         >
                             <Square size={24} className="text-white fill-current" />
                         </button>
@@ -461,9 +463,9 @@ const CoachView = () => {
                         <button
                             onClick={startRecording}
                             disabled={status !== 'idle'}
-                            className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all ${status === 'idle'
-                                ? 'bg-gradient-to-br from-violet-600 to-indigo-600 hover:shadow-violet-500/30 hover:scale-105 active:scale-95 text-white'
-                                : 'bg-slate-800 cursor-not-allowed opacity-50 text-slate-500'
+                            className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center shadow-lg transition-all ${status === 'idle'
+                                ? 'bg-phy-accent hover:opacity-90 shadow-phy-accent/30 hover:scale-105 active:scale-95 text-white'
+                                : 'bg-phy-glass border border-phy-border cursor-not-allowed text-phy-muted'
                                 }`}
                         >
                             <Mic size={28} />

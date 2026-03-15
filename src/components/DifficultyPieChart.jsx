@@ -50,12 +50,12 @@ const DifficultyPieChart = ({ flashcards }) => {
 
     if (stats.total === 0) {
         return (
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-                <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <div className="bg-phy-glass rounded-2xl p-6 border border-phy-border shadow-sm">
+                <h3 className="font-bold text-phy-text mb-4 flex items-center gap-2">
                     <Brain size={20} className="text-indigo-500" />
                     难度分布
                 </h3>
-                <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
+                <div className="h-48 flex items-center justify-center text-phy-muted text-sm">
                     暂无数据，开始复习后即可查看
                 </div>
             </div>
@@ -67,9 +67,9 @@ const DifficultyPieChart = ({ flashcards }) => {
             const data = payload[0];
             const percentage = ((data.value / stats.total) * 100).toFixed(1);
             return (
-                <div className="bg-slate-800 text-white px-3 py-2 rounded-lg shadow-lg text-sm">
+                <div className="bg-phy-glassHeavy text-white px-3 py-2 rounded-lg shadow-lg text-sm">
                     <div className="font-bold">{data.name}</div>
-                    <div className="text-slate-300">{data.value} 张 ({percentage}%)</div>
+                    <div className="text-phy-text">{data.value} 张 ({percentage}%)</div>
                 </div>
             );
         }
@@ -88,9 +88,9 @@ const DifficultyPieChart = ({ flashcards }) => {
                                 className="w-3 h-3 rounded-full"
                                 style={{ backgroundColor: entry.color }}
                             />
-                            <Icon size={14} className="text-slate-400" />
-                            <span className="text-slate-600 font-medium">{entry.value}</span>
-                            <span className="text-slate-400">({entry.payload.value})</span>
+                            <Icon size={14} className="text-phy-muted" />
+                            <span className="text-phy-muted font-medium">{entry.value}</span>
+                            <span className="text-phy-muted">({entry.payload.value})</span>
                         </div>
                     );
                 })}
@@ -99,11 +99,11 @@ const DifficultyPieChart = ({ flashcards }) => {
     };
 
     return (
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+        <div className="bg-phy-glass rounded-2xl p-6 border border-phy-border shadow-sm">
+            <h3 className="font-bold text-phy-text mb-4 flex items-center gap-2">
                 <Brain size={20} className="text-indigo-500" />
                 难度分布
-                <span className="ml-auto text-xs font-normal text-slate-400">
+                <span className="ml-auto text-xs font-normal text-phy-muted">
                     共 {stats.total} 张卡片
                 </span>
             </h3>

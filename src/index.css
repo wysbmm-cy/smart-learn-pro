@@ -1,28 +1,40 @@
+@import "@fontsource/lxgw-wenkai";
+/* Global LXGW WenKai font */
+@import "./styles/themes.css";
+/* Global 11 color schemes */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* Cyber Zen Dark Theme Palette */
-    --bg-deep: #0f172a;
-    /* Slate 900 */
-    --bg-glass: rgba(15, 23, 42, 0.6);
-    --border-glass: rgba(255, 255, 255, 0.1);
-    --accent-glow: rgba(139, 92, 246, 0.5);
-    /* Violet */
-    --text-primary: #f8fafc;
-    /* Slate 50 */
-    --text-secondary: #94a3b8;
-    /* Slate 400 */
+  body {
+    @apply text-phy-text antialiased;
+    font-family: 'LXGW WenKai', 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--phy-bg-base);
+    transition: background-color 0.5s ease-in-out, color 0.5s ease-in-out;
+  }
+}
+
+@layer components {
+
+  /* Core Glassmorphism UI Kit */
+  .glass-panel {
+    @apply bg-phy-glass backdrop-blur-xl border border-phy-border shadow-lg;
+    transition: background-color 0.5s ease, border-color 0.5s ease;
   }
 
-  body {
-    @apply text-slate-100 font-sans antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background-color: var(--bg-deep);
-    /* Default dark background */
+  .glass-panel-hover {
+    @apply hover:bg-phy-glassHeavy hover:border-phy-borderHover hover:shadow-xl transition-all duration-300;
+  }
+
+  .glass-sidebar {
+    @apply bg-phy-glass backdrop-blur-2xl border-r border-phy-border;
+  }
+
+  .glass-modal {
+    @apply bg-phy-glassHeavy backdrop-blur-3xl border border-phy-border shadow-2xl;
   }
 }
 
@@ -37,12 +49,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--phy-borderHover);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--phy-text-muted);
 }
 
 /* Utility Animations */
@@ -93,3 +105,70 @@
     @apply text-slate-500 italic;
   }
 }
+
+/* ══════════════════════════════════════════
+   Mobile / Touch Optimizations
+   (iOS + Android universal)
+══════════════════════════════════════════ */
+
+/* Prevent 300ms tap delay on Android Chrome */
+* {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS smooth momentum scrolling */
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Prevent horizontal page scroll bleed on mobile */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior: none;
+}
+
+/* Prevent iOS form zoom-in (font-size must be >=16px on inputs) */
+input, textarea, select {
+  font-size: max(16px, 1em);
+}
+
+/* Mobile Segmented Control */
+.mobile-tabs {
+  @apply flex bg-phy-bg rounded-2xl p-1 gap-1 border border-phy-border;
+}
+
+.mobile-tab-btn {
+  @apply flex-1 py-2 rounded-xl text-xs font-bold text-center transition-all duration-200;
+}
+
+.mobile-tab-btn.active {
+  @apply bg-phy-accentGlass text-phy-accent shadow-sm;
+}
+
+.mobile-tab-btn:not(.active) {
+  @apply text-phy-muted;
+}
+
+/* Mobile Bottom Sheet slide-up animation */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+.mobile-sheet-enter {
+  animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* FAB (Floating Action Button) */
+.fab {
+  @apply fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-phy-accent text-white shadow-2xl flex items-center justify-center;
+  box-shadow: 0 8px 30px -4px var(--phy-accent);
+  transform: translateZ(0);
+}
+
+.fab:active {
+  transform: scale(0.94);
+}

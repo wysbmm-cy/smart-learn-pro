@@ -14,7 +14,7 @@ const StudyHeatmap = ({ dailyActivity }) => {
     }
 
     const getColor = (count) => {
-        if (!count) return 'bg-slate-100';
+        if (!count) return 'bg-phy-bg';
         if (count < 10) return 'bg-green-200'; // Light effort
         if (count < 30) return 'bg-green-400'; // Moderate effort
         if (count < 60) return 'bg-green-600'; // High effort
@@ -38,8 +38,8 @@ const StudyHeatmap = ({ dailyActivity }) => {
     });
 
     return (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6 animate-fade-in">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <div className="bg-phy-glass rounded-2xl p-6 shadow-sm border border-phy-border mb-6 animate-fade-in">
+            <h3 className="text-sm font-bold text-phy-muted uppercase tracking-wider mb-4 flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                 Learning Consistency (Last 6 Months)
             </h3>
@@ -57,7 +57,7 @@ const StudyHeatmap = ({ dailyActivity }) => {
                                         className={`w-3 h-3 rounded-sm ${getColor(count)} transition-all hover:scale-125 hover:ring-2 ring-offset-1 ring-green-300 relative group cursor-pointer hover:z-20`}
                                     >
                                         {/* Tooltip */}
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-phy-glassHeavy text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
                                             {count} words on {dateStr}
                                         </div>
                                     </div>
@@ -68,9 +68,9 @@ const StudyHeatmap = ({ dailyActivity }) => {
                 </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 mt-3 text-[10px] text-slate-400">
+            <div className="flex items-center justify-end gap-2 mt-3 text-[10px] text-phy-muted">
                 <span>Less</span>
-                <div className="w-3 h-3 bg-slate-100 rounded-sm"></div>
+                <div className="w-3 h-3 bg-phy-bg rounded-sm"></div>
                 <div className="w-3 h-3 bg-green-200 rounded-sm"></div>
                 <div className="w-3 h-3 bg-green-400 rounded-sm"></div>
                 <div className="w-3 h-3 bg-green-600 rounded-sm"></div>

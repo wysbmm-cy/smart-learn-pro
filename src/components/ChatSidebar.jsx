@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import SharedMarkdown from './SharedMarkdown';
 import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, History, Plus, Trash2, MessageSquare, Zap, MessageCircle, Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, BookOpen } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { streamChatMessage, streamAgentChat } from '../services/ai';
@@ -37,7 +36,7 @@ const VIEW_INFO = {
     study: { label: '阅读分析', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
     exam: { label: '模拟考场', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
     plan: { label: '智能计划', icon: Brain, color: 'text-cyan-600 bg-cyan-50 border-cyan-200' },
-    dashboard: { label: '工作台', icon: Brain, color: 'text-slate-600 bg-slate-50 border-slate-200' },
+    dashboard: { label: '工作台', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
     knowledge: { label: '知识图谱', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
 };
 
@@ -307,7 +306,7 @@ const ChatSidebar = () => {
         <div
             ref={sidebarRef}
             style={{ width: isChatOpen ? width : 0 }}
-            className={`border-l border-slate-200 bg-white shadow-xl transition-all duration-300 flex flex-col h-full shrink-0 relative ${isChatOpen ? 'translate-x-0' : 'translate-x-full border-l-0 overflow-hidden opacity-0'
+            className={`glass-sidebar transition-all duration-300 flex flex-col h-full shrink-0 relative ${isChatOpen ? 'translate-x-0' : 'translate-x-full border-l-0 overflow-hidden opacity-0'
                 }`}
         >
             {/* Resize Handle */}
@@ -321,8 +320,8 @@ const ChatSidebar = () => {
             />
 
             {/* Header */}
-            <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 bg-slate-50/50 backdrop-blur-sm shrink-0">
-                <div className="flex items-center gap-2 font-bold text-slate-800">
+            <div className="h-16 flex items-center justify-between px-4 border-b border-phy-border bg-phy-glass-heavy shrink-0">
+                <div className="flex items-center gap-2 font-bold text-phy-text">
                     <div className={`p-1.5 rounded-lg ${chatMode === 'agent' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
                         {chatMode === 'agent' ? <Zap size={18} /> : <Bot size={18} />}
                     </div>
@@ -331,12 +330,12 @@ const ChatSidebar = () => {
 
                 <div className="flex items-center gap-1">
                     {/* Mode Toggle */}
-                    <div className="flex bg-slate-100 rounded-lg p-0.5 mr-1">
+                    <div className="flex bg-phy-glassHeavy rounded-lg p-0.5 mr-1 border border-phy-border">
                         <button
                             onClick={() => setChatMode('chat')}
                             className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${chatMode === 'chat'
-                                ? 'bg-white text-indigo-600 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
+                                ? 'bg-phy-accentGlass text-phy-accent shadow-sm border border-phy-borderHover'
+                                : 'text-phy-muted hover:text-phy-text'
                                 }`}
                             title="普通对话模式"
                         >
@@ -346,8 +345,8 @@ const ChatSidebar = () => {
                         <button
                             onClick={() => setChatMode('agent')}
                             className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${chatMode === 'agent'
-                                ? 'bg-white text-amber-600 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
+                                ? 'bg-phy-accentGlass text-phy-accent shadow-sm border border-phy-borderHover'
+                                : 'text-phy-muted hover:text-phy-text'
                                 }`}
                             title="Agent 模式 - AI 可读取并操作你的学习数据"
                         >
@@ -359,7 +358,7 @@ const ChatSidebar = () => {
                     {/* History Toggle */}
                     <button
                         onClick={() => setViewMode(prev => prev === 'chat' ? 'history' : 'chat')}
-                        className={`p-2 rounded-lg transition-colors ${viewMode === 'history' ? 'bg-indigo-100 text-indigo-600' : 'hover:bg-slate-200 text-slate-500'}`}
+                        className={`p-2 rounded-lg transition-colors ${viewMode === 'history' ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glassHeavy text-phy-muted'}`}
                         title="Chat History"
                     >
                         {viewMode === 'history' ? <MessageSquare size={18} /> : <History size={18} />}
@@ -367,7 +366,7 @@ const ChatSidebar = () => {
 
                     <button
                         onClick={toggleChat}
-                        className="p-2 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
+                        className="p-2 hover:bg-phy-glassHeavy rounded-lg text-phy-muted transition-colors"
                     >
                         <X size={18} />
                     </button>
@@ -376,11 +375,11 @@ const ChatSidebar = () => {
 
             {/* Agent Mode Banner */}
             {chatMode === 'agent' && viewMode === 'chat' && (
-                <div className="px-4 py-2 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 shrink-0">
-                    <div className="flex items-center gap-2 text-xs text-amber-700">
-                        <Database size={12} />
-                        <span className="font-medium">Agent 模式</span>
-                        <span className="text-amber-500">· 可读取数据 + 创建学习内容 + 一键跳转</span>
+                <div className="px-4 py-2 bg-phy-accent border-b border-phy-borderHover shrink-0 bg-opacity-10 backdrop-blur-sm">
+                    <div className="flex items-center gap-2 text-xs text-phy-text font-bold">
+                        <Database size={12} className="text-phy-accent" />
+                        <span>Agent 模式</span>
+                        <span className="opacity-70 font-normal">· 可读取数据 + 创建学习内容 + 一键跳转</span>
                     </div>
                 </div>
             )}
@@ -388,21 +387,21 @@ const ChatSidebar = () => {
             {/* Content: Switch between Chat and History */}
             {viewMode === 'history' ? (
                 // --- History View ---
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                     <button
                         onClick={() => {
                             createNewChatSession();
                             setViewMode('chat');
                         }}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-dashed border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors font-bold text-sm shadow-sm"
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-phy-glass border border-dashed border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors font-bold text-sm shadow-sm"
                     >
                         <Plus size={16} /> New Chat
                     </button>
 
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-4 px-2">Recent Sessions</div>
+                    <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mt-4 px-2">Recent Sessions</div>
 
                     {(!chatSessions || chatSessions.length === 0) && (
-                        <div className="text-center py-8 text-slate-400 text-sm italic">No history found.</div>
+                        <div className="text-center py-8 text-phy-muted text-sm italic">No history found.</div>
                     )}
 
                     {(chatSessions || []).map(session => (
@@ -413,11 +412,11 @@ const ChatSidebar = () => {
                                     setViewMode('chat');
                                 }}
                                 className={`w-full text-left p-3 rounded-xl transition-all border ${currentSessionId === session.id
-                                    ? 'bg-white border-indigo-500 shadow-md ring-2 ring-indigo-500/10'
-                                    : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm'}`}
+                                    ? 'bg-phy-glass border-phy-accent shadow-md ring-2 ring-phy-accent/20'
+                                    : 'bg-phy-bg border-phy-border hover:border-phy-accentHover hover:bg-phy-glassHeavy'}`}
                             >
-                                <div className="font-bold text-slate-700 text-sm truncate pr-6">{session.title || "New Chat"}</div>
-                                <div className="text-[10px] text-slate-400 mt-1 flex justify-between items-center">
+                                <div className="font-bold text-phy-text text-sm truncate pr-6">{session.title || "New Chat"}</div>
+                                <div className="text-[10px] text-phy-muted mt-1 flex justify-between items-center">
                                     <span>{new Date(session.updatedAt || Date.now()).toLocaleDateString()}</span>
                                     <span>{session.messages?.length || 0} msgs</span>
                                 </div>
@@ -427,7 +426,7 @@ const ChatSidebar = () => {
                                     e.stopPropagation();
                                     if (confirm("Delete this chat?")) removeChatSession(session.id);
                                 }}
-                                className="absolute right-2 top-3 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                className="absolute right-2 top-3 p-1.5 text-phy-text hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
                                 title="Delete"
                             >
                                 <Trash2 size={14} />
@@ -438,14 +437,14 @@ const ChatSidebar = () => {
             ) : (
                 // --- Chat View ---
                 <>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                         {/* Welcome / New Chat Hint */}
                         {chatMessages.length <= 1 && (
                             <div className="text-center py-8 opacity-60">
-                                <div className={`w-16 h-16 ${chatMode === 'agent' ? 'bg-amber-50 text-amber-400' : 'bg-indigo-50 text-indigo-400'} rounded-2xl mx-auto flex items-center justify-center mb-3`}>
+                                <div className={`w-16 h-16 bg-phy-glassHeavy text-phy-accent rounded-2xl mx-auto flex items-center justify-center mb-3 border border-phy-border`}>
                                     {chatMode === 'agent' ? <Zap size={32} /> : <Bot size={32} />}
                                 </div>
-                                <p className="text-slate-500 text-sm">
+                                <p className="text-phy-muted text-sm">
                                     {chatMode === 'agent'
                                         ? '🔥 Max Mode — 给我单词/话题，我帮你准备全套学习材料'
                                         : 'Start a new conversation...'
@@ -462,7 +461,7 @@ const ChatSidebar = () => {
                                             <button
                                                 key={i}
                                                 onClick={() => { setInput(q.replace(/^\S+\s/, '')); inputRef.current?.focus(); }}
-                                                className="text-xs px-3 py-1.5 bg-white border border-amber-200 text-amber-700 rounded-full hover:bg-amber-50 transition-colors"
+                                                className="text-xs px-3 py-1.5 bg-phy-bg border border-phy-border text-phy-text rounded-full hover:bg-phy-glassHeavy hover:border-phy-borderHover transition-colors"
                                             >
                                                 {q}
                                             </button>
@@ -474,50 +473,19 @@ const ChatSidebar = () => {
 
                         {chatMessages.map((msg, idx) => (
                             <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-slate-200 text-slate-500' :
-                                    chatMode === 'agent' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'
-                                    }`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-phy-glassHeavy text-phy-accent border border-phy-border`}>
                                     {msg.role === 'user' ? <User size={14} /> :
                                         chatMode === 'agent' ? <Zap size={14} /> : <Bot size={14} />}
                                 </div>
                                 <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                                    ? 'bg-slate-900 text-white rounded-br-none'
-                                    : 'bg-white border border-slate-200 text-slate-700 shadow-sm rounded-bl-none'
+                                    ? 'bg-phy-accent text-white rounded-br-none shadow-sm shadow-phy-accent/20 border border-phy-accentHover'
+                                    : 'glass-panel text-phy-text rounded-bl-none'
                                     }`}>
                                     {msg.role === 'user' ? (
                                         msg.content
                                     ) : (
                                         <div className="prose prose-sm max-w-none prose-slate break-words" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkGfm]}
-                                                components={{
-                                                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                                                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2" {...props} />,
-                                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2" {...props} />,
-                                                    li: ({ node, ...props }) => <li className="mb-1" {...props} />,
-                                                    strong: ({ node, ...props }) => <strong className="font-bold text-slate-900" {...props} />,
-                                                    h3: ({ node, ...props }) => <h3 className="text-sm font-bold text-slate-800 mt-3 mb-1" {...props} />,
-                                                    h4: ({ node, ...props }) => <h4 className="text-sm font-semibold text-slate-700 mt-2 mb-1" {...props} />,
-                                                    hr: () => <hr className="my-2 border-slate-200" />,
-                                                    table: ({ node, ...props }) => (
-                                                        <div className="overflow-x-auto my-2 rounded-lg border border-slate-200">
-                                                            <table className="w-full text-xs" {...props} />
-                                                        </div>
-                                                    ),
-                                                    thead: ({ node, ...props }) => <thead className="bg-slate-100" {...props} />,
-                                                    tbody: ({ node, ...props }) => <tbody className="divide-y divide-slate-100" {...props} />,
-                                                    tr: ({ node, ...props }) => <tr className="hover:bg-slate-50" {...props} />,
-                                                    th: ({ node, ...props }) => <th className="px-2 py-1.5 text-left font-semibold text-slate-700 whitespace-nowrap" {...props} />,
-                                                    td: ({ node, ...props }) => <td className="px-2 py-1.5 text-slate-600" {...props} />,
-                                                    code: ({ node, inline, className, children, ...props }) => {
-                                                        return inline ?
-                                                            <code className="bg-slate-100 px-1 py-0.5 rounded text-xs font-mono text-pink-600" {...props}>{children}</code> :
-                                                            <code className="block bg-slate-900 text-slate-50 p-3 rounded-lg text-xs font-mono my-2 overflow-x-auto" {...props}>{children}</code>
-                                                    }
-                                                }}
-                                            >
-                                                {msg.content}
-                                            </ReactMarkdown>
+                                            <SharedMarkdown content={msg.content} />
                                         </div>
                                     )}
                                 </div>
@@ -602,7 +570,7 @@ const ChatSidebar = () => {
                                             // 没有导航目标的 action（如 no_cards），不渲染卡片
                                             return null;
                                         }
-                                        const info = VIEW_INFO[viewId] || { label: viewId, icon: Brain, color: 'text-slate-600 bg-slate-50 border-slate-200' };
+                                        const info = VIEW_INFO[viewId] || { label: viewId, icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' };
                                         const Icon = info.icon;
 
                                         return (
@@ -634,22 +602,21 @@ const ChatSidebar = () => {
 
                         {isSending && chatMessages[chatMessages.length - 1]?.content === "" && (
                             <div className="flex gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${chatMode === 'agent' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'
-                                    }`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border border-phy-border bg-phy-glass text-phy-accent`}>
                                     {chatMode === 'agent' ? <Zap size={14} /> : <Bot size={14} />}
                                 </div>
-                                <Loader2 size={16} className="animate-spin text-slate-400 mt-2" />
+                                <Loader2 size={16} className="animate-spin text-phy-accent mt-2" />
                             </div>
                         )}
                         <div ref={messagesEndRef} />
                     </div>
 
                     {/* Input Area */}
-                    <div className="p-4 bg-white border-t border-slate-100 relative shrink-0">
+                    <div className="p-4 bg-phy-glassHeavy border-t border-phy-border relative shrink-0">
                         {/* Context Menu Suggestion UI */}
                         {showSuggestions && suggestions.length > 0 && (
-                            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden max-h-60 overflow-y-auto animate-fade-in z-50">
-                                <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            <div className="absolute bottom-full left-4 right-4 mb-2 bg-phy-glass rounded-xl shadow-2xl border border-phy-border overflow-hidden max-h-60 overflow-y-auto animate-fade-in z-50">
+                                <div className="px-3 py-2 bg-phy-bg border-b border-phy-border text-xs font-bold text-phy-muted uppercase tracking-wider">
                                     Reference Context
                                 </div>
                                 {suggestions.map((item, idx) => (
@@ -660,13 +627,13 @@ const ChatSidebar = () => {
                                     >
                                         <div className={`p-1.5 rounded-lg ${item.type === 'context' ? 'bg-purple-100 text-purple-600' :
                                             item.type === 'note' ? 'bg-blue-100 text-blue-600' :
-                                                'bg-slate-100 text-slate-600'
+                                                'bg-phy-bg text-phy-muted'
                                             }`}>
                                             <item.icon size={16} />
                                         </div>
                                         <div>
-                                            <div className="font-bold text-sm text-slate-700 truncate">{item.title}</div>
-                                            <div className="text-xs text-slate-400 truncate max-w-[200px]">
+                                            <div className="font-bold text-sm text-phy-text truncate">{item.title}</div>
+                                            <div className="text-xs text-phy-muted truncate max-w-[200px]">
                                                 {item.type.toUpperCase()}
                                             </div>
                                         </div>
@@ -703,18 +670,12 @@ const ChatSidebar = () => {
                                     if (e.key === 'Escape') setShowSuggestions(false);
                                 }}
                                 placeholder={chatMode === 'agent' ? "给我几个单词或话题，我帮你准备全套学习..." : "Ask anything... (@ for context)"}
-                                className={`w-full bg-slate-50 border rounded-xl pl-4 pr-12 py-3 text-sm text-slate-800 focus:bg-white focus:ring-4 outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto ${chatMode === 'agent'
-                                    ? 'border-amber-200 focus:border-amber-500 focus:ring-amber-500/10'
-                                    : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/10'
-                                    }`}
+                                className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-12 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
                             />
                             <button
                                 onClick={handleSend}
                                 disabled={!input.trim() || isSending}
-                                className={`absolute right-2 top-2 p-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md ${chatMode === 'agent'
-                                    ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-200'
-                                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                                    }`}
+                                className={`absolute right-2 top-2 p-2 text-white bg-phy-accent hover:bg-phy-accentHover rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md shadow-phy-accent/20 border border-phy-accentHover`}
                             >
                                 <Send size={16} />
                             </button>

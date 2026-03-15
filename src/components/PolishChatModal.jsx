@@ -90,41 +90,41 @@ const PolishChatModal = ({ selectedText, onClose, onApply }) => {
     }, [messages]);
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-black/50 animate-in fade-in duration-200">
-            <div className="bg-slate-900 rounded-2xl shadow-2xl border border-slate-700 w-full max-w-2xl flex flex-col h-[600px] overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md bg-black/40 animate-in fade-in duration-200 text-phy-text">
+            <div className="glass-modal rounded-3xl shadow-2xl border border-phy-border w-full max-w-2xl flex flex-col h-[600px] overflow-hidden">
                 {/* Header */}
-                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-slate-950/50">
-                    <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                        <Sparkles className="text-purple-500" /> 单句精修 (Sentence Polish)
+                <div className="p-5 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur">
+                    <h3 className="font-bold text-phy-text text-lg flex items-center gap-2">
+                        <Sparkles className="text-phy-accent" /> 单句精修 (Sentence Polish)
                     </h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={20} /></button>
+                    <button onClick={onClose} className="text-phy-muted hover:text-phy-accent hover:bg-phy-glassHover p-1.5 rounded-full transition-colors"><X size={20} /></button>
                 </div>
 
                 {/* Chat Area */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-900/50">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-phy-bg/30">
                     {/* Source Text Card */}
-                    <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5 mb-6">
-                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Selected Text</div>
-                        <p className="text-slate-200 font-serif italic text-lg leading-relaxed">"{selectedText}"</p>
+                    <div className="glass-panel p-5 rounded-2xl mb-6">
+                        <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-2 flex items-center gap-2"><MessageSquare size={14} /> Selected Text</div>
+                        <p className="text-phy-text font-serif italic text-lg leading-relaxed">"{selectedText}"</p>
                     </div>
 
                     {messages.slice(1).map((msg, idx) => (
-                        <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-indigo-600' : 'bg-purple-600'}`}>
-                                {msg.role === 'user' ? <MessageSquare size={14} className="text-white" /> : <Sparkles size={14} className="text-white" />}
+                        <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border shadow-sm ${msg.role === 'user' ? 'bg-phy-glass border-phy-border text-phy-text' : 'bg-phy-accent border-phy-accent/50 box-border'}`}>
+                                {msg.role === 'user' ? <MessageSquare size={16} /> : <Sparkles size={16} className="text-white" />}
                             </div>
-                            <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed ${msg.role === 'user'
-                                ? 'bg-indigo-600 text-white rounded-tr-none'
-                                : 'bg-slate-800 text-slate-200 rounded-tl-none border border-white/5'
+                            <div className={`max-w-[85%] rounded-3xl p-5 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                                ? 'bg-phy-glass border border-phy-border text-phy-text rounded-tr-none'
+                                : 'bg-phy-accentGlass text-phy-text rounded-tl-none border border-phy-accent/20'
                                 }`}>
-                                <div className="markdown-body whitespace-pre-wrap font-sans">
+                                <div className="markdown-body prose-phy whitespace-pre-wrap font-sans">
                                     {msg.content}
                                 </div>
                                 {msg.role === 'assistant' && (
-                                    <div className="mt-3 flex gap-2 justify-end border-t border-white/5 pt-2">
+                                    <div className="mt-4 flex gap-2 justify-end border-t border-phy-border pt-3">
                                         <button
                                             onClick={() => copyToClipboard(msg.content)}
-                                            className="text-xs flex items-center gap-1 text-slate-400 hover:text-white transition-colors"
+                                            className="text-xs flex items-center gap-1.5 font-medium text-phy-muted hover:text-phy-accent hover:border-phy-accent transition-colors bg-phy-glass border border-phy-border px-3 py-1.5 rounded-full"
                                         >
                                             <Copy size={12} /> Copy
                                         </button>
@@ -135,12 +135,12 @@ const PolishChatModal = ({ selectedText, onClose, onApply }) => {
                         </div>
                     ))}
                     {isLoading && (
-                        <div className="flex gap-3">
-                            <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center shrink-0">
-                                <Sparkles size={14} className="text-white animate-pulse" />
+                        <div className="flex gap-4">
+                            <div className="w-9 h-9 rounded-full bg-phy-accent flex items-center justify-center shrink-0 border border-phy-accent/50 shadow-sm">
+                                <Sparkles size={16} className="text-white animate-pulse" />
                             </div>
-                            <div className="bg-slate-800 rounded-2xl rounded-tl-none p-4 border border-white/5 flex items-center gap-2 text-slate-400 text-sm">
-                                <Loader2 size={14} className="animate-spin" /> Thinking...
+                            <div className="bg-phy-accentGlass rounded-3xl rounded-tl-none p-5 border border-phy-accent/20 flex items-center gap-3 text-phy-text text-sm font-medium shadow-sm">
+                                <Loader2 size={16} className="animate-spin text-phy-accent" /> Thinking...
                             </div>
                         </div>
                     )}
@@ -148,25 +148,25 @@ const PolishChatModal = ({ selectedText, onClose, onApply }) => {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 bg-slate-950/50 border-t border-white/10">
-                    <div className="relative">
+                <div className="p-5 bg-phy-glassHeavy backdrop-blur border-t border-phy-border">
+                    <div className="relative group">
                         <textarea
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder="觉得不满意？告诉 AI 怎么改 (如: '更商务一点', '换个词')"
-                            className="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-4 pr-12 py-3 text-sm text-slate-200 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all resize-none shadow-inner"
+                            className="w-full bg-phy-bg border border-phy-border group-hover:border-phy-borderHover rounded-2xl pl-5 pr-14 py-4 text-sm text-phy-text focus:outline-none focus:border-phy-accent transition-all resize-none shadow-sm"
                             rows="2"
                         />
                         <button
                             onClick={handleSend}
                             disabled={!input.trim() || isLoading}
-                            className="absolute right-2 bottom-2 p-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 text-white rounded-lg transition-all shadow-lg"
+                            className="absolute right-3 bottom-3 p-2.5 bg-phy-accent hover:opacity-90 disabled:bg-phy-glassHover disabled:text-phy-muted disabled:border-transparent disabled:opacity-50 text-white rounded-xl transition-all shadow-md active:scale-95"
                         >
-                            <Send size={16} />
+                            <Send size={18} />
                         </button>
                     </div>
-                    <div className="text-center mt-2 text-[10px] text-slate-500">
+                    <div className="text-center mt-3 text-[10px] font-bold text-phy-muted">
                         Enter 发送 • Shift + Enter 换行
                     </div>
                 </div>

@@ -24,7 +24,7 @@ const SkeletonLoader = () => {
             {/* Content Grid Skeleton */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[...Array(6)].map((_, i) => (
-                    <div key={i} className="bg-slate-900/40 p-6 rounded-2xl border border-white/5 space-y-4">
+                    <div key={i} className="bg-slate-900/40 p-6 rounded-2xl border border-phy-border space-y-4">
                         <div className="flex justify-between items-start">
                             <Skeleton className="h-12 w-12 rounded-xl" />
                             <Skeleton className="h-6 w-16 rounded-full" />

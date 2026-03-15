@@ -136,6 +136,24 @@ export const AppProvider = ({ children }) => {
         return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
     });
 
+    // --- Persistent Theme ---
+    const [theme, setThemeState] = useState(() => {
+        return localStorage.getItem('smartlearn_theme') || 'vampire';
+    });
+
+    const setTheme = (newTheme) => {
+        setThemeState(newTheme);
+        localStorage.setItem('smartlearn_theme', newTheme);
+    };
+
+    useEffect(() => {
+        const themes = ['theme-vampire', 'theme-abyss', 'theme-radiation', 'theme-sakura', 'theme-ocean', 'theme-mauve', 'theme-golden', 'theme-cheery', 'theme-prussian', 'theme-sky', 'theme-forest'];
+        document.body.classList.remove(...themes);
+        if (theme) {
+            document.body.classList.add(`theme-${theme}`);
+        }
+    }, [theme]);
+
     // --- Persistent Stats ---
     const [stats, setStats] = useState(() => {
         const saved = localStorage.getItem('smartlearn_stats');
@@ -671,7 +689,9 @@ export const AppProvider = ({ children }) => {
         getDailyImages,
         deleteDailyImage,
         // Navigation (Agent Mode)
-        navigateRef
+        navigateRef,
+        theme,
+        setTheme
     };
 
     return (

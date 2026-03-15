@@ -187,7 +187,7 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
             <div className="grid grid-cols-1 gap-3 mt-6">
                 {/* Scenario Description for Pragmatic Scenario */}
                 {drill.scenario_description && (
-                    <div className="bg-slate-50 border-l-4 border-indigo-400 p-4 mb-4 rounded-r-lg text-slate-600 text-sm italic">
+                    <div className="bg-phy-bg border-l-4 border-indigo-400 p-4 mb-4 rounded-r-lg text-phy-muted text-sm italic">
                         Scenario: {drill.scenario_description}
                     </div>
                 )}
@@ -204,12 +204,12 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
                         } else if (index === selectedAnswer && index !== correctIndex) {
                             buttonClass += "bg-rose-50 border-rose-400 text-rose-700";
                         } else {
-                            buttonClass += "bg-slate-50 border-slate-200 text-slate-400";
+                            buttonClass += "bg-phy-bg border-phy-border text-phy-muted";
                         }
                     } else {
                         buttonClass += selectedAnswer === index
                             ? "bg-indigo-50 border-indigo-400 text-indigo-700"
-                            : "bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-700";
+                            : "bg-phy-glass border-phy-border hover:border-indigo-300 hover:bg-indigo-50/50 text-phy-text";
                     }
                     return (
                         <div key={index} className="flex flex-col gap-2">
@@ -218,7 +218,7 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
                                 disabled={showResult}
                                 className={buttonClass}
                             >
-                                <span className="inline-block w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs font-bold mr-3 text-center leading-6">
+                                <span className="inline-block w-6 h-6 rounded-full bg-phy-bg text-phy-muted text-xs font-bold mr-3 text-center leading-6">
                                     {String.fromCharCode(65 + index)}
                                 </span>
                                 {optionText}
@@ -287,7 +287,7 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
     };
 
     return (
-        <div className="bg-white rounded-3xl shadow-xl border-2 border-indigo-100 p-8 w-full max-w-2xl mx-auto">
+        <div className="bg-phy-glass rounded-3xl shadow-xl border-2 border-indigo-100 p-8 w-full max-w-2xl mx-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
@@ -296,20 +296,20 @@ const DrillCard = ({ drill, onComplete, speakText }) => {
                         {getTypeLabel()}
                     </span>
                 </div>
-                <div className="text-xs text-slate-400 flex items-center gap-1">
+                <div className="text-xs text-phy-muted flex items-center gap-1">
                     <Keyboard size={12} />
                     按 Enter 提交
                 </div>
             </div>
 
             {/* Question */}
-            <div className="text-xl font-bold text-slate-800 mb-2">
+            <div className="text-xl font-bold text-phy-text font-bold mb-2">
                 {drill.question}
             </div>
 
             {/* Word Forms extra info */}
             {drill.type === 'word_forms' && drill.baseWord && (
-                <div className="text-sm text-slate-500 mb-4">
+                <div className="text-sm text-phy-muted mb-4">
                     基础词: <span className="font-bold text-indigo-600">{drill.baseWord}</span>
                     {drill.targetForm && <> → 目标词性: <span className="font-bold">{drill.targetForm}</span></>}
                 </div>

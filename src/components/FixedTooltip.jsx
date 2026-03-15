@@ -35,23 +35,23 @@ const FixedTooltip = ({ data, onApply }) => {
             <div className={`pointer-events-auto bg-slate-900/95 backdrop-blur-xl rounded-xl shadow-2xl border ${borderColor} ring-1 ring-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
 
                 {/* Header */}
-                <div className="flex justify-between items-center p-3 bg-white/5 border-b border-white/5">
+                <div className="flex justify-between items-center p-3 bg-phy-glass border-b border-phy-border">
                     <div className="flex items-center gap-2">
                         <span className={`font-bold text-xs uppercase tracking-wider ${badgeColor}`}>{issue.type}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-white/10 rounded text-slate-400 font-mono uppercase">{issue.severity}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-phy-glassHover rounded text-phy-muted font-mono uppercase">{issue.severity}</span>
                     </div>
                 </div>
 
                 {/* Body */}
                 <div className="p-4 space-y-3">
-                    <div className="text-sm text-slate-300 leading-relaxed font-sans text-justify">
+                    <div className="text-sm text-phy-text leading-relaxed font-sans text-justify">
                         {issue.reason}
                     </div>
 
                     {/* Diff Preview */}
-                    <div className="flex items-center gap-2 text-sm bg-black/40 p-2.5 rounded-lg border border-white/5 font-mono overflow-x-auto custom-scrollbar">
+                    <div className="flex items-center gap-2 text-sm bg-black/40 p-2.5 rounded-lg border border-phy-border font-mono overflow-x-auto custom-scrollbar">
                         <span className="text-red-400/70 line-through decoration-red-500/30 whitespace-nowrap">{issue.original}</span>
-                        <ChevronRight size={12} className="text-slate-500 shrink-0" />
+                        <ChevronRight size={12} className="text-phy-muted shrink-0" />
                         <span className="text-emerald-400 font-bold whitespace-nowrap">{issue.fixed}</span>
                     </div>
 

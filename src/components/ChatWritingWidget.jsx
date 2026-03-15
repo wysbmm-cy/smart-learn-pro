@@ -61,24 +61,24 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
     // 提交后显示等待批改状态
     if (isSubmitted) {
         return (
-            <div className="my-3 bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-100">
-                    <div className="flex items-center gap-2 text-sm font-bold text-blue-700">
+            <div className="my-3 glass-panel border border-phy-border rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-phy-glassHeavy backdrop-blur px-4 py-3 border-b border-phy-border">
+                    <div className="flex items-center gap-2 text-sm font-bold text-phy-accent">
                         <PenTool size={16} />
                         造句练习 — 已提交
                     </div>
                 </div>
-                <div className="p-4 space-y-2">
+                <div className="p-4 space-y-2 bg-phy-bg/30">
                     {sentences.map((s, i) => (
                         <div key={i} className="flex gap-2 items-start text-sm">
-                            <span className="text-blue-500 font-bold shrink-0">{i + 1}.</span>
+                            <span className="text-phy-accent font-bold shrink-0">{i + 1}.</span>
                             <div>
-                                <div className="text-slate-500 text-xs mb-0.5">{s.chinese}</div>
-                                <div className="text-slate-800 font-medium">{answers[i]}</div>
+                                <div className="text-phy-muted text-xs mb-0.5">{s.chinese}</div>
+                                <div className="text-phy-text font-medium">{answers[i]}</div>
                             </div>
                         </div>
                     ))}
-                    <div className="flex items-center gap-2 text-xs text-blue-500 mt-3 pt-2 border-t border-blue-100">
+                    <div className="flex items-center gap-2 text-xs text-phy-accent mt-3 pt-2 border-t border-phy-border">
                         <Loader2 size={12} className="animate-spin" />
                         AI 正在批改中...
                     </div>
@@ -89,14 +89,14 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
 
     // 主答题界面
     return (
-        <div className="my-3 bg-white border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="my-3 glass-panel border border-phy-border rounded-2xl overflow-hidden shadow-sm relative">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2.5 border-b border-blue-100">
+            <div className="bg-phy-glassHeavy backdrop-blur px-4 py-2.5 border-b border-phy-border">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold text-blue-700">
+                    <div className="flex items-center gap-2 text-xs font-bold text-phy-accent">
                         <PenTool size={14} />
                         造句练习
-                        <span className="text-blue-400 font-normal">
+                        <span className="text-phy-muted font-normal ml-1">
                             {currentIndex + 1} / {sentences.length}
                         </span>
                     </div>
@@ -104,11 +104,11 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
                         {answers.map((a, i) => (
                             <div
                                 key={i}
-                                className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all ${i === currentIndex
-                                        ? 'bg-blue-500 scale-125'
-                                        : a.trim()
-                                            ? 'bg-emerald-400'
-                                            : 'bg-slate-200'
+                                className={`w-2 h-2 rounded-full cursor-pointer transition-all border ${i === currentIndex
+                                    ? 'bg-phy-accent border-phy-accent scale-125'
+                                    : a.trim()
+                                        ? 'bg-emerald-500 border-emerald-500'
+                                        : 'bg-phy-glass border-phy-border'
                                     }`}
                                 onClick={() => setCurrentIndex(i)}
                             />
@@ -116,36 +116,36 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
                     </div>
                 </div>
                 {/* Progress bar */}
-                <div className="mt-1.5 h-1 bg-blue-100 rounded-full overflow-hidden">
+                <div className="mt-2 h-1 bg-phy-glassHover rounded-full overflow-hidden">
                     <div
-                        className="h-full bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full transition-all duration-500"
+                        className="h-full bg-phy-accent rounded-full transition-all duration-500"
                         style={{ width: `${(answers.filter(a => a.trim()).length / sentences.length) * 100}%` }}
                     />
                 </div>
             </div>
 
             {/* Current Sentence */}
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-4 bg-phy-bg/30">
                 {/* Chinese prompt */}
-                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                    <div className="text-xs text-slate-400 font-bold mb-1">中文情境：</div>
-                    <div className="text-sm text-slate-700 leading-relaxed">
+                <div className="bg-phy-glass border border-phy-border rounded-xl p-3.5 shadow-inner">
+                    <div className="text-xs text-phy-muted font-bold mb-1 opacity-80">中文情境：</div>
+                    <div className="text-sm text-phy-text leading-relaxed font-medium">
                         {currentSentence.chinese}
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                        <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-bold">
-                            目标词: {currentSentence.targetWord}
+                    <div className="mt-3 flex items-center gap-2">
+                        <span className="text-[10px] text-phy-text bg-phy-glassLight px-2.5 py-1 rounded-md border border-phy-border font-bold">
+                            🎯 目标词: <span className="text-phy-accent">{currentSentence.targetWord}</span>
                         </span>
                         {currentSentence.hint && (
-                            <span className="text-[10px] text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                提示: {currentSentence.hint}
+                            <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20">
+                                💡 提示: {currentSentence.hint}
                             </span>
                         )}
                     </div>
                 </div>
 
                 {/* Input */}
-                <div className="relative">
+                <div className="relative group">
                     <textarea
                         ref={el => inputRefs.current[currentIndex] = el}
                         value={answers[currentIndex]}
@@ -159,20 +159,20 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
                             }
                         }}
                         placeholder="Type your English translation here..."
-                        className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 
-                            focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none 
-                            transition-all resize-none min-h-[60px] placeholder:text-slate-300"
+                        className="w-full bg-phy-bg border border-phy-border group-hover:border-phy-borderHover rounded-xl px-4 py-3 text-sm text-phy-text 
+                            focus:border-phy-accent outline-none 
+                            transition-all resize-none min-h-[70px] placeholder:text-phy-muted shadow-sm"
                         autoFocus={currentIndex === 0}
                     />
                 </div>
 
                 {/* Navigation */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                     <button
                         onClick={handlePrev}
                         disabled={currentIndex === 0}
-                        className="px-3 py-1.5 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 
-                            rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="px-4 py-2.5 text-xs font-bold text-phy-muted bg-phy-glass border border-phy-border hover:bg-phy-glassHover hover:text-phy-text 
+                            rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
                     >
                         ← 上一句
                     </button>
@@ -181,9 +181,9 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
                         <button
                             onClick={handleNext}
                             disabled={!answers[currentIndex].trim()}
-                            className="flex-1 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 
-                                border border-blue-200 rounded-lg transition-all disabled:opacity-30 
-                                disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                            className="flex-1 py-2.5 text-xs font-bold text-white bg-phy-accent hover:opacity-90 
+                                rounded-xl transition-all disabled:opacity-30 
+                                disabled:cursor-not-allowed flex items-center justify-center gap-1 shadow-md shadow-phy-accent/20 active:scale-95"
                         >
                             下一句 <ChevronRight size={14} />
                         </button>
@@ -191,9 +191,9 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
                         <button
                             onClick={handleSubmitAll}
                             disabled={!allFilled}
-                            className="flex-1 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-600 
-                                hover:from-blue-600 hover:to-indigo-700 rounded-lg transition-all disabled:opacity-30 
-                                disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow-sm"
+                            className="flex-1 py-2.5 text-xs font-bold text-white bg-phy-accent 
+                                hover:opacity-90 rounded-xl transition-all disabled:opacity-30 
+                                disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow-md shadow-phy-accent/20 active:scale-95"
                         >
                             <Send size={14} />
                             全部提交，请 AI 批改
@@ -203,24 +203,24 @@ const ChatWritingWidget = ({ sentences = [], onSubmit }) => {
 
                 {/* Quick sentence overview */}
                 {sentences.length > 1 && (
-                    <div className="border-t border-slate-100 pt-2 space-y-1">
+                    <div className="border-t border-phy-border pt-3 space-y-1 mt-2">
                         {sentences.map((s, i) => (
                             <div
                                 key={i}
                                 onClick={() => setCurrentIndex(i)}
-                                className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs cursor-pointer transition-all ${i === currentIndex
-                                        ? 'bg-blue-50 text-blue-700'
-                                        : 'text-slate-400 hover:bg-slate-50'
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs cursor-pointer transition-all border ${i === currentIndex
+                                    ? 'bg-phy-accentGlass border-phy-accent/30 text-phy-accent font-medium'
+                                    : 'text-phy-muted border-transparent hover:bg-phy-glassHover hover:text-phy-text'
                                     }`}
                             >
-                                <span className="font-bold shrink-0">{i + 1}.</span>
+                                <span className="font-bold shrink-0 opacity-80">{i + 1}.</span>
                                 <span className="truncate flex-1">
                                     {s.chinese.length > 25 ? s.chinese.slice(0, 25) + '...' : s.chinese}
                                 </span>
                                 {answers[i].trim() ? (
-                                    <Check size={12} className="text-emerald-500 shrink-0" />
+                                    <Check size={14} className="text-emerald-500 shrink-0" />
                                 ) : (
-                                    <div className="w-3 h-3 rounded-full border border-slate-300 shrink-0" />
+                                    <div className="w-3.5 h-3.5 rounded-full border border-phy-border bg-phy-glass shrink-0" />
                                 )}
                             </div>
                         ))}

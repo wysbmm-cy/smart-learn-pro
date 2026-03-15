@@ -307,7 +307,7 @@ const WriterView = ({ params }) => {
 
     // Helper: Score Badge Color
     const getScoreColor = (score) => {
-        if (!score) return 'bg-slate-500';
+        if (!score) return 'bg-phy-bg0';
         if (score >= 13) return 'bg-emerald-500 shadow-emerald-500/50';
         if (score >= 10) return 'bg-indigo-500 shadow-indigo-500/50';
         if (score >= 7) return 'bg-amber-500 shadow-amber-500/50';
@@ -403,7 +403,7 @@ const WriterView = ({ params }) => {
 
         return (
             <div
-                className="bg-slate-800/50 rounded-xl p-6 border border-white/10 font-serif text-lg leading-loose text-slate-300 whitespace-pre-wrap relative"
+                className="bg-slate-800/50 rounded-xl p-6 border border-phy-borderHover font-serif text-lg leading-loose text-phy-text whitespace-pre-wrap relative"
                 onMouseUp={() => {
                     const sel = window.getSelection();
                     if (sel && sel.toString().trim().length >= 2) {
@@ -426,18 +426,18 @@ const WriterView = ({ params }) => {
 
     // Helper Component: HeatmapView
     const HeatmapView = () => {
-        if (!analysis?.vocabulary_analysis) return <div className="text-slate-500">无法生成词汇热力图 (数据缺失)</div>;
+        if (!analysis?.vocabulary_analysis) return <div className="text-phy-muted">无法生成词汇热力图 (数据缺失)</div>;
         const vocabMap = new Map();
         analysis.vocabulary_analysis.forEach(item => {
             vocabMap.set(item.word.toLowerCase(), item);
         });
         const tokens = content.split(/(\b[a-zA-Z-]+\b)/g);
         return (
-            <div className="bg-slate-800/50 rounded-xl p-6 border border-white/10 font-serif text-lg leading-loose text-slate-300">
-                <div className="flex gap-4 mb-4 text-xs font-bold uppercase tracking-wider pb-4 border-b border-white/5">
+            <div className="bg-slate-800/50 rounded-xl p-6 border border-phy-borderHover font-serif text-lg leading-loose text-phy-text">
+                <div className="flex gap-4 mb-4 text-xs font-bold uppercase tracking-wider pb-4 border-b border-phy-border">
                     <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500"></span> C1/C2 (Adv)</div>
                     <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500"></span> B2 (Upper)</div>
-                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-500"></span> Basic</div>
+                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-phy-bg0"></span> Basic</div>
                 </div>
                 {tokens.map((token, i) => {
                     const info = vocabMap.get(token.toLowerCase());
@@ -461,13 +461,13 @@ const WriterView = ({ params }) => {
 
     // Helper Component: SidebarContent
     const SidebarContent = (
-        <div className="h-full flex flex-col p-4 text-slate-200 bg-slate-900/40">
+        <div className="h-full flex flex-col p-4 text-phy-text bg-slate-900/40">
             <div className="mb-6">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-1">
                     <PenTool className="text-emerald-500" />
                     写作工作台
                 </h2>
-                <p className="text-xs text-slate-400">Writer Coach V2.0</p>
+                <p className="text-xs text-phy-muted">Writer Coach V2.0</p>
             </div>
 
             <button
@@ -482,18 +482,18 @@ const WriterView = ({ params }) => {
                 onClick={isTranslationMode ? () => { setIsTranslationMode(false); setChallengeData(null); } : handleStartChallenge}
                 className={`w-full py-2 rounded-lg text-sm font-bold mb-4 flex items-center justify-center gap-2 shadow-lg transition-all ${isTranslationMode
                     ? 'bg-amber-600 text-white shadow-amber-900/20'
-                    : 'bg-slate-800 text-slate-400 hover:text-amber-400 hover:bg-slate-700'
+                    : 'bg-phy-glassHeavy text-phy-muted hover:text-amber-400 hover:bg-slate-700'
                     }`}
             >
                 <BookOpen size={16} /> {isTranslationMode ? '退出翻译挑战' : '每日翻译挑战'}
             </button>
 
             <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                <h3 className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                <h3 className="text-xs text-phy-muted font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
                     <History size={12} /> 我的作品集 ({writings.length})
                 </h3>
                 {writings.length === 0 && (
-                    <div className="text-center py-10 text-slate-500 text-xs">
+                    <div className="text-center py-10 text-phy-muted text-xs">
                         暂无草稿，<br />开启你的创作之旅。
                     </div>
                 )}
@@ -503,7 +503,7 @@ const WriterView = ({ params }) => {
                         onClick={() => handleLoad(w)}
                         className={`p-3 rounded-lg border cursor-pointer group transition-all text-left relative ${currentId === w.id
                             ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-100'
-                            : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                            : 'bg-slate-800/30 border-phy-border text-phy-muted hover:bg-phy-glassHeavy hover:text-phy-text'
                             }`}
                     >
                         <div className="flex justify-between items-start mb-1">
@@ -533,7 +533,7 @@ const WriterView = ({ params }) => {
     const EditorPanel = (
         <div className="flex flex-col h-full w-full">
             {/* Editor Toolbar */}
-            <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 shrink-0 bg-slate-900/50">
+            <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-phy-border shrink-0 bg-slate-900/50">
                 <input
                     type="text"
                     value={title}
@@ -542,13 +542,13 @@ const WriterView = ({ params }) => {
                     className="bg-transparent text-lg md:text-xl font-bold text-white placeholder-slate-600 focus:outline-none w-full mr-4"
                 />
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 mr-2 whitespace-nowrap hidden md:inline">
+                    <span className="text-xs text-phy-muted mr-2 whitespace-nowrap hidden md:inline">
                         {wordCount} 词
                     </span>
 
                     <button
                         onClick={() => setIsFocusMode(true)}
-                        className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors hidden md:block"
+                        className="p-2 text-phy-muted hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors hidden md:block"
                         title="专注模式 (Zen Mode)"
                     >
                         <Maximize2 size={20} />
@@ -556,7 +556,7 @@ const WriterView = ({ params }) => {
 
                     <button
                         onClick={handleSave}
-                        className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                        className="p-2 text-phy-muted hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
                         title="保存草稿 (Ctrl+S)"
                     >
                         {isSaving ? <CheckCircle size={20} className="text-emerald-500" /> : <Save size={20} />}
@@ -564,7 +564,7 @@ const WriterView = ({ params }) => {
 
                     {/* Desktop Toolbar Extras */}
                     <div className="hidden md:flex items-center">
-                        <div className="w-px h-6 bg-white/10 mx-1"></div>
+                        <div className="w-px h-6 bg-phy-glassHover mx-1"></div>
                         {selection && (
                             <button
                                 onClick={openPolishModal}
@@ -573,7 +573,7 @@ const WriterView = ({ params }) => {
                                 <Sparkles size={16} /> 单句精修
                             </button>
                         )}
-                        <div className="flex items-center bg-slate-800 rounded-lg p-1 mr-2 border border-slate-700">
+                        <div className="flex items-center bg-phy-glassHeavy rounded-lg p-1 mr-2 border border-phy-border">
                             {[
                                 { id: 'grammar', label: '语法', tip: '检查语法错误和拼写问题' },
                                 { id: 'polish', label: '润色', tip: '优化表达，让文章更流畅自然' },
@@ -583,7 +583,7 @@ const WriterView = ({ params }) => {
                                     key={m.id}
                                     onClick={() => setAnalysisMode(m.id)}
                                     title={m.tip}
-                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisMode === m.id ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analysisMode === m.id ? 'bg-indigo-500 text-white shadow-sm' : 'text-phy-muted hover:text-white'}`}
                                 >
                                     {m.label}
                                 </button>
@@ -595,7 +595,7 @@ const WriterView = ({ params }) => {
                             disabled={isAnalyzing}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all whitespace-nowrap
                                 ${isAnalyzing
-                                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                                    ? 'bg-slate-700 text-phy-muted cursor-not-allowed'
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
                         >
                             {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
@@ -606,7 +606,7 @@ const WriterView = ({ params }) => {
             </div>
 
             {/* Mobile Actions Bar (Below Toolbar) */}
-            <div className="md:hidden px-4 py-2 bg-slate-900/30 border-b border-white/5 flex gap-2 overflow-x-auto scrollbar-hide">
+            <div className="md:hidden px-4 py-2 bg-slate-900/30 border-b border-phy-border flex gap-2 overflow-x-auto scrollbar-hide">
                 {selection && (
                     <button onClick={openPolishModal} className="px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg flex items-center gap-1 shrink-0">
                         <Sparkles size={12} /> 精修选中
@@ -615,7 +615,7 @@ const WriterView = ({ params }) => {
                 <select
                     value={analysisMode}
                     onChange={(e) => setAnalysisMode(e.target.value)}
-                    className="bg-slate-800 text-xs text-white px-2 py-1.5 rounded-lg border border-slate-700 outline-none"
+                    className="bg-phy-glassHeavy text-xs text-white px-2 py-1.5 rounded-lg border border-phy-border outline-none"
                 >
                     <option value="grammar">语法修正</option>
                     <option value="polish">润色优化</option>
@@ -682,11 +682,11 @@ const WriterView = ({ params }) => {
                     onChange={(e) => setContent(e.target.value)}
                     onSelect={handleSelectionChange}
                     placeholder="在此开始写作..."
-                    className="w-full h-full min-h-[500px] p-6 md:p-8 bg-transparent text-base md:text-lg leading-loose text-slate-300 focus:text-slate-100 focus:outline-none resize-none font-serif placeholder:text-slate-700"
+                    className="w-full h-full min-h-[500px] p-6 md:p-8 bg-transparent text-base md:text-lg leading-loose text-phy-text focus:text-phy-text focus:outline-none resize-none font-serif placeholder:text-phy-text"
                     spellCheck="false"
                 />
                 {/* Auto-save indicator */}
-                <div className="absolute bottom-2 right-4 text-[10px] text-slate-600 flex items-center gap-1">
+                <div className="absolute bottom-2 right-4 text-[10px] text-phy-muted flex items-center gap-1">
                     <CheckCircle size={10} /> 草稿已自动保存
                 </div>
             </div>
@@ -695,9 +695,9 @@ const WriterView = ({ params }) => {
 
     // Helper Component: AnalysisPanel
     const AnalysisPanel = analysis && (
-        <div className="h-full bg-slate-900/40 backdrop-blur-xl overflow-y-auto custom-scrollbar border-l border-white/5">
+        <div className="h-full bg-slate-900/40 backdrop-blur-xl overflow-y-auto custom-scrollbar border-l border-phy-border">
             <div className="p-4 md:p-6 space-y-6">
-                <div className="flex justify-between items-start sticky top-0 bg-slate-900/95 backdrop-blur z-30 pb-4 border-b border-white/5 -mt-4 md:-mt-6 pt-4 md:pt-6 -mx-4 md:-mx-6 px-4 md:px-6 shadow-sm">
+                <div className="flex justify-between items-start sticky top-0 bg-slate-900/95 backdrop-blur z-30 pb-4 border-b border-phy-border -mt-4 md:-mt-6 pt-4 md:pt-6 -mx-4 md:-mx-6 px-4 md:px-6 shadow-sm">
                     <div>
                         <h3 className="text-xl font-bold text-white flex items-center gap-2">
                             <CheckCircle className="text-emerald-400" />
@@ -714,7 +714,7 @@ const WriterView = ({ params }) => {
                                 <button
                                     key={v.id}
                                     onClick={() => setViewMode(v.id)}
-                                    className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all whitespace-nowrap flex items-center gap-1 ${viewMode === v.id ? 'bg-white/20 text-white' : 'text-slate-500 hover:bg-white/5'}`}
+                                    className={`text-[10px] px-2 py-1 rounded-md font-bold transition-all whitespace-nowrap flex items-center gap-1 ${viewMode === v.id ? 'bg-white/20 text-white' : 'text-phy-muted hover:bg-phy-glass'}`}
                                 >
                                     {v.icon && <v.icon size={10} />} {v.label}
                                 </button>
@@ -742,7 +742,7 @@ const WriterView = ({ params }) => {
                                 setAnalysis(null);
                                 if (mobileTab === 'analysis') setMobileTab('editor');
                             }}
-                            className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs font-bold"
+                            className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-white transition-colors flex items-center gap-1 text-xs font-bold"
                         >
                             <X size={16} /> <span className="hidden md:inline">关闭</span>
                         </button>
@@ -751,26 +751,26 @@ const WriterView = ({ params }) => {
 
                 {viewMode === 'report' && (
                     <>
-                        <div className="bg-slate-800/50 rounded-2xl p-6 border border-white/5 relative overflow-hidden group hover:border-white/10 transition-colors">
+                        <div className="bg-slate-800/50 rounded-2xl p-6 border border-phy-border relative overflow-hidden group hover:border-phy-borderHover transition-colors">
                             <div className="flex justify-between items-center relative z-10">
                                 <div>
-                                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">预计分数</div>
+                                    <div className="text-xs font-bold text-phy-muted uppercase tracking-widest mb-1">预计分数</div>
                                     <div className="flex items-baseline gap-2">
                                         <span className="text-6xl font-black text-white tracking-tighter">{analysis.score}</span>
-                                        <span className="text-2xl text-slate-500 font-light">/ 15</span>
+                                        <span className="text-2xl text-phy-muted font-light">/ 15</span>
                                     </div>
                                     <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white mt-3 shadow-lg ${getScoreColor(analysis.score)}`}>
                                         {analysis.level}
                                     </div>
                                 </div>
                                 <div className="text-right pl-4 flex-1">
-                                    <div className="text-slate-300 text-sm italic leading-relaxed">"{analysis.comment}"</div>
+                                    <div className="text-phy-text text-sm italic leading-relaxed">"{analysis.comment}"</div>
                                 </div>
                             </div>
                         </div>
 
                         <div className="space-y-4">
-                            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-phy-muted uppercase tracking-widest flex items-center gap-2">
                                 <AlertCircle size={14} />
                                 关键问题 ({analysis.issues.length})
                             </h4>
@@ -780,8 +780,8 @@ const WriterView = ({ params }) => {
                                 </div>
                             ) : (
                                 analysis.issues.map((issue, idx) => {
-                                    let borderColor = 'border-white/5';
-                                    let badgeColor = 'bg-slate-500/20 text-slate-300';
+                                    let borderColor = 'border-phy-border';
+                                    let badgeColor = 'bg-phy-bg0/20 text-phy-text';
                                     let severityIcon = null;
 
                                     const s = (issue.severity || 'improvement').toLowerCase();
@@ -819,10 +819,10 @@ const WriterView = ({ params }) => {
                                             </div>
                                             <div className="flex items-center gap-2 mb-2 font-mono text-sm">
                                                 <span className="text-red-300/80 line-through decoration-red-500/50 bg-red-900/20 px-1 rounded">{issue.original}</span>
-                                                <ArrowRightLeft size={12} className="text-slate-500" />
+                                                <ArrowRightLeft size={12} className="text-phy-muted" />
                                                 <span className="text-emerald-300 font-bold bg-emerald-900/20 px-1 rounded">{issue.fixed}</span>
                                             </div>
-                                            <p className="text-sm text-slate-400">{issue.reason}</p>
+                                            <p className="text-sm text-phy-muted">{issue.reason}</p>
                                         </div>
                                     );
                                 })
@@ -854,14 +854,14 @@ const WriterView = ({ params }) => {
 
                 {viewMode === 'diff' && (
                     <div className="animate-in fade-in slide-in-from-right-2 duration-300">
-                        <div className="bg-slate-800/50 rounded-xl p-4 border border-white/10">
-                            <div className="mb-4 flex items-center gap-4 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-white/5 pb-2">
+                        <div className="bg-slate-800/50 rounded-xl p-4 border border-phy-borderHover">
+                            <div className="mb-4 flex items-center gap-4 text-xs font-bold uppercase tracking-wider text-phy-muted border-b border-phy-border pb-2">
                                 <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> 关键错误</div>
                                 <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500"></span> 风格优化</div>
                                 <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> 改进建议</div>
                             </div>
                             <SmartReview />
-                            <div className="mt-4 pt-4 border-t border-white/5 text-center text-xs text-slate-500">
+                            <div className="mt-4 pt-4 border-t border-phy-border text-center text-xs text-phy-muted">
                                 Tip: 悬停在下划线处查看 AI 批注详情
                             </div>
                         </div>
@@ -877,17 +877,17 @@ const WriterView = ({ params }) => {
                                 </h4>
                                 <button
                                     onClick={handleSaveNote}
-                                    className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-900 px-3 py-1 rounded-full font-bold flex items-center gap-1 transition-colors"
+                                    className="text-[10px] bg-amber-500 hover:bg-amber-400 text-phy-text font-bold px-3 py-1 rounded-full font-bold flex items-center gap-1 transition-colors"
                                 >
                                     <Save size={10} /> 保存到笔记
                                 </button>
                             </div>
                             {analysis.knowledge_summary ? (
-                                <div className="prose prose-invert prose-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                <div className="prose prose-invert prose-sm text-phy-text leading-relaxed whitespace-pre-wrap">
                                     {analysis.knowledge_summary}
                                 </div>
                             ) : (
-                                <div className="text-center py-10 text-slate-500">
+                                <div className="text-center py-10 text-phy-muted">
                                     本次分析未生成知识点总结。主要针对长文章或全面润色模式。
                                 </div>
                             )}
@@ -901,44 +901,44 @@ const WriterView = ({ params }) => {
     // Template Modal
     const TemplatePicker = () => (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-black/60 animate-in fade-in duration-200">
-            <div className="bg-slate-900 rounded-2xl shadow-2xl border border-white/10 w-full max-w-3xl overflow-hidden flex flex-col max-h-[80vh]">
-                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-slate-950/50">
+            <div className="bg-phy-glassHeavy rounded-2xl shadow-2xl border border-phy-borderHover w-full max-w-3xl overflow-hidden flex flex-col max-h-[80vh]">
+                <div className="p-4 border-b border-phy-borderHover flex justify-between items-center bg-slate-950/50">
                     <h3 className="font-bold text-white text-lg flex items-center gap-2">
                         <Layout className="text-emerald-500" /> 选择写作模板
                     </h3>
-                    <button onClick={() => setShowTemplateModal(false)} className="text-slate-400 hover:text-white"><X /></button>
+                    <button onClick={() => setShowTemplateModal(false)} className="text-phy-muted hover:text-white"><X /></button>
                 </div>
                 <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Blank Option */}
                     <button
                         onClick={() => handleSelectTemplate(null)}
-                        className="p-4 rounded-xl border border-dashed border-slate-700 hover:border-emerald-500 hover:bg-slate-800 transition-all text-left group"
+                        className="p-4 rounded-xl border border-dashed border-phy-border hover:border-emerald-500 hover:bg-phy-glassHeavy transition-all text-left group"
                     >
                         <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-slate-800 rounded-lg group-hover:bg-emerald-500/20 text-slate-400 group-hover:text-emerald-500 transition-colors">
+                            <div className="p-2 bg-phy-glassHeavy rounded-lg group-hover:bg-emerald-500/20 text-phy-muted group-hover:text-emerald-500 transition-colors">
                                 <FileText size={20} />
                             </div>
-                            <span className="font-bold text-slate-200">空白文档</span>
+                            <span className="font-bold text-phy-text">空白文档</span>
                         </div>
-                        <div className="text-xs text-slate-500">从零开始，自由创作。</div>
+                        <div className="text-xs text-phy-muted">从零开始，自由创作。</div>
                     </button>
 
                     {writingTemplates.map(tmpl => (
                         <button
                             key={tmpl.id}
                             onClick={() => handleSelectTemplate(tmpl)}
-                            className="p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-slate-800 hover:border-emerald-500/50 transition-all text-left relative group overflow-hidden"
+                            className="p-4 rounded-xl border border-phy-border bg-phy-glass hover:bg-phy-glassHeavy hover:border-emerald-500/50 transition-all text-left relative group overflow-hidden"
                         >
-                            <div className="absolute top-0 right-0 bg-white/10 px-2 py-1 text-[10px] rounded-bl-lg text-slate-400 font-bold uppercase">
+                            <div className="absolute top-0 right-0 bg-phy-glassHover px-2 py-1 text-[10px] rounded-bl-lg text-phy-muted font-bold uppercase">
                                 {tmpl.category}
                             </div>
                             <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-slate-800 rounded-lg group-hover:bg-emerald-500/20 text-slate-400 group-hover:text-emerald-500 transition-colors">
+                                <div className="p-2 bg-phy-glassHeavy rounded-lg group-hover:bg-emerald-500/20 text-phy-muted group-hover:text-emerald-500 transition-colors">
                                     <Wand2 size={20} />
                                 </div>
-                                <span className="font-bold text-slate-200">{tmpl.name}</span>
+                                <span className="font-bold text-phy-text">{tmpl.name}</span>
                             </div>
-                            <div className="text-xs text-slate-500 leading-relaxed">{tmpl.description}</div>
+                            <div className="text-xs text-phy-muted leading-relaxed">{tmpl.description}</div>
                         </button>
                     ))}
                 </div>
@@ -947,7 +947,7 @@ const WriterView = ({ params }) => {
     );
 
     return (
-        <div className={`w-full h-full overflow-hidden transition-all duration-300 relative ${isFocusMode ? 'fixed inset-0 z-50 bg-slate-950' : 'rounded-3xl border border-white/5 shadow-2xl bg-slate-900/20 backdrop-blur-sm'}`}>
+        <div className={`w-full h-full overflow-hidden transition-all duration-300 relative ${isFocusMode ? 'fixed inset-0 z-50 bg-slate-950' : 'rounded-3xl border border-phy-border shadow-2xl bg-slate-900/20 backdrop-blur-sm'}`}>
 
             {showTemplateModal && <TemplatePicker />}
             {showPolishModal && selection && (
@@ -962,8 +962,8 @@ const WriterView = ({ params }) => {
                 <div className="w-full h-full max-w-4xl mx-auto flex flex-col bg-slate-950 relative animate-in fade-in duration-500">
                     {/* Focus Toolbar */}
                     <div className="absolute top-4 right-8 z-10 flex gap-4 opacity-30 hover:opacity-100 transition-opacity">
-                        <div className="text-sm text-slate-500 font-mono self-center">{wordCount} words</div>
-                        <button onClick={() => setIsFocusMode(false)} className="p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white">
+                        <div className="text-sm text-phy-muted font-mono self-center">{wordCount} words</div>
+                        <button onClick={() => setIsFocusMode(false)} className="p-2 bg-phy-glassHeavy rounded-full text-phy-muted hover:text-white">
                             <Minimize2 size={20} />
                         </button>
                     </div>
@@ -973,7 +973,7 @@ const WriterView = ({ params }) => {
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="Untitled"
-                            className="bg-transparent text-4xl font-black text-slate-800 mb-8 placeholder-slate-800 focus:outline-none w-full text-center"
+                            className="bg-transparent text-4xl font-black text-phy-text font-bold mb-8 placeholder-slate-800 focus:outline-none w-full text-center"
                         />
                         <textarea
                             ref={textareaRef}
@@ -981,12 +981,12 @@ const WriterView = ({ params }) => {
                             onChange={(e) => setContent(e.target.value)}
                             onSelect={handleSelectionChange}
                             placeholder="Just write..."
-                            className="w-full h-full min-h-[80vh] bg-transparent text-xl leading-relaxed text-slate-400 focus:text-slate-200 focus:outline-none resize-none font-serif text-center md:px-20 placeholder:text-slate-800"
+                            className="w-full h-full min-h-[80vh] bg-transparent text-xl leading-relaxed text-phy-muted focus:text-phy-text focus:outline-none resize-none font-serif text-center md:px-20 placeholder:text-phy-text font-bold"
                             spellCheck="false"
                             autoFocus
                         />
                     </div>
-                    <div className="absolute bottom-4 left-0 right-0 text-center text-slate-800 text-xs pointer-events-none">
+                    <div className="absolute bottom-4 left-0 right-0 text-center text-phy-text font-bold text-xs pointer-events-none">
                         Focus Mode • Zen Writing
                     </div>
                 </div>
@@ -1001,7 +1001,7 @@ const WriterView = ({ params }) => {
                             left={SidebarContent}
                             right={
                                 <div className="flex h-full bg-slate-950/30 relative overflow-hidden">
-                                    <div className={`flex flex-col h-full transition-all duration-300 ${analysis ? 'w-1/2 border-r border-white/5' : 'w-full'}`}>
+                                    <div className={`flex flex-col h-full transition-all duration-300 ${analysis ? 'w-1/2 border-r border-phy-border' : 'w-full'}`}>
                                         {EditorPanel}
                                     </div>
                                     {analysis && (
@@ -1016,19 +1016,19 @@ const WriterView = ({ params }) => {
 
                     {/* Mobile Layout (Tabs) */}
                     <div className="md:hidden h-full flex flex-col">
-                        <div className="flex items-center justify-between p-2 px-4 bg-slate-900 border-b border-white/5 shrink-0">
-                            <div className="font-bold text-slate-200 text-sm">写作助手</div>
-                            <div className="flex bg-slate-800 rounded-lg p-1">
-                                <button onClick={() => setMobileTab('tools')} className={`px-3 py-1 text-xs rounded-md transition-all ${mobileTab === 'tools' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>工具</button>
-                                <button onClick={() => setMobileTab('editor')} className={`px-3 py-1 text-xs rounded-md transition-all ${mobileTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>编辑</button>
-                                {analysis && <button onClick={() => setMobileTab('analysis')} className={`px-3 py-1 text-xs rounded-md transition-all ${mobileTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>报告</button>}
+                        <div className="flex items-center justify-between p-2 px-4 bg-phy-glassHeavy border-b border-phy-border shrink-0">
+                            <div className="font-bold text-phy-text text-sm">写作助手</div>
+                            <div className="flex bg-phy-glassHeavy rounded-lg p-1">
+                                <button onClick={() => setMobileTab('tools')} className={`px-3 py-1 text-xs rounded-md transition-all ${mobileTab === 'tools' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>工具</button>
+                                <button onClick={() => setMobileTab('editor')} className={`px-3 py-1 text-xs rounded-md transition-all ${mobileTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>编辑</button>
+                                {analysis && <button onClick={() => setMobileTab('analysis')} className={`px-3 py-1 text-xs rounded-md transition-all ${mobileTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>报告</button>}
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-hidden relative bg-slate-900/20">
                             {mobileTab === 'tools' && SidebarContent}
                             {mobileTab === 'editor' && EditorPanel}
-                            {mobileTab === 'analysis' && (AnalysisPanel || <div className="p-10 text-center text-slate-500 text-sm">暂无分析结果</div>)}
+                            {mobileTab === 'analysis' && (AnalysisPanel || <div className="p-10 text-center text-phy-muted text-sm">暂无分析结果</div>)}
                         </div>
                     </div>
                 </>

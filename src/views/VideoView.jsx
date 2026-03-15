@@ -140,7 +140,7 @@ const VideoView = () => {
 
     // Sidebar for Input & AI Tools
     const SidebarContent = (
-        <div className="h-full flex flex-col p-4 text-slate-200 bg-slate-900/40 relative">
+        <div className="h-full flex flex-col p-4 text-phy-text bg-slate-900/40 relative">
             {/* History Overlay */}
             {showHistory && (
                 <div className="absolute inset-0 z-10 bg-slate-900/95 backdrop-blur-md p-4 flex flex-col animate-fade-in">
@@ -148,28 +148,28 @@ const VideoView = () => {
                         <h3 className="font-bold text-white flex items-center gap-2">
                             <History size={16} /> 最近播放
                         </h3>
-                        <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-slate-800 rounded">
-                            <X size={16} className="text-slate-400" />
+                        <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-phy-glassHeavy rounded">
+                            <X size={16} className="text-phy-muted" />
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                        {history.length === 0 && <p className="text-slate-500 text-xs text-center mt-4">暂无历史记录。</p>}
+                        {history.length === 0 && <p className="text-phy-muted text-xs text-center mt-4">暂无历史记录。</p>}
                         {history.map((hist) => (
                             <div
                                 key={hist.url}
                                 onClick={() => handleHistoryClick(hist)}
-                                className="p-3 bg-slate-800/50 rounded-lg border border-white/5 hover:bg-slate-800 cursor-pointer group"
+                                className="p-3 bg-slate-800/50 rounded-lg border border-phy-border hover:bg-phy-glassHeavy cursor-pointer group"
                             >
                                 <div className="flex justify-between items-start">
-                                    <p className="text-xs text-slate-300 font-medium line-clamp-2 mb-1">{hist.title}</p>
+                                    <p className="text-xs text-phy-text font-medium line-clamp-2 mb-1">{hist.title}</p>
                                     <button
                                         onClick={(e) => handleDeleteHistory(e, hist.url)}
-                                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-0.5"
+                                        className="opacity-0 group-hover:opacity-100 text-phy-muted hover:text-red-400 p-0.5"
                                     >
                                         <Trash2 size={12} />
                                     </button>
                                 </div>
-                                <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                                <div className="text-[10px] text-phy-muted flex items-center gap-1">
                                     <Clock size={10} />
                                     {new Date(hist.lastWatched).toLocaleDateString()}
                                 </div>
@@ -186,11 +186,11 @@ const VideoView = () => {
                         <PlayCircle className="text-pink-500" />
                         视频学习
                     </h2>
-                    <p className="text-xs text-slate-400">AI 辅助 Bilibili 视频学习</p>
+                    <p className="text-xs text-phy-muted">AI 辅助 Bilibili 视频学习</p>
                 </div>
                 <button
                     onClick={() => setShowHistory(true)}
-                    className="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
+                    className="p-2 text-phy-muted hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
                     title="历史记录"
                 >
                     <History size={18} />
@@ -199,7 +199,7 @@ const VideoView = () => {
 
             {/* URL Input */}
             <div className="mb-6">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">
+                <label className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-2 block">
                     视频来源
                 </label>
                 <div className="flex gap-2">
@@ -209,13 +209,13 @@ const VideoView = () => {
                             value={inputUrl}
                             onChange={(e) => setInputUrl(e.target.value)}
                             placeholder="粘贴 Bilibili 视频链接..."
-                            className="w-full bg-slate-950/50 border border-white/10 rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:border-pink-500/50 transition-colors"
+                            className="w-full bg-slate-950/50 border border-phy-borderHover rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:border-pink-500/50 transition-colors"
                             onKeyDown={(e) => e.key === 'Enter' && handleLoadVideo()}
                         />
                         {inputUrl && (
                             <button
                                 onClick={() => setInputUrl('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-phy-muted hover:text-white"
                             >
                                 ×
                             </button>
@@ -230,15 +230,15 @@ const VideoView = () => {
                 </button>
             </div>
 
-            <div className="w-full h-px bg-white/10 mb-6"></div>
+            <div className="w-full h-px bg-phy-glassHover mb-6"></div>
 
             {/* Learning Tools */}
             <div className="flex-1 flex flex-col min-h-0">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex justify-between items-center">
+                <label className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-2 flex justify-between items-center">
                     <span>智能笔记 & 音频</span>
                     <div className="flex items-center gap-2">
                         {isTranscribing && <span className="text-[10px] text-blue-400 animate-pulse">正在转录...</span>}
-                        <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">未保存</span>
+                        <span className="text-[10px] bg-phy-glassHeavy px-1.5 py-0.5 rounded text-phy-muted">未保存</span>
                     </div>
                 </label>
 
@@ -246,7 +246,7 @@ const VideoView = () => {
                     value={quickNote}
                     onChange={(e) => setQuickNote(e.target.value)}
                     placeholder={isRecording ? "正在聆听..." : "输入笔记或使用麦克风捕捉视频语音..."}
-                    className={`flex-1 w-full bg-slate-950/30 border rounded-xl p-3 text-sm text-slate-300 focus:outline-none resize-none mb-3 custom-scrollbar transition-colors ${isRecording ? 'border-red-500/50 bg-red-900/10' : 'border-white/10 focus:border-indigo-500/50'
+                    className={`flex-1 w-full bg-slate-950/30 border rounded-xl p-3 text-sm text-phy-text focus:outline-none resize-none mb-3 custom-scrollbar transition-colors ${isRecording ? 'border-red-500/50 bg-red-900/10' : 'border-phy-borderHover focus:border-indigo-500/50'
                         }`}
                 ></textarea>
 
@@ -257,7 +257,7 @@ const VideoView = () => {
                         disabled={isTranscribing}
                         className={`px-4 rounded-xl flex items-center justify-center transition-all ${isRecording
                             ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
-                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                            : 'bg-phy-glassHeavy text-phy-text hover:bg-slate-700 hover:text-white'
                             } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title="AI 听力模式 (录制音频)"
                     >
@@ -286,7 +286,7 @@ const VideoView = () => {
                                 setQuickNote('');
                             }
                         }}
-                        className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl font-bold text-xs transition-all"
+                        className="flex items-center justify-center gap-2 bg-phy-glassHeavy hover:bg-slate-700 text-phy-text px-4 py-2.5 rounded-xl font-bold text-xs transition-all"
                         title="保存到笔记"
                     >
                         <FileText size={14} />
@@ -294,14 +294,14 @@ const VideoView = () => {
                 </div>
             </div>
 
-            <div className="mt-4 text-[10px] text-slate-500 text-center">
+            <div className="mt-4 text-[10px] text-phy-muted text-center">
                 提示: 点击麦克风让 AI “聆听”并转录视频内容。
             </div>
         </div>
     );
 
     return (
-        <div className="w-full h-full overflow-hidden rounded-3xl border border-white/5 shadow-2xl bg-slate-900/20 backdrop-blur-sm">
+        <div className="w-full h-full overflow-hidden rounded-3xl border border-phy-border shadow-2xl bg-slate-900/20 backdrop-blur-sm">
             <SplitPane
                 initialLeftWidth={350}
                 minLeftWidth={280}

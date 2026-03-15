@@ -157,7 +157,7 @@ const PomodoroTimer = () => {
                         // No, let's allow dragging the ball. Double click to expand?
                     }}
                     onDoubleClick={() => setIsMinimized(false)}
-                    className="bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full w-14 h-14 flex items-center justify-center text-slate-600 hover:scale-105 transition-transform group cursor-grab active:cursor-grabbing"
+                    className="bg-white/90 backdrop-blur shadow-lg border border-phy-border rounded-full w-14 h-14 flex items-center justify-center text-phy-muted hover:scale-105 transition-transform group cursor-grab active:cursor-grabbing"
                     title="Double click to expand"
                 >
                     {isActive ? (
@@ -173,8 +173,8 @@ const PomodoroTimer = () => {
                     )}
 
                     {/* Expand Button overlay (since double click is hidden UX) */}
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-slate-100 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Maximize2 size={10} className="text-slate-500" />
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-phy-bg rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Maximize2 size={10} className="text-phy-muted" />
                     </div>
                 </button>
             </div>
@@ -187,7 +187,7 @@ const PomodoroTimer = () => {
             className="fixed z-[90] animate-fade-in-up"
             style={style}
         >
-            <div className={`bg-white/90 backdrop-blur-md border border-slate-200 shadow-2xl rounded-2xl p-4 w-64 transition-all ${isActive ? (mode === 'focus' ? 'ring-2 ring-red-500/20' : 'ring-2 ring-green-500/20') : ''}`}>
+            <div className={`bg-white/90 backdrop-blur-md border border-phy-border shadow-2xl rounded-2xl p-4 w-64 transition-all ${isActive ? (mode === 'focus' ? 'ring-2 ring-red-500/20' : 'ring-2 ring-green-500/20') : ''}`}>
 
                 {/* Header (Drag area) */}
                 <div
@@ -198,15 +198,15 @@ const PomodoroTimer = () => {
                         <div className={`p-1.5 rounded-lg ${mode === 'focus' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                             {mode === 'focus' ? <TomatoIcon size={18} /> : <Coffee size={16} />}
                         </div>
-                        <span className="text-sm font-bold text-slate-700">
+                        <span className="text-sm font-bold text-phy-text">
                             {mode === 'focus' ? '专注模式' : '休息时间'}
                         </span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <div className="text-slate-300 mr-2">
+                        <div className="text-phy-text mr-2">
                             <GripHorizontal size={14} />
                         </div>
-                        <button onClick={() => setIsMinimized(true)} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600" title="Minimize">
+                        <button onClick={() => setIsMinimized(true)} className="p-1 hover:bg-phy-bg rounded text-phy-muted hover:text-phy-muted" title="Minimize">
                             <Minimize2 size={16} />
                         </button>
                     </div>
@@ -218,7 +218,7 @@ const PomodoroTimer = () => {
                         {formatTime(timeLeft)}
                     </div>
                     {/* Progress Bar */}
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full mt-2 overflow-hidden">
+                    <div className="h-1.5 w-full bg-phy-bg rounded-full mt-2 overflow-hidden">
                         <div
                             className={`h-full transition-all duration-1000 ${mode === 'focus' ? 'bg-red-500' : 'bg-green-500'}`}
                             style={{ width: `${progress * 100}%` }}
@@ -227,7 +227,7 @@ const PomodoroTimer = () => {
                 </div>
 
                 {/* Controls */}
-                <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl">
+                <div className="flex justify-between items-center bg-phy-bg p-2 rounded-xl">
                     <button
                         onClick={toggleTimer}
                         className={`p-3 rounded-lg shadow-sm transition-all text-white flex-1 flex justify-center ${isActive
@@ -239,7 +239,7 @@ const PomodoroTimer = () => {
 
                     <button
                         onClick={resetTimer}
-                        className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors mx-1"
+                        className="p-3 text-phy-muted hover:text-phy-muted hover:bg-phy-bg rounded-lg transition-colors mx-1"
                         title="Reset"
                     >
                         <RotateCcw size={18} />
@@ -247,7 +247,7 @@ const PomodoroTimer = () => {
 
                     <button
                         onClick={switchMode}
-                        className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200 bg-white"
+                        className="px-3 py-1.5 text-xs font-bold text-phy-muted hover:bg-phy-bg rounded-lg transition-colors border border-phy-border bg-phy-glass"
                         title="Switch Mode"
                     >
                         {mode === 'focus' ? '休息' : '专注'}

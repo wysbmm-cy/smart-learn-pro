@@ -47,12 +47,12 @@ const StudyTrendChart = ({ days = 30 }) => {
 
     if (chartData.length === 0 || totalCards === 0) {
         return (
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-                <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <div className="bg-phy-glass rounded-2xl p-6 border border-phy-border shadow-sm">
+                <h3 className="font-bold text-phy-text mb-4 flex items-center gap-2">
                     <TrendingUp size={20} className="text-blue-500" />
                     学习趋势 (最近 {days} 天)
                 </h3>
-                <div className="h-64 flex items-center justify-center text-slate-400 text-sm">
+                <div className="h-64 flex items-center justify-center text-phy-muted text-sm">
                     <div className="text-center">
                         <Calendar size={48} className="mx-auto mb-2 opacity-20" />
                         <p>暂无学习记录</p>
@@ -66,7 +66,7 @@ const StudyTrendChart = ({ days = 30 }) => {
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
             return (
-                <div className="bg-slate-800 text-white px-4 py-3 rounded-lg shadow-lg">
+                <div className="bg-phy-glassHeavy text-white px-4 py-3 rounded-lg shadow-lg">
                     <div className="font-bold mb-2 text-sm">{label}</div>
                     {payload.map((entry, index) => (
                         <div key={index} className="text-xs flex items-center gap-2">
@@ -74,7 +74,7 @@ const StudyTrendChart = ({ days = 30 }) => {
                                 className="w-2 h-2 rounded-full"
                                 style={{ backgroundColor: entry.color }}
                             />
-                            <span className="text-slate-300">{entry.name}:</span>
+                            <span className="text-phy-text">{entry.name}:</span>
                             <span className="font-bold">{entry.value}</span>
                         </div>
                     ))}
@@ -85,13 +85,13 @@ const StudyTrendChart = ({ days = 30 }) => {
     };
 
     return (
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+        <div className="bg-phy-glass rounded-2xl p-6 border border-phy-border shadow-sm">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                <h3 className="font-bold text-phy-text flex items-center gap-2">
                     <TrendingUp size={20} className="text-blue-500" />
                     学习趋势 (最近 {days} 天)
                 </h3>
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-phy-muted">
                     累计复习 <span className="font-bold text-indigo-600">{totalCards}</span> 张卡片
                 </div>
             </div>
@@ -148,19 +148,19 @@ const StudyTrendChart = ({ days = 30 }) => {
 
             <div className="mt-4 pt-4 border-t border-slate-50 grid grid-cols-3 gap-4">
                 <div className="text-center">
-                    <div className="text-xs text-slate-400 mb-1">日均复习</div>
+                    <div className="text-xs text-phy-muted mb-1">日均复习</div>
                     <div className="text-lg font-bold text-indigo-600">
                         {(totalCards / days).toFixed(1)}
                     </div>
                 </div>
                 <div className="text-center">
-                    <div className="text-xs text-slate-400 mb-1">最高记录</div>
+                    <div className="text-xs text-phy-muted mb-1">最高记录</div>
                     <div className="text-lg font-bold text-blue-600">
                         {Math.max(...chartData.map(d => d.flashcards))}
                     </div>
                 </div>
                 <div className="text-center">
-                    <div className="text-xs text-slate-400 mb-1">活跃天数</div>
+                    <div className="text-xs text-phy-muted mb-1">活跃天数</div>
                     <div className="text-lg font-bold text-emerald-600">
                         {chartData.filter(d => d.flashcards > 0).length}
                     </div>

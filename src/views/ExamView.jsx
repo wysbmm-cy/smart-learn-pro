@@ -140,22 +140,22 @@ ${q.options.join('\n')}
                     <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-6">
                         <FileText size={40} />
                     </div>
-                    <h2 className="text-3xl font-bold text-slate-800">AI 模拟考场 (Exam Simulator)</h2>
-                    <p className="text-slate-500 leading-relaxed">
+                    <h2 className="text-3xl font-bold text-phy-text font-bold">AI 模拟考场 (Exam Simulator)</h2>
+                    <p className="text-phy-muted leading-relaxed">
                         上传您的 PDF 试卷 (如四六级真题)，AI 将自动将其转化为在线交互式试卷。<br />支持选择题自动批改、阅读分屏、作文一键润色。
                     </p>
 
                     {/* Input Method Tabs */}
-                    <div className="flex justify-center gap-4 mb-6 border-b border-slate-100 pb-2">
+                    <div className="flex justify-center gap-4 mb-6 border-b border-phy-border pb-2">
                         <button
                             onClick={() => setFileWork(null)} // Reset (mode switch logic implies simple state toggle, but let's just use renders)
-                            className={`pb-2 px-4 font-bold text-sm transition-all border-b-2 ${!fileWork?.isPasteMode ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                            className={`pb-2 px-4 font-bold text-sm transition-all border-b-2 ${!fileWork?.isPasteMode ? 'border-blue-500 text-blue-600' : 'border-transparent text-phy-muted hover:text-phy-muted'}`}
                         >
                             <div className="flex items-center gap-2"><Upload size={16} /> 文件上传</div>
                         </button>
                         <button
                             onClick={() => setFileWork({ isPasteMode: true, text: '' })}
-                            className={`pb-2 px-4 font-bold text-sm transition-all border-b-2 ${fileWork?.isPasteMode ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                            className={`pb-2 px-4 font-bold text-sm transition-all border-b-2 ${fileWork?.isPasteMode ? 'border-blue-500 text-blue-600' : 'border-transparent text-phy-muted hover:text-phy-muted'}`}
                         >
                             <div className="flex items-center gap-2"><PenTool size={16} /> 粘贴文本</div>
                         </button>
@@ -163,11 +163,11 @@ ${q.options.join('\n')}
 
                     {/* Drill Mode Selector */}
                     <div className="flex justify-center gap-2 mb-4">
-                        <span className="text-sm font-bold text-slate-400 self-center">模式选择:</span>
+                        <span className="text-sm font-bold text-phy-muted self-center">模式选择:</span>
                         <select
                             value={drillType}
                             onChange={(e) => setDrillType(e.target.value)}
-                            className="bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-bold outline-none"
+                            className="bg-phy-glass border border-phy-borderHover text-phy-text text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-bold outline-none"
                         >
                             <option value="fast">⚡ 快速测验 (Mini-Test)</option>
                             <option value="full">🏆 完整试卷 (Full Mode)</option>
@@ -181,7 +181,7 @@ ${q.options.join('\n')}
                         /* Paste Mode UI */
                         <div className="mt-4 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
                             <textarea
-                                className="w-full h-64 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 font-mono text-sm resize-none"
+                                className="w-full h-64 p-4 bg-phy-bg border border-phy-border rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 font-mono text-sm resize-none"
                                 placeholder="请直接在此处粘贴试卷文本（例如：阅读文章 + 题目）..."
                                 value={fileWork.text || ''}
                                 onChange={(e) => setFileWork({ ...fileWork, text: e.target.value })}
@@ -201,7 +201,7 @@ ${q.options.join('\n')}
                         </div>
                     ) : (
                         /* Upload Mode UI */
-                        <div className="mt-4 border-2 border-dashed border-slate-300 rounded-2xl p-12 hover:bg-slate-50 transition-colors cursor-pointer relative group flex flex-col items-center justify-center gap-4">
+                        <div className="mt-4 border-2 border-dashed border-phy-borderHover rounded-2xl p-12 hover:bg-phy-bg transition-colors cursor-pointer relative group flex flex-col items-center justify-center gap-4">
                             <input
                                 type="file"
                                 accept=".pdf,.txt"
@@ -216,12 +216,12 @@ ${q.options.join('\n')}
                                 </div>
                             ) : (
                                 <>
-                                    <div className="p-4 bg-slate-100 rounded-full text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-500 transition-colors">
+                                    <div className="p-4 bg-phy-bg rounded-full text-phy-muted group-hover:bg-blue-100 group-hover:text-blue-500 transition-colors">
                                         <Upload size={32} />
                                     </div>
                                     <div className="text-center">
-                                        <div className="font-bold text-slate-600 text-lg">点击上传试卷 (PDF/TXT)</div>
-                                        <div className="text-slate-400 text-sm mt-1">支持拖拽上传</div>
+                                        <div className="font-bold text-phy-muted text-lg">点击上传试卷 (PDF/TXT)</div>
+                                        <div className="text-phy-muted text-sm mt-1">支持拖拽上传</div>
                                     </div>
                                 </>
                             )}
@@ -235,28 +235,28 @@ ${q.options.join('\n')}
     return (
         <div className="h-full flex flex-col bg-slate-50/50">
             {/* Header */}
-            <div className="h-16 border-b border-slate-200 bg-white px-6 flex items-center justify-between shrink-0">
+            <div className="h-16 border-b border-phy-border bg-phy-glass px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                     <div className="bg-blue-600 text-white p-2 rounded-lg"><FileText size={18} /></div>
-                    <h2 className="font-bold text-slate-800">{examData.title || "My Exam"}</h2>
+                    <h2 className="font-bold text-phy-text font-bold">{examData.title || "My Exam"}</h2>
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-bold">AI Generated</span>
                 </div>
                 <div className="flex gap-3">
                     <button
                         onClick={handleSaveToNotes}
-                        className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
+                        className="px-4 py-2 text-sm font-bold text-phy-muted hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
                     >
                         <Layout size={16} /> 保存到笔记
                     </button>
                     <button
                         onClick={handleClearExam}
-                        className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                        className="px-4 py-2 text-sm font-bold text-phy-muted hover:text-phy-text hover:bg-phy-bg rounded-lg transition-colors"
                     >
                         退出/清空
                     </button>
                     <button
                         onClick={() => toast.success("暂未实现在线评分(除作文外)，请自我核对！")}
-                        className="px-4 py-2 text-sm font-bold bg-slate-900 text-white hover:bg-slate-800 rounded-lg transition-colors shadow-lg shadow-slate-900/20"
+                        className="px-4 py-2 text-sm font-bold bg-phy-glassHeavy text-white hover:bg-phy-glassHeavy rounded-lg transition-colors shadow-lg shadow-slate-900/20"
                     >
                         交卷 (Submit)
                     </button>
@@ -266,28 +266,28 @@ ${q.options.join('\n')}
             {/* Exam Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                 {(!examData.sections || examData.sections.length === 0) && (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4">
-                        <Loader2 size={48} className="text-slate-300 mb-2" />
-                        <h3 className="text-xl font-bold text-slate-600">No Content Found</h3>
+                    <div className="flex flex-col items-center justify-center h-full text-phy-muted space-y-4">
+                        <Loader2 size={48} className="text-phy-text mb-2" />
+                        <h3 className="text-xl font-bold text-phy-muted">No Content Found</h3>
                         <p className="max-w-md text-center">AI 分析完成了，但似乎没有识别出有效题目。</p>
                         <p className="text-sm">可能是因为 PDF 格式过于复杂，或者文本为空。</p>
                         <button onClick={handleClearExam} className="text-blue-600 hover:underline">返回重试 (Try Reset)</button>
                     </div>
                 )}
                 {examData.sections?.map((section, sIdx) => (
-                    <div key={sIdx} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div key={sIdx} className="bg-phy-glass border border-phy-border rounded-2xl overflow-hidden shadow-sm">
                         {/* Section Header */}
-                        <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                        <div className="bg-phy-bg px-6 py-4 border-b border-phy-border flex justify-between items-center">
                             <div>
                                 <span className="uppercase text-xs font-bold text-blue-600 tracking-wider block mb-1">{section.type} SECTION</span>
-                                <h3 className="font-bold text-slate-700">{section.instructions || "Answer the following questions"}</h3>
+                                <h3 className="font-bold text-phy-text">{section.instructions || "Answer the following questions"}</h3>
                             </div>
                         </div>
 
                         <div className={`p-0 ${section.type === 'reading' ? 'lg:flex h-[600px]' : ''}`}>
                             {/* Content (For Reading/Listening) */}
                             {section.content && (
-                                <div className={`bg-slate-50/50 p-6 border-r border-slate-100 overflow-y-auto leading-loose text-slate-600 font-serif text-lg ${section.type === 'reading' ? 'flex-1 custom-scrollbar' : 'border-b'}`}>
+                                <div className={`bg-slate-50/50 p-6 border-r border-phy-border overflow-y-auto leading-loose text-phy-muted font-serif text-lg ${section.type === 'reading' ? 'flex-1 custom-scrollbar' : 'border-b'}`}>
                                     {section.content.split('\n').map((para, i) => (
                                         <p key={i} className="mb-4">{para}</p>
                                     ))}
@@ -316,8 +316,8 @@ ${q.options.join('\n')}
                                 {section.questions?.map((q, qIdx) => (
                                     <div key={q.id || qIdx} className="space-y-3">
                                         <div className="flex gap-3">
-                                            <span className="font-bold text-slate-400 select-none">{qIdx + 1}.</span>
-                                            <p className="font-bold text-slate-800">{q.text}</p>
+                                            <span className="font-bold text-phy-muted select-none">{qIdx + 1}.</span>
+                                            <p className="font-bold text-phy-text font-bold">{q.text}</p>
                                         </div>
                                         <div className="grid grid-cols-1 gap-2 pl-8">
                                             {q.options?.map((opt, optIdx) => {
@@ -328,7 +328,7 @@ ${q.options.join('\n')}
                                                         key={optIdx}
                                                         className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected
                                                             ? 'border-blue-500 bg-blue-50'
-                                                            : 'border-slate-100 hover:bg-slate-50 hover:border-slate-300'
+                                                            : 'border-phy-border hover:bg-phy-bg hover:border-phy-borderHover'
                                                             }`}
                                                     >
                                                         <input
@@ -337,11 +337,11 @@ ${q.options.join('\n')}
                                                             className="hidden"
                                                             onChange={() => handleAnswerSelect(`${sIdx}-${q.id}`, optKey)}
                                                         />
-                                                        <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold transition-colors ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300 text-slate-400'
+                                                        <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold transition-colors ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-phy-borderHover text-phy-muted'
                                                             }`}>
                                                             {optKey}
                                                         </div>
-                                                        <span className="text-sm text-slate-600">{opt}</span>
+                                                        <span className="text-sm text-phy-muted">{opt}</span>
                                                     </label>
                                                 );
                                             })}

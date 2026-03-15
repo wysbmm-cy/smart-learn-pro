@@ -19,12 +19,12 @@ const BilibiliPlayer = ({ url }) => {
 
     if (!url) {
         return (
-            <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-700/50 p-8">
-                <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-4 shadow-inner">
-                    <Tv size={40} className="text-slate-600" />
+            <div className="w-full h-full flex flex-col items-center justify-center text-phy-muted bg-slate-900/50 rounded-2xl border-2 border-dashed border-phy-border/50 p-8">
+                <div className="w-20 h-20 bg-phy-glassHeavy rounded-full flex items-center justify-center mb-4 shadow-inner">
+                    <Tv size={40} className="text-phy-muted" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-300 mb-2">Ready to Watch</h3>
-                <p className="text-sm text-slate-500 max-w-md text-center">
+                <h3 className="text-xl font-bold text-phy-text mb-2">Ready to Watch</h3>
+                <p className="text-sm text-phy-muted max-w-md text-center">
                     Paste a Bilibili video link (e.g., https://www.bilibili.com/video/BV...) in the sidebar to start learning.
                 </p>
             </div>
@@ -42,7 +42,7 @@ const BilibiliPlayer = ({ url }) => {
     }
 
     return (
-        <div className="w-full h-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 relative group">
+        <div className="w-full h-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-phy-borderHover relative group">
             <iframe
                 src={`//player.bilibili.com/player.html?bvid=${bvid}&page=${page}&high_quality=1&danmaku=0&autoplay=0`}
                 className="w-full h-full border-0 absolute inset-0"

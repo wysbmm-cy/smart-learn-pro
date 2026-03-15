@@ -38,7 +38,7 @@ const HistoryView = ({ onNavigate }) => {
         }
     };
 
-    if (loading) return <div className="p-10 text-center text-slate-400">Loading history...</div>;
+    if (loading) return <div className="p-10 text-center text-phy-muted">Loading history...</div>;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-10">
@@ -47,13 +47,13 @@ const HistoryView = ({ onNavigate }) => {
                     <Clock size={24} />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">History Review</h2>
-                    <p className="text-slate-500 text-sm">Review your past learning sessions.</p>
+                    <h2 className="text-2xl font-bold text-phy-text font-bold">History Review</h2>
+                    <p className="text-phy-muted text-sm">Review your past learning sessions.</p>
                 </div>
             </div>
 
             {history.length === 0 ? (
-                <div className="bg-white rounded-[2rem] p-12 text-center text-slate-400 border border-slate-100 border-dashed">
+                <div className="bg-phy-glass rounded-[2rem] p-12 text-center text-phy-muted border border-phy-border border-dashed">
                     <Clock size={48} className="mx-auto mb-4 opacity-20" />
                     <p>No history records found.</p>
                     <button
@@ -69,7 +69,7 @@ const HistoryView = ({ onNavigate }) => {
                         <div
                             key={item.id}
                             onClick={() => handleRestore(item)}
-                            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer group relative overflow-hidden"
+                            className="bg-phy-glass p-6 rounded-2xl shadow-sm border border-phy-border hover:shadow-md hover:border-blue-200 transition-all cursor-pointer group relative overflow-hidden"
                         >
                             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-50 to-transparent rounded-bl-full -mr-16 -mt-16 opacity-50 group-hover:opacity-100 transition-opacity" />
 
@@ -79,21 +79,21 @@ const HistoryView = ({ onNavigate }) => {
                                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                                             {item.level || 'Analysis'}
                                         </span>
-                                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                                        <span className="text-xs text-phy-muted flex items-center gap-1">
                                             <Calendar size={12} /> {item.date}
                                         </span>
                                     </div>
-                                    <h3 className="font-bold text-slate-800 text-lg line-clamp-1 group-hover:text-blue-700 transition-colors">
+                                    <h3 className="font-bold text-phy-text font-bold text-lg line-clamp-1 group-hover:text-blue-700 transition-colors">
                                         {item.summary ? item.summary.substring(0, 50) + "..." : "Analysis Record"}
                                     </h3>
-                                    <p className="text-slate-500 text-sm line-clamp-2 leading-relaxed">
+                                    <p className="text-phy-muted text-sm line-clamp-2 leading-relaxed">
                                         {item.article ? item.article.substring(0, 150) : "No content preview."}
                                     </p>
                                 </div>
 
                                 <button
                                     onClick={(e) => handleDelete(e, item.id)}
-                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors z-20"
+                                    className="p-2 text-phy-text hover:text-red-500 hover:bg-red-50 rounded-full transition-colors z-20"
                                     title="Delete Record"
                                 >
                                     <Trash2 size={18} />

@@ -16,7 +16,7 @@ const ArticleActionMenu = ({ position, text, onTranslate, onSave, onClose }) => 
         >
             <button
                 onClick={onTranslate}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg transition-colors text-xs font-bold"
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-phy-glassHover rounded-lg transition-colors text-xs font-bold"
             >
                 <Languages size={14} className="text-blue-400" />
                 Translate
@@ -24,7 +24,7 @@ const ArticleActionMenu = ({ position, text, onTranslate, onSave, onClose }) => 
             <div className="w-[1px] h-4 bg-white/20"></div>
             <button
                 onClick={onSave}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg transition-colors text-xs font-bold"
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-phy-glassHover rounded-lg transition-colors text-xs font-bold"
             >
                 <BookmarkPlus size={14} className="text-purple-400" />
                 Save
@@ -32,7 +32,7 @@ const ArticleActionMenu = ({ position, text, onTranslate, onSave, onClose }) => 
             <div className="w-[1px] h-4 bg-white/20"></div>
             <button
                 onClick={onClose}
-                className="p-1 hover:bg-white/20 rounded-full transition-colors text-slate-400 hover:text-white"
+                className="p-1 hover:bg-white/20 rounded-full transition-colors text-phy-muted hover:text-white"
             >
                 <X size={12} />
             </button>
