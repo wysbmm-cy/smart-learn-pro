@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection } from '../services/ai';
@@ -827,8 +827,8 @@ const SettingsView = () => {
                         <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-4">
                             配色方案 (Color Scheme) - Phycat 风格
                         </label>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {/* Dark Themes */}
+                        <p className="text-xs text-phy-muted mb-2">推荐主题</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-3 mb-4">
                             <button onClick={() => setTheme('vampire')} className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${theme === 'vampire' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-phy-border hover:border-phy-borderHover'}`}>
                                 <div className="absolute inset-0 bg-[#1e1e24] opacity-10 group-hover:opacity-20 transition-opacity"></div>
                                 <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Vampire {theme === 'vampire' && <Check size={14} className="text-rose-500" />}</div>
@@ -839,13 +839,20 @@ const SettingsView = () => {
                                 <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Abyss {theme === 'abyss' && <Check size={14} className="text-violet-500" />}</div>
                                 <div className="flex gap-1 relative z-10"><div className="w-4 h-4 rounded-full bg-[#0b1120]"></div><div className="w-4 h-4 rounded-full bg-[#8b5cf6]"></div></div>
                             </button>
+                            <button onClick={() => setTheme('prussian')} className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${theme === 'prussian' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-phy-border hover:border-phy-borderHover'}`}>
+                                <div className="absolute inset-0 bg-[#f1f5f9] opacity-50 group-hover:opacity-80 transition-opacity"></div>
+                                <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Prussian {theme === 'prussian' && <Check size={14} className="text-blue-500" />}</div>
+                                <div className="flex gap-1 relative z-10"><div className="w-4 h-4 rounded-full border border-phy-border bg-[#f1f5f9]"></div><div className="w-4 h-4 rounded-full bg-[#3b82f6]"></div></div>
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-phy-muted mb-2">更多主题</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                             <button onClick={() => setTheme('radiation')} className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${theme === 'radiation' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-phy-border hover:border-phy-borderHover'}`}>
                                 <div className="absolute inset-0 bg-[#111810] opacity-10 group-hover:opacity-20 transition-opacity"></div>
                                 <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Radiation {theme === 'radiation' && <Check size={14} className="text-emerald-500" />}</div>
                                 <div className="flex gap-1 relative z-10"><div className="w-4 h-4 rounded-full bg-[#111810]"></div><div className="w-4 h-4 rounded-full bg-[#4ade80]"></div></div>
                             </button>
-
-                            {/* Light Themes */}
                             <button onClick={() => setTheme('sakura')} className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${theme === 'sakura' ? 'border-pink-400 ring-2 ring-pink-400/20' : 'border-phy-border hover:border-phy-borderHover'}`}>
                                 <div className="absolute inset-0 bg-[#fff5f8] opacity-50 group-hover:opacity-80 transition-opacity"></div>
                                 <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Sakura {theme === 'sakura' && <Check size={14} className="text-pink-500" />}</div>
@@ -870,11 +877,6 @@ const SettingsView = () => {
                                 <div className="absolute inset-0 bg-[#fef2f2] opacity-50 group-hover:opacity-80 transition-opacity"></div>
                                 <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Cheery {theme === 'cheery' && <Check size={14} className="text-red-500" />}</div>
                                 <div className="flex gap-1 relative z-10"><div className="w-4 h-4 rounded-full border border-phy-border bg-[#fef2f2]"></div><div className="w-4 h-4 rounded-full bg-[#ef4444]"></div></div>
-                            </button>
-                            <button onClick={() => setTheme('prussian')} className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${theme === 'prussian' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-phy-border hover:border-phy-borderHover'}`}>
-                                <div className="absolute inset-0 bg-[#f1f5f9] opacity-50 group-hover:opacity-80 transition-opacity"></div>
-                                <div className="text-xs font-bold text-phy-text font-bold mb-1 relative z-10 flex items-center justify-between">Prussian {theme === 'prussian' && <Check size={14} className="text-blue-500" />}</div>
-                                <div className="flex gap-1 relative z-10"><div className="w-4 h-4 rounded-full border border-phy-border bg-[#f1f5f9]"></div><div className="w-4 h-4 rounded-full bg-[#3b82f6]"></div></div>
                             </button>
                             <button onClick={() => setTheme('sky')} className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${theme === 'sky' ? 'border-sky-400 ring-2 ring-sky-400/20' : 'border-phy-border hover:border-phy-borderHover'}`}>
                                 <div className="absolute inset-0 bg-[#f0f9ff] opacity-50 group-hover:opacity-80 transition-opacity"></div>

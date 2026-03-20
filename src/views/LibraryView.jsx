@@ -32,7 +32,7 @@ const LibraryView = () => {
 
     const handleDelete = async (e, id) => {
         e.stopPropagation();
-        if (confirm("Permanently delete this file?")) {
+        if (confirm("确定要永久删除此文件吗？")) {
             await removeFileItem(id);
             if (activeFile && activeFile.id === id) setActiveFile(null);
             await loadData();
@@ -63,7 +63,7 @@ const LibraryView = () => {
         return <FileText size={24} className="text-phy-muted" />;
     };
 
-    if (loading) return <div className="p-10 text-center text-phy-muted">Loading library...</div>;
+    if (loading) return <div className="p-10 text-center text-phy-muted">正在加载媒体库...</div>;
 
     return (
         <div className="max-w-6xl mx-auto h-[calc(100vh-100px)] flex gap-6 animate-fade-in pb-6">
@@ -76,8 +76,8 @@ const LibraryView = () => {
                             <FolderOpen size={20} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-phy-text font-bold">File Library</h2>
-                            <p className="text-xs text-phy-muted">{files.length} files stored locally</p>
+                            <h2 className="text-lg font-bold text-phy-text font-bold">本地媒体库</h2>
+                            <p className="text-xs text-phy-muted">共 {files.length} 个本地文件</p>
                         </div>
                     </div>
                 </div>
@@ -85,8 +85,8 @@ const LibraryView = () => {
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                     {files.length === 0 && (
                         <div className="text-center py-20 text-phy-muted">
-                            <p>No files uploaded yet.</p>
-                            <p className="text-xs mt-2">Upload from "Import" page.</p>
+                            <p>尚无上传的文件。</p>
+                            <p className="text-xs mt-2">请在“导入”页面上传。</p>
                         </div>
                     )}
                     {files.map((file) => (
@@ -146,9 +146,9 @@ const LibraryView = () => {
                                 <div className="p-6 bg-purple-50 rounded-full inline-block animate-pulse-slow">
                                     <Music size={48} className="text-purple-500" />
                                 </div>
-                                <h3 className="text-xl font-bold text-phy-text font-bold">Now Playing Globally</h3>
+                                <h3 className="text-xl font-bold text-phy-text font-bold">正在全局播放</h3>
                                 <p className="text-phy-muted max-w-md mx-auto">
-                                    Audio is playing in the persistent player. You can listen while navigating to other pages.
+                                    音频正在持久播放器中播放。您可以在导航到其他页面时继续收听。
                                 </p>
                             </div>
                         ) : activeFile.type.includes('video') ? (
@@ -159,11 +159,11 @@ const LibraryView = () => {
                                     autoPlay
                                     className="w-full max-h-[60vh]"
                                 >
-                                    Your browser does not support media playback.
+                                    您的浏览器不支持媒体播放。
                                 </video>
                             </div>
                         ) : (
-                            <div className="text-phy-muted">Preview not supported for this file type.</div>
+                            <div className="text-phy-muted">此文件类型不支持预览。</div>
                         )}
                     </div>
                 </div>

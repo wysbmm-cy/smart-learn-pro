@@ -130,7 +130,7 @@ const PlanView = ({ onNavigate }) => {
                 <div>
                     <h1 className="text-3xl font-bold text-phy-text flex items-center gap-3">
                         <Brain className="text-indigo-500" size={32} />
-                        智能计划 <span className="text-sm font-normal text-phy-muted bg-phy-glassHeavy px-2 py-1 rounded-full border border-phy-border">Smart Coach 2.0</span>
+                        智能计划 <span className="text-sm font-normal text-phy-muted bg-phy-glassHeavy px-2 py-1 rounded-full border border-phy-border">智能教练 2.0</span>
                     </h1>
                     <p className="text-phy-muted mt-2 text-sm">
                         {smartPlan?.schedule_status || "您的 AI 专属学习教练，助您科学备考。"}
@@ -169,7 +169,7 @@ const PlanView = ({ onNavigate }) => {
                             <div className="bg-gradient-to-r from-indigo-900/50 to-violet-900/50 text-white p-6 rounded-2xl border border-indigo-500/30 shadow-lg relative overflow-hidden backdrop-blur-sm">
                                 <div className="absolute top-0 right-0 p-8 opacity-10"><Sparkles size={100} /></div>
                                 <h3 className="font-bold text-indigo-200 flex items-center gap-2 mb-2">
-                                    <Sparkles size={18} /> 每日洞察 (Daily Insight)
+                                    <Sparkles size={18} /> 每日洞察
                                 </h3>
                                 <p className="text-lg font-medium leading-relaxed max-w-2xl text-phy-text">
                                     "{smartPlan.insight}"
@@ -182,7 +182,7 @@ const PlanView = ({ onNavigate }) => {
                             <div className="bg-slate-900/40 rounded-2xl border border-phy-border p-6 flex flex-col relative overflow-hidden backdrop-blur-sm">
                                 <h3 className="font-bold text-phy-text mb-4 flex items-center gap-2">
                                     <Activity size={18} className="text-emerald-500" />
-                                    能力雷达 (Skill Radar)
+                                    能力雷达
                                 </h3>
                                 <div className="flex-1 min-h-[250px] relative -ml-4">
                                     {smartPlan && (
@@ -202,7 +202,7 @@ const PlanView = ({ onNavigate }) => {
                             <div className="flex flex-col gap-4">
                                 <h3 className="font-bold text-phy-text flex items-center gap-2">
                                     <Trophy size={18} className="text-amber-500" />
-                                    今日挑战 (Daily Quests)
+                                    今日挑战
                                 </h3>
                                 {smartPlan?.daily_quests?.map((quest, idx) => (
                                     <div key={idx} className="bg-slate-800/50 p-4 rounded-xl border border-phy-borderHover hover:border-indigo-500/50 hover:bg-phy-glassHeavy transition-all group cursor-pointer" onClick={() => onNavigate && onNavigate(quest.link || 'home')}>

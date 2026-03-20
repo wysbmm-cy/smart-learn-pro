@@ -140,7 +140,7 @@ ${q.options.join('\n')}
                     <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-6">
                         <FileText size={40} />
                     </div>
-                    <h2 className="text-3xl font-bold text-phy-text font-bold">AI 模拟考场 (Exam Simulator)</h2>
+                    <h2 className="text-3xl font-bold text-phy-text font-bold">AI 模拟考场</h2>
                     <p className="text-phy-muted leading-relaxed">
                         上传您的 PDF 试卷 (如四六级真题)，AI 将自动将其转化为在线交互式试卷。<br />支持选择题自动批改、阅读分屏、作文一键润色。
                     </p>
@@ -196,7 +196,7 @@ ${q.options.join('\n')}
                                 className={`w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2 ${isParsing ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                             >
                                 {isParsing ? <Loader2 className="animate-spin" /> : <Play size={20} />}
-                                {isParsing ? '正在分析文本...' : '开始生成试卷 (Start Analysis)'}
+                                {isParsing ? '正在分析文本...' : '开始生成试卷'}
                             </button>
                         </div>
                     ) : (
@@ -239,7 +239,7 @@ ${q.options.join('\n')}
                 <div className="flex items-center gap-3">
                     <div className="bg-blue-600 text-white p-2 rounded-lg"><FileText size={18} /></div>
                     <h2 className="font-bold text-phy-text font-bold">{examData.title || "My Exam"}</h2>
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-bold">AI Generated</span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-bold">AI 生成</span>
                 </div>
                 <div className="flex gap-3">
                     <button
@@ -258,7 +258,7 @@ ${q.options.join('\n')}
                         onClick={() => toast.success("暂未实现在线评分(除作文外)，请自我核对！")}
                         className="px-4 py-2 text-sm font-bold bg-phy-glassHeavy text-white hover:bg-phy-glassHeavy rounded-lg transition-colors shadow-lg shadow-slate-900/20"
                     >
-                        交卷 (Submit)
+                        交卷 (提交)
                     </button>
                 </div>
             </div>
@@ -268,10 +268,10 @@ ${q.options.join('\n')}
                 {(!examData.sections || examData.sections.length === 0) && (
                     <div className="flex flex-col items-center justify-center h-full text-phy-muted space-y-4">
                         <Loader2 size={48} className="text-phy-text mb-2" />
-                        <h3 className="text-xl font-bold text-phy-muted">No Content Found</h3>
+                        <h3 className="text-xl font-bold text-phy-muted">未找到内容</h3>
                         <p className="max-w-md text-center">AI 分析完成了，但似乎没有识别出有效题目。</p>
                         <p className="text-sm">可能是因为 PDF 格式过于复杂，或者文本为空。</p>
-                        <button onClick={handleClearExam} className="text-blue-600 hover:underline">返回重试 (Try Reset)</button>
+                        <button onClick={handleClearExam} className="text-blue-600 hover:underline">返回重试</button>
                     </div>
                 )}
                 {examData.sections?.map((section, sIdx) => (
@@ -279,7 +279,7 @@ ${q.options.join('\n')}
                         {/* Section Header */}
                         <div className="bg-phy-bg px-6 py-4 border-b border-phy-border flex justify-between items-center">
                             <div>
-                                <span className="uppercase text-xs font-bold text-blue-600 tracking-wider block mb-1">{section.type} SECTION</span>
+                                <span className="uppercase text-xs font-bold text-blue-600 tracking-wider block mb-1">{section.type.toUpperCase()} 部分</span>
                                 <h3 className="font-bold text-phy-text">{section.instructions || "Answer the following questions"}</h3>
                             </div>
                         </div>
@@ -307,7 +307,7 @@ ${q.options.join('\n')}
                                             className="w-full py-4 border-2 border-dashed border-blue-200 rounded-xl flex flex-col items-center justify-center gap-2 text-blue-600 hover:bg-blue-50 transition-colors font-bold group"
                                         >
                                             <PenTool className="group-hover:scale-110 transition-transform" />
-                                            前往 AI 写作台作答 (Open Writer)
+                                            前往 AI 写作台作答
                                         </button>
                                     </div>
                                 )}

@@ -74,7 +74,7 @@ const CoachView = () => {
     const saveCurrentSession = async () => {
         const session = {
             id: currentSessionId || crypto.randomUUID(),
-            title: messages.length > 0 ? messages[0].content.slice(0, 30) + "..." : "Empty Session",
+            title: messages.length > 0 ? messages[0].content.slice(0, 30) + "..." : "空会话",
             personaId: selectedPersona.id,
             messages: messages, // blobs are stored directly
             updatedAt: Date.now()
@@ -139,7 +139,7 @@ const CoachView = () => {
             Keep the explanation in Chinese.`;
 
             const feedback = await sendChatMessage([
-                { role: 'system', content: "You are a helpful English teacher." },
+                { role: 'system', content: "你是一位乐于助人的英语老师。" },
                 { role: 'user', content: prompt }
             ], settings);
 
@@ -299,7 +299,7 @@ const CoachView = () => {
                     <h1 className="text-2xl md:text-3xl font-black text-phy-text tracking-tight">
                         AI 口语教练
                     </h1>
-                    <p className="text-phy-muted text-xs md:text-sm font-medium">Real-time Voice Interaction</p>
+                    <p className="text-phy-muted text-xs md:text-sm font-medium">实时语音互动</p>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">

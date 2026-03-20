@@ -45,6 +45,8 @@ const FlashcardView = ({ params }) => {
     const [isMultiSelect, setIsMultiSelect] = useState(false); // Toggle multi-select mode
     const [selectedCardIds, setSelectedCardIds] = useState(new Set()); // Selected cards for batch operations
     const [showBatchMenu, setShowBatchMenu] = useState(false); // Batch folder move menu
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [showMoreActions, setShowMoreActions] = useState(false);
     const [isSwapped, setIsSwapped] = useState(false); // Toggle Q/A sides
     const [showStats, setShowStats] = useState(false); // Toggle statistics panel
     const [sortMode, setSortMode] = useState('mastery_asc'); // 'default' | 'mastery_asc' | 'mastery_desc'
@@ -98,7 +100,6 @@ const FlashcardView = ({ params }) => {
     // A.I.R. Background Prefetch Function
     const prefetchAIR = async () => {
         if (airStatus === 'preparing') return; // Already in progress
-
         setAirStatus('preparing');
 
         try {
@@ -139,6 +140,12 @@ const FlashcardView = ({ params }) => {
             setAirStatus('idle');
         }
     };
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Handle A.I.R. button click
     const handleAIRClick = () => {
@@ -1015,21 +1022,30 @@ const FlashcardView = ({ params }) => {
         );
     };
 
+    const sidebarFolderBtnClass = (active) =>
+        active
+            ? `w-full flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 md:py-2.5 rounded-xl text-left font-medium transition-colors glass-panel text-phy-accent shadow-sm`
+            : `w-full flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 md:py-2.5 rounded-xl text-left font-medium transition-colors text-phy-muted hover:bg-phy-glassHover hover:text-phy-text`;
+
     const Sidebar = (
         <div className="h-full flex flex-col bg-phy-glass text-phy-text">
-            <div className="p-4 border-b border-phy-border flex justify-between items-center">
-                <h2 className="text-xl font-bold text-phy-text flex items-center gap-2">
-                    <Layers className="text-phy-accent" />
+            <div className="p-2 md:p-4 border-b border-phy-border flex justify-between items-center">
+                <h2 className="text-base md:text-xl font-bold text-phy-text flex items-center gap-2">
+                    <Layers size={isMobile ? 18 : 24} className="text-phy-accent" />
                     卡片库
                 </h2>
                 <button
                     onClick={() => {
                         setIsMultiSelect(!isMultiSelect);
-                        if (!isMultiSelect) setStudySelection([]); // Reset on enter
+                        if (!isMultiSelect) setStudySelection([]);
                     }}
-                    className={`text-xs px-2 py-1 rounded border ${isMultiSelect ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover font-bold' : 'text-phy-muted border-phy-border'}`}
+                    className={
+                        isMultiSelect
+                            ? 'text-xs px-2 py-1 rounded border bg-phy-accentGlass text-phy-accent border-phy-borderHover font-bold'
+                            : 'text-xs px-2 py-1 rounded border text-phy-muted border-phy-border'
+                    }
                 >
-                    {isMultiSelect ? 'Finish Select' : 'Multi-Select'}
+                    {isMultiSelect ? '完成选择' : '多选'}
                 </button>
             </div>
 
@@ -1039,7 +1055,7 @@ const FlashcardView = ({ params }) => {
                     <>
                         <button
                             onClick={() => setSelectedFolderId('all')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'all' ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
+                            className={sidebarFolderBtnClass(selectedFolderId === 'all')}
                         >
                             <LayoutGrid size={18} />
                             所有卡片
@@ -1048,7 +1064,7 @@ const FlashcardView = ({ params }) => {
 
                         <button
                             onClick={() => setSelectedFolderId('today')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'today' ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
+                            className={sidebarFolderBtnClass(selectedFolderId === 'today')}
                         >
                             <RefreshCw size={18} />
                             今日需复习
@@ -1056,7 +1072,7 @@ const FlashcardView = ({ params }) => {
 
                         <button
                             onClick={() => setSelectedFolderId('flagged')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors ${selectedFolderId === 'flagged' ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
+                            className={sidebarFolderBtnClass(selectedFolderId === 'flagged')}
                         >
                             <Star size={18} className={selectedFolderId === 'flagged' ? "fill-phy-accent" : ""} />
                             重点标记 (Flagged)
@@ -1088,18 +1104,24 @@ const FlashcardView = ({ params }) => {
 
                 {folders.map(folder => {
                     const isSelected = isMultiSelect ? studySelection.includes(folder.id) : selectedFolderId === folder.id;
+                    const folderItemClass = isSelected
+                        ? `w-full flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 md:py-2.5 rounded-xl text-left font-medium transition-colors group glass-panel text-phy-accent shadow-sm`
+                        : `w-full flex items-center gap-2 md:gap-3 px-2 md:px-3 py-1.5 md:py-2.5 rounded-xl text-left font-medium transition-colors group text-phy-muted hover:bg-phy-glassHover hover:text-phy-text`;
+                    const checkClass = isSelected
+                        ? 'w-4 h-4 rounded border flex items-center justify-center bg-phy-accent border-phy-accent'
+                        : 'w-4 h-4 rounded border flex items-center justify-center border-phy-border';
                     return (
                         <button
                             key={folder.id}
                             onClick={() => isMultiSelect ? toggleFolderSelection(folder.id) : setSelectedFolderId(folder.id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left font-medium transition-colors group ${isSelected ? 'glass-panel text-phy-accent shadow-sm' : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text'}`}
+                            className={folderItemClass}
                         >
                             {isMultiSelect ? (
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-phy-accent border-phy-accent' : 'border-phy-border'}`}>
+                                <div className={checkClass}>
                                     {isSelected && <CheckCircle size={10} className="text-white" />}
                                 </div>
                             ) : (
-                                <Folder size={18} className={isSelected ? 'fill-phy-accentGlass' : ''} />
+                                <Folder size={isMobile ? 16 : 18} className={isSelected ? 'fill-phy-accentGlass' : ''} />
                             )}
                             <span className="truncate flex-1">{folder.name}</span>
                             {!isMultiSelect && (
@@ -1112,121 +1134,126 @@ const FlashcardView = ({ params }) => {
                 })}
             </div>
 
-            <div className="p-4 border-t border-phy-border bg-phy-glassHeavy space-y-2">
+            <div className="p-2 md:p-4 border-t border-phy-border bg-phy-glassHeavy grid grid-cols-2 lg:flex lg:flex-col gap-2">
                 {/* A.I.R. Smart Review Button */}
                 <button
                     onClick={handleAIRClick}
                     disabled={airStatus === 'preparing'}
-                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold shadow-md transition-all ${airStatus === 'ready'
-                        ? 'bg-phy-accent text-white hover:opacity-90'
-                        : airStatus === 'preparing'
-                            ? 'bg-phy-glass text-phy-muted cursor-wait'
-                            : 'bg-phy-accent text-white hover:opacity-90 border border-transparent'
-                        }`}
+                    className={
+                        airStatus === 'preparing'
+                            ? 'w-full flex items-center justify-center gap-2 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-bold shadow-md transition-all bg-phy-glass text-phy-muted cursor-wait'
+                            : 'w-full flex items-center justify-center gap-2 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-bold shadow-md transition-all bg-phy-accent text-white hover:opacity-90 border border-transparent'
+                    }
                 >
                     {airStatus === 'preparing' ? (
-                        <><Loader2 size={16} className="animate-spin" /> 准备中...</>
+                        <><Loader2 size={14} className="animate-spin" /> {isMobile ? '' : '准备中...'}</>
                     ) : airStatus === 'ready' ? (
-                        <><Brain size={16} /> ✅ 点击开始复习</>
+                        <><Brain size={14} /> {isMobile ? '开始' : '点击开始复习'}</>
                     ) : (
-                        <><Brain size={16} /> 🩺 智能复习 (A.I.R.)</>
+                        <><Brain size={14} /> {isMobile ? '智能' : '智能复习 (A.I.R.)'}</>
                     )}
                 </button>
                 <button
                     onClick={() => setShowStudentPicker(true)}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-transparent rounded-lg border border-phy-border text-phy-muted text-sm font-bold shadow-sm hover:text-phy-accent hover:border-phy-accent transition-colors hover:bg-phy-glassHover"
+                    className="w-full flex items-center justify-center gap-2 py-1.5 bg-transparent rounded-lg border border-phy-border text-phy-muted text-xs md:text-sm font-bold shadow-sm hover:text-phy-accent hover:border-phy-accent transition-colors hover:bg-phy-glassHover"
                 >
-                    <Dices size={16} />
-                    班级抽号 (Lottery)
+                    <Dices size={14} />
+                    {isMobile ? '随机' : '随机点名'}
                 </button>
             </div>
         </div>
     );
 
     return (
-        <div className="h-[calc(100vh-100px)] animate-fade-in glass-panel rounded-[2rem] shadow-sm overflow-hidden text-phy-text bg-phy-bg/50">
+        <div className="h-full md:h-[calc(100vh-100px)] animate-fade-in glass-panel rounded-[2rem] shadow-sm overflow-hidden text-phy-text bg-phy-bg/50">
             {mode === 'manage' ? (
                 <SplitPane
                     left={Sidebar}
                     right={
                         <div className="h-full flex flex-col bg-transparent">
                             {/* Toolbar */}
-                            <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur sticky top-0 z-10">
-                                <h3 className="text-lg font-bold flex items-center gap-2">
-                                    {isMultiSelect
-                                        ? `多选模式 (${studySelection.length} 个文件夹)`
-                                        : (selectedFolderId === 'all' ? '所有卡片' :
-                                            selectedFolderId === 'today' ? '今日需复习' :
-                                                selectedFolderId === 'flagged' ? `重点标记 (${displayCards.length})` :
-                                                    folders.find(f => f.id === selectedFolderId)?.name || '文件夹')
-                                    }
-                                    <span className="bg-phy-glass text-phy-muted px-2 py-0.5 rounded-full text-xs border border-phy-border">{displayCards.length}</span>
+                            <div className="p-2 md:p-4 border-b border-phy-border flex items-center justify-between gap-2 bg-phy-glassHeavy backdrop-blur sticky top-0 z-10">
+                                <h3 className="min-w-0 flex-1 text-sm md:text-lg font-bold flex items-center gap-2 whitespace-nowrap overflow-hidden">
+                                    <span className="truncate">
+                                        {isMultiSelect
+                                            ? (`多选模式 (${selectedCardIds.size})`)
+                                            : (selectedFolderId === 'all' ? '所有卡片' :
+                                                selectedFolderId === 'today' ? '今日待复习' :
+                                                    selectedFolderId === 'flagged' ? (`重点标记 (${displayCards.length})`) :
+                                                        selectedFolderId === 'mastered' ? (`已掌握单词 (${displayCards.length})`) :
+                                                            folders.find(f => f.id === selectedFolderId)?.name || '文件夹')
+                                        }
+                                    </span>
+                                    <span className="bg-phy-glass text-phy-muted px-1.5 py-0.5 rounded-full text-[10px] md:text-xs border border-phy-border shrink-0">{displayCards.length}</span>
                                 </h3>
 
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1.5 md:gap-3">
                                     <button
-                                        onClick={() => setMode('study')}
+                                        onClick={() => mode === 'manage' && startSession()}
                                         disabled={studyQueue.length === 0 && displayCards.length === 0}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${studyQueue.length === 0 && displayCards.length === 0 ? 'bg-phy-glassHeavy text-phy-muted border border-phy-border cursor-not-allowed' : 'bg-phy-accent text-white hover:opacity-90 active:scale-95'}`}
-                                        title={displayCards.length === 0 ? "没有卡片可复习" : "开始复习当前筛选卡片"}
-                                        onClickCapture={() => {
-                                            if (mode === 'manage') startSession();
-                                        }}
+                                        className={
+                                            studyQueue.length === 0 && displayCards.length === 0
+                                                ? 'flex items-center justify-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-bold text-xs md:text-sm bg-phy-glassHeavy text-phy-muted border border-phy-border cursor-not-allowed'
+                                                : 'flex items-center justify-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-lg font-bold text-xs md:text-sm bg-phy-accent text-white hover:opacity-90 active:scale-95 shadow-sm'
+                                        }
                                     >
-                                        <Play size={16} />
-                                        开始复习
+                                        <Play size={14} />
+                                        <span className={isMobile ? 'hidden' : 'inline'}>开始复习</span>
                                     </button>
 
-                                    {/* Card Count Limit Input */}
-                                    <div className="flex items-center gap-2 bg-phy-glass border border-phy-border rounded-lg px-2 py-1 ml-2">
-                                        <span className="text-[10px] font-bold text-phy-muted uppercase">Count</span>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="500"
-                                            value={drawCount}
-                                            onChange={(e) => setDrawCount(parseInt(e.target.value) || 10)}
-                                            className="w-12 bg-transparent text-sm font-bold text-phy-text outline-none text-center"
-                                        />
-                                    </div>
-
-                                    <button
-                                        onClick={() => setShowStats(!showStats)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${showStats ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
-                                    >
-                                        <BarChart3 size={14} />
-                                        {showStats ? '隐藏统计' : '查看统计'}
-                                    </button>
-
-                                    {/* Sort Toggle Button */}
-                                    <button
-                                        onClick={() => {
-                                            if (sortMode === 'default') setSortMode('mastery_asc');
-                                            else if (sortMode === 'mastery_asc') setSortMode('mastery_desc');
-                                            else setSortMode('default');
-                                        }}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${sortMode !== 'default' ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
-                                        title="Sort by Mastery"
-                                    >
-                                        <Trophy size={14} className={sortMode !== 'default' ? 'fill-phy-accent' : ''} />
-                                        {sortMode === 'default' ? '默认排序' : sortMode === 'mastery_asc' ? '掌握度: 低→高' : '掌握度: 高→低'}
-                                    </button>
-
-                                    {/* Batch Select Toggle */}
-                                    <button
-                                        onClick={() => {
-                                            setIsMultiSelect(!isMultiSelect);
-                                            if (isMultiSelect) setSelectedCardIds(new Set());
-                                        }}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${isMultiSelect ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
-                                    >
-                                        <LayoutGrid size={14} />
-                                        {isMultiSelect ? `已选 ${selectedCardIds.size}` : '批量选择'}
-                                    </button>
-
-                                    <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-phy-glassHover rounded-full text-phy-muted hover:text-phy-text">
-                                        <Plus size={20} />
-                                    </button>
+                                    {isMobile ? (
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowMoreActions(!showMoreActions)}
+                                                className="p-2 rounded-lg border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHover"
+                                            >
+                                                <MoreVertical size={18} />
+                                            </button>
+                                            {showMoreActions && (
+                                                <div className="absolute top-full mt-2 right-0 bg-phy-glassHeavy border border-phy-border rounded-xl shadow-xl z-[100] min-w-[160px] py-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+                                                    <button onClick={() => { setIsAddingCard(true); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
+                                                        <Plus size={16} /> 添加卡片
+                                                    </button>
+                                                    <button onClick={() => { setShowStats(!showStats); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
+                                                        <BarChart3 size={16} /> {showStats ? '隐藏统计' : '查看统计'}
+                                                    </button>
+                                                    <button onClick={() => { 
+                                                        if (sortMode === 'default') setSortMode('mastery_asc');
+                                                        else if (sortMode === 'mastery_asc') setSortMode('mastery_desc');
+                                                        else setSortMode('default');
+                                                        setShowMoreActions(false);
+                                                    }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
+                                                        <Trophy size={16} /> {sortMode === 'default' ? '默认排序' : sortMode === 'mastery_asc' ? '掌握度 低->高' : '掌握度 高->低'}
+                                                    </button>
+                                                    <button onClick={() => { setIsMultiSelect(!isMultiSelect); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
+                                                        <LayoutGrid size={16} /> {isMultiSelect ? '取消操作' : '批量操作'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-1.5 bg-phy-glass border border-phy-border rounded-lg px-2 py-1">
+                                                <span className="text-[10px] font-bold text-phy-muted uppercase">抽查数</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="500"
+                                                    value={drawCount}
+                                                    onChange={(e) => setDrawCount(parseInt(e.target.value) || 10)}
+                                                    className="w-10 md:w-12 bg-transparent text-xs md:text-sm font-bold text-phy-text outline-none text-center"
+                                                />
+                                            </div>
+                                            <button onClick={() => setShowStats(!showStats)} className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text" title="统计面板"><BarChart3 size={18} /></button>
+                                            <button onClick={() => {
+                                                if (sortMode === 'default') setSortMode('mastery_asc');
+                                                else if (sortMode === 'mastery_asc') setSortMode('mastery_desc');
+                                                else setSortMode('default');
+                                            }} className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text" title="排序"><Trophy size={18} /></button>
+                                            <button onClick={() => setIsMultiSelect(!isMultiSelect)} className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text" title="多选"><LayoutGrid size={18} /></button>
+                                            <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-phy-accentGlass rounded-lg text-phy-accent" title="添加"><Plus size={18} /></button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -1310,7 +1337,7 @@ const FlashcardView = ({ params }) => {
                             )}
 
                             {/* Card Grid */}
-                            <div className="flex-1 overflow-y-auto p-6 bg-phy-bg/30">
+                            <div className="flex-1 overflow-y-auto p-3 md:p-6 bg-phy-bg/30">
                                 {/* Add Input */}
                                 <div className="mb-6 bg-phy-glass border border-phy-border shadow-sm rounded-xl p-4 transition-all focus-within:ring-2 ring-phy-accent border-phy-accent">
                                     {isAddingCard ? (
@@ -1340,7 +1367,7 @@ const FlashcardView = ({ params }) => {
                                             <div
                                                 key={card.id}
                                                 onClick={() => isMultiSelect && toggleCardSelection(card.id)}
-                                                className={`group glass-panel rounded-xl p-5 shadow-sm border transition-all relative ${isSelected
+                                                className={`group glass-panel rounded-xl p-3 md:p-5 shadow-sm border transition-all relative ${isSelected
                                                     ? 'border-phy-accent bg-phy-accentGlass ring-2 ring-phy-accent shadow-md'
                                                     : `border-phy-border hover:border-phy-borderHover hover:shadow-md`
                                                     } ${isMultiSelect ? 'cursor-pointer' : ''}`}

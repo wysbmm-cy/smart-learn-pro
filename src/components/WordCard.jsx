@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Zap, Copy, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
-const WordCard = ({ wordData, isFastMode }) => {
+const WordCard = ({ wordData, isFastMode, actions }) => {
     const { settings } = useApp();
     const [activeTab, setActiveTab] = useState('core');
     const [isCopied, setIsCopied] = useState(false);
@@ -53,13 +53,16 @@ ${wordData.usage ? `【Usage】: ${wordData.usage}` : ''}
                     </div>
                 </div>
 
-                <button
-                    onClick={handleCopy}
-                    className="p-2 rounded-lg hover:bg-phy-bg text-phy-muted hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                    title="Copy Word Card"
-                >
-                    {isCopied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
-                </button>
+                <div className="flex items-center gap-2">
+                    {actions}
+                    <button
+                        onClick={handleCopy}
+                        className="p-2 rounded-lg hover:bg-phy-bg text-phy-muted hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        title="Copy Word Card"
+                    >
+                        {isCopied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+                    </button>
+                </div>
             </div>
 
             {/* Tabs */}

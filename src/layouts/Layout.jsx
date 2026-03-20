@@ -7,7 +7,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home
+    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target
 } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
@@ -16,10 +16,10 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
         onContextMenu={onContextMenu}
         className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-medium text-[14px] mb-1 outline-none focus:outline-none ${active
             ? 'glass-panel text-phy-accent font-bold border-phy-accentHover'
-            : 'text-phy-muted hover:bg-phy-glassHover hover:text-phy-text border border-transparent'
+            : 'text-phy-text/80 hover:bg-phy-glassHover hover:text-phy-text border border-transparent'
             }`}
     >
-        <Icon size={18} strokeWidth={active ? 2.5 : 2} className="shrink-0" />
+        <Icon size={18} strokeWidth={active ? 2.5 : 2} className={active ? 'shrink-0 text-phy-accent' : 'shrink-0 text-phy-text/70'} />
         <span className="whitespace-nowrap">{label}</span>
     </button>
 );
@@ -31,8 +31,8 @@ const MobileTab = ({ icon: Icon, label, active, onClick }) => (
         style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
     >
         <span className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-2xl transition-all duration-200 ${active ? 'bg-phy-accentGlass' : ''}`}>
-            <Icon size={22} strokeWidth={active ? 2.5 : 1.8} className={active ? 'text-phy-accent' : 'text-phy-muted'} />
-            <span className={`text-[10px] font-semibold ${active ? 'text-phy-accent' : 'text-phy-muted'}`}>{label}</span>
+            <Icon size={22} strokeWidth={active ? 2.5 : 1.8} className={active ? 'text-phy-accent' : 'text-phy-text/75'} />
+            <span className={`text-[10px] font-semibold ${active ? 'text-phy-accent' : 'text-phy-text/75'}`}>{label}</span>
         </span>
     </button>
 );
@@ -54,28 +54,30 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const navItems = [
         { id: 'dashboard', icon: BarChart2, label: '工作台' },
         { id: 'notes', icon: NotebookPen, label: '我的笔记' },
-        { id: 'import', icon: Upload, label: '导入分析' },
-        { id: 'video', icon: PlayCircle, label: '视频学习 (Bilibili)' },
-        { id: 'writer', icon: PenTool, label: 'AI 写作台 (Workbench)' },
-        { id: 'exam', icon: FileQuestion, label: '模拟考场 (Exam Sim)' },
+        { id: 'import', icon: Upload, label: '导入' },
+        { id: 'video', icon: PlayCircle, label: '视频学习' },
+        { id: 'writer', icon: PenTool, label: 'AI 写作' },
+        { id: 'exam', icon: FileQuestion, label: '考试模拟' },
         { id: 'study', icon: BookOpen, label: '词汇与阅读' },
-        { id: 'flashcards', icon: Layers, label: '抽记卡 (Flashcards)' },
-        { id: 'knowledge', icon: Share2, label: '知识图谱 (3D)' },
+        { id: 'flashcards', icon: Layers, label: '闪卡复习' },
+        { id: 'review', icon: Target, label: '记忆曲线复习' },
+        { id: 'knowledge', icon: Share2, label: '知识图谱' },
         { id: 'library', icon: FolderOpen, label: '文件库' },
-        { id: 'history', icon: Clock, label: '历史回顾' },
-        { id: 'coach', icon: Mic, label: '口语教练 (AI Coach)' },
-        { id: 'plan', icon: Activity, label: '智能计划' },
+        { id: 'history', icon: Clock, label: '历史' },
+        { id: 'coach', icon: Mic, label: '口语教练' },
+        { id: 'plan', icon: Activity, label: '学习计划' },
     ];
 
     const mobileBottomTabs = [
         { id: 'dashboard', icon: Home, label: '首页' },
         { id: 'study', icon: BookOpen, label: '阅读' },
         { id: 'flashcards', icon: Layers, label: '复习' },
+        { id: 'review', icon: Target, label: '记忆曲线' },
         { id: 'writer', icon: PenTool, label: '写作' },
-        { id: 'coach', icon: Mic, label: '教练' },
+        { id: 'coach', icon: Mic, label: '口语' },
     ];
 
-    const currentPageLabel = navItems.find(i => i.id === currentView)?.label?.split(' (')[0] || (currentView === 'settings' ? '全局设置' : '总览');
+    const currentPageLabel = navItems.find(i => i.id === currentView)?.label?.split(' (')[0] || (currentView === 'settings' ? '设置' : '页面');
 
     return (
         <div
@@ -98,7 +100,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 />
             </div>
 
-            {/* ── Mobile Top Header ── */}
+            {/* Mobile Top Header */}
             <div className="md:hidden relative z-30 shrink-0">
                 <div className="h-14 flex items-center justify-between px-4 border-b border-phy-border bg-phy-glassHeavy backdrop-blur-xl">
                     <div className="flex items-center gap-3">
@@ -124,13 +126,13 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 </div>
             </div>
 
-            {/* ── Sidebar Overlay (Mobile) ── */}
+            {/* Sidebar Overlay (Mobile) */}
             <div
                 className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={() => setIsMobileMenuOpen(false)}
             />
 
-            {/* ── Sidebar Drawer ── */}
+            {/* Sidebar Drawer */}
             <aside className={`
                 fixed md:relative z-50 h-full
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
@@ -140,7 +142,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 <div className="h-16 flex items-center justify-between px-5 shrink-0">
                     <div className="flex items-center gap-3 text-phy-accent font-extrabold text-xl tracking-tight">
                         <Brain size={26} strokeWidth={2.5} />
-                        <span>AI 智学大师</span>
+                        <span>AI English</span>
                     </div>
                     <button
                         onClick={() => setIsMobileMenuOpen(false)}
@@ -164,30 +166,30 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                     ))}
                 </nav>
 
-                <div className="p-4 border-t border-phy-border bg-phy-glassHeavy shrink-0">
+                <div className="p-4 border-t border-phy-border bg-phy-glassHeavy shrink-0" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
                     <button
                         onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-phy-accentGlass border border-phy-borderHover text-phy-accent transition-all text-sm font-medium"
                         style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
                         <Settings size={18} />
-                        <span>设置与接口</span>
+                        <span>设置与主题</span>
                     </button>
                 </div>
             </aside>
 
-            {/* ── Context Menu ── */}
+            {/* Context Menu */}
             {contextMenu && (
                 <div
                     className="fixed z-50 w-48 bg-phy-glassHeavy backdrop-blur-xl border border-phy-border rounded-xl shadow-2xl py-1 text-sm text-phy-text animate-fade-in"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                 >
-                    <button className="w-full text-left px-4 py-2.5 hover:bg-phy-glassHover" onClick={() => { setCurrentView(contextMenu.itemId); setContextMenu(null); }}>在此页打开</button>
-                    <button className="w-full text-left px-4 py-2.5 text-phy-accent hover:bg-phy-glassHover border-t border-phy-border" onClick={() => { onOpenSplit(contextMenu.itemId); setContextMenu(null); }}>分屏打开</button>
+                    <button className="w-full text-left px-4 py-2.5 hover:bg-phy-glassHover" onClick={() => { setCurrentView(contextMenu.itemId); setContextMenu(null); }}>切换到此页面</button>
+                    <button className="w-full text-left px-4 py-2.5 text-phy-accent hover:bg-phy-glassHover border-t border-phy-border" onClick={() => { onOpenSplit(contextMenu.itemId); setContextMenu(null); }}>在分屏中打开</button>
                 </div>
             )}
 
-            {/* ── Main Content ── */}
+            {/* Main Content */}
             <div className="flex-1 flex flex-col h-full min-w-0 relative z-10 bg-transparent">
                 {/* Desktop Header */}
                 <header className="hidden md:flex h-16 items-center justify-between px-6 shrink-0 border-b border-phy-border bg-phy-glassHeavy backdrop-blur-md">
@@ -199,7 +201,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         <button
                             onClick={() => setIsSplit(!isSplit)}
                             className={`p-2 rounded-lg transition-all border ${isSplit ? 'bg-phy-accentGlass border-phy-borderHover text-phy-accent' : 'border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHover'}`}
-                            title="切换分屏视图"
+                            title="切换分屏模式"
                         >
                             {isSplit ? <Columns size={18} /> : <Maximize2 size={18} />}
                         </button>
@@ -236,10 +238,10 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         />
                     ) : (
                         <main
-                            className={`h-full overflow-y-auto scroll-smooth ${currentView === 'notes' ? 'p-0' : 'px-4 md:px-8'}`}
+                            className={`h-full scroll-smooth ${currentView === 'notes' ? 'overflow-hidden p-0' : 'overflow-y-auto px-4 md:px-8'}`}
                             style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
                         >
-                            <div className="max-w-6xl mx-auto pt-4 md:pt-6 pb-28 md:pb-8">
+                            <div className="max-w-6xl mx-auto pt-4 md:pt-6 pb-24 md:pb-8">
                                 {children}
                             </div>
                         </main>
@@ -259,7 +261,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 <ChatSidebar />
             </div>
 
-            {/* ── Mobile Bottom Tab Bar ── */}
+            {/* Mobile Bottom Tab Bar */}
             <div
                 className="md:hidden fixed bottom-0 left-0 right-0 z-[45] bg-phy-glassHeavy backdrop-blur-xl border-t border-phy-border flex items-stretch"
                 style={{
@@ -278,7 +280,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 ))}
                 <MobileTab
                     icon={Menu}
-                    label="更多"
+                    label="菜单"
                     active={false}
                     onClick={() => setIsMobileMenuOpen(true)}
                 />
@@ -288,3 +290,6 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 };
 
 export default Layout;
+
+
+

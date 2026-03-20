@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import SharedMarkdown from './SharedMarkdown';
 import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, History, Plus, Trash2, MessageSquare, Zap, MessageCircle, Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, BookOpen } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -8,36 +8,45 @@ import ChatFlashcardWidget from './ChatFlashcardWidget';
 import ChatWritingWidget from './ChatWritingWidget';
 
 // Tool name -> display label mapping
+// Tool name -> display label mapping
 const TOOL_LABELS = {
-    get_flashcard_stats: { label: '词汇统计', icon: '🃏' },
-    get_study_history: { label: '学习历史', icon: '📖' },
-    get_notes_summary: { label: '笔记列表', icon: '📝' },
-    get_study_logs: { label: '学习日志', icon: '📊' },
-    get_user_goal: { label: '学习目标', icon: '🎯' },
-    get_drill_performance: { label: '练习表现', icon: '💪' },
-    get_writing_history: { label: '写作记录', icon: '✍️' },
-    get_highlights: { label: '每日精选', icon: '⭐' },
-    get_tasks: { label: '待办任务', icon: '📋' },
-    create_flashcards: { label: '创建闪卡', icon: '🃏' },
-    create_note: { label: '生成笔记', icon: '📝' },
-    create_writing_task: { label: '布置写作', icon: '✍️' },
-    create_coach_topic: { label: '设置口语', icon: '🎤' },
-    navigate_to: { label: '跳转页面', icon: '🔗' },
-    review_flashcards: { label: '抽取复习卡', icon: '🃏' },
-    create_interactive_quiz: { label: '发起测验', icon: '🎯' },
+    get_flashcard_stats: { label: 'Flashcard stats', icon: 'STAT' },
+    get_study_history: { label: 'Study history', icon: 'HIS' },
+    get_notes_summary: { label: 'Notes summary', icon: 'NOTE' },
+    get_study_logs: { label: 'Study logs', icon: 'LOG' },
+    get_user_goal: { label: 'User goal', icon: 'GOAL' },
+    get_drill_performance: { label: 'Drill performance', icon: 'DRILL' },
+    get_writing_history: { label: 'Writing history', icon: 'WRITE' },
+    get_highlights: { label: 'Highlights', icon: 'MARK' },
+    get_tasks: { label: 'Tasks', icon: 'TASK' },
+    create_flashcards: { label: 'Create flashcards', icon: 'NEW' },
+    update_flashcard: { label: 'Update flashcard', icon: 'EDIT' },
+    delete_flashcards: { label: 'Delete flashcards', icon: 'DEL' },
+    create_note: { label: 'Create note', icon: 'NEW' },
+    update_note: { label: 'Update note', icon: 'EDIT' },
+    delete_notes: { label: 'Delete notes', icon: 'DEL' },
+    create_task_item: { label: 'Create task', icon: 'NEW' },
+    update_task_item: { label: 'Update task', icon: 'EDIT' },
+    delete_task_items: { label: 'Delete task', icon: 'DEL' },
+    create_writing_task: { label: 'Writing exercise', icon: 'WRITE' },
+    create_coach_topic: { label: 'Coach topic', icon: 'COACH' },
+    navigate_to: { label: 'Navigate', icon: 'GO' },
+    review_flashcards: { label: 'Quick review cards', icon: 'CARD' },
+    create_interactive_quiz: { label: 'Interactive quiz', icon: 'QUIZ' },
 };
 
 // View ID -> display info
 const VIEW_INFO = {
-    flashcards: { label: '闪卡复习', icon: Layers, color: 'text-violet-600 bg-violet-50 border-violet-200' },
-    writer: { label: '写作工作台', icon: PenTool, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-    coach: { label: '口语教练', icon: Mic, color: 'text-green-600 bg-green-50 border-green-200' },
-    notes: { label: '笔记本', icon: NotebookPen, color: 'text-amber-600 bg-amber-50 border-amber-200' },
-    study: { label: '阅读分析', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
-    exam: { label: '模拟考场', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
-    plan: { label: '智能计划', icon: Brain, color: 'text-cyan-600 bg-cyan-50 border-cyan-200' },
-    dashboard: { label: '工作台', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
-    knowledge: { label: '知识图谱', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+    flashcards: { label: 'Flashcards', icon: Layers, color: 'text-violet-600 bg-violet-50 border-violet-200' },
+    writer: { label: 'Writer', icon: PenTool, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+    coach: { label: 'Coach', icon: Mic, color: 'text-green-600 bg-green-50 border-green-200' },
+    notes: { label: 'Notes', icon: NotebookPen, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+    study: { label: 'Study', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
+    exam: { label: 'Exam', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
+    plan: { label: 'Plan', icon: Brain, color: 'text-cyan-600 bg-cyan-50 border-cyan-200' },
+    dashboard: { label: 'Dashboard', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
+    knowledge: { label: 'Knowledge Graph', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+    review: { label: 'Review Center', icon: Brain, color: 'text-sky-600 bg-sky-50 border-sky-200' },
 };
 
 const ChatSidebar = () => {
@@ -91,8 +100,8 @@ const ChatSidebar = () => {
         if (navigateRef?.current) {
             navigateRef.current(target);
         }
-        if (window.innerWidth < 768) {
-            setIsChatOpen(false);
+        if (window.innerWidth < 768 && isChatOpen) {
+            toggleChat();
         }
     };
 
@@ -159,7 +168,7 @@ const ChatSidebar = () => {
 
         if (contentToInsert.length > 2000) contentToInsert = contentToInsert.slice(0, 2000) + "...(truncated)";
 
-        const formatted = `\n> 📎 **${item.title}**\n> ${contentToInsert.replace(/\n/g, '\n> ')}\n\n`;
+        const formatted = `\n> Ref **${item.title}**\n> ${contentToInsert}\n\n`;
 
         const before = input.slice(0, input.lastIndexOf('@', cursorPosition));
         const after = input.slice(cursorPosition);
@@ -189,14 +198,14 @@ const ChatSidebar = () => {
         try {
             if (!settings.apiKey) {
                 setTimeout(() => {
-                    addChatMessage('assistant', "请先在设置中配置你的 API Key。");
+                    addChatMessage('assistant', 'Please configure your API Key in Settings first.');
                     setIsSending(false);
                 }, 1000);
                 return;
             }
 
             const history = chatMessages.slice(-10)
-                .filter(m => m.content && m.content.trim() !== '')  // 过滤空消息，防止 API 400
+                .filter(m => m.content && m.content.trim() !== '')  // Filter empty messages to avoid API 400
                 .map(m => ({
                     role: m.role,
                     content: m.content
@@ -229,11 +238,11 @@ const ChatSidebar = () => {
                     }
                 });
 
-                // 如果 Agent 只调用了工具没产生文字，给个兜底消息
+                // Agent fallback: ensure user still gets feedback when model returns empty text
                 if (!fullResponse.trim()) {
                     const fallbackMsg = collectedActions.length > 0
-                        ? '✅ 已完成，请查看下方的学习内容吧！'
-                        : '🤔 处理完毕，还需要我做什么吗？';
+                        ? 'Done. I completed the requested action.'
+                        : 'Done. What should I help with next?'
                     updateLastChatMessage(fallbackMsg);
                 }
 
@@ -248,9 +257,9 @@ const ChatSidebar = () => {
                     scrollToBottom();
                 });
 
-                // 普通聊天也兜底，防止空消息
+                // Normal chat fallback
                 if (!fullResponse.trim()) {
-                    updateLastChatMessage('抱歉，AI 未能生成回复，请重试。');
+                    updateLastChatMessage('AI returned an empty response. Please try again.');
                 }
             }
 
@@ -337,7 +346,7 @@ const ChatSidebar = () => {
                                 ? 'bg-phy-accentGlass text-phy-accent shadow-sm border border-phy-borderHover'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="普通对话模式"
+                            title="Normal chat mode"
                         >
                             <MessageCircle size={14} className="inline mr-1" />
                             Chat
@@ -348,7 +357,7 @@ const ChatSidebar = () => {
                                 ? 'bg-phy-accentGlass text-phy-accent shadow-sm border border-phy-borderHover'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="Agent 模式 - AI 可读取并操作你的学习数据"
+                            title="Agent mode with tool calls"
                         >
                             <Zap size={14} className="inline mr-1" />
                             Agent
@@ -378,8 +387,8 @@ const ChatSidebar = () => {
                 <div className="px-4 py-2 bg-phy-accent border-b border-phy-borderHover shrink-0 bg-opacity-10 backdrop-blur-sm">
                     <div className="flex items-center gap-2 text-xs text-phy-text font-bold">
                         <Database size={12} className="text-phy-accent" />
-                        <span>Agent 模式</span>
-                        <span className="opacity-70 font-normal">· 可读取数据 + 创建学习内容 + 一键跳转</span>
+                        <span>Agent Mode</span>
+                        <span className="opacity-70 font-normal">- read data, write actions, and navigate pages</span>
                     </div>
                 </div>
             )}
@@ -446,17 +455,17 @@ const ChatSidebar = () => {
                                 </div>
                                 <p className="text-phy-muted text-sm">
                                     {chatMode === 'agent'
-                                        ? '🔥 Max Mode — 给我单词/话题，我帮你准备全套学习材料'
+                                        ? 'Agent mode: I can read your study data and take in-app actions for you.'
                                         : 'Start a new conversation...'
                                     }
                                 </p>
                                 {chatMode === 'agent' && (
                                     <div className="mt-4 flex flex-wrap gap-2 justify-center px-4">
                                         {[
-                                            '📊 分析我的学习状况',
-                                            '📅 制定本周计划',
-                                            '🔥 深度学习 ephemeral, serendipity',
-                                            '📝 复习最近学过的内容',
+                                            'Show my flashcard stats and weak words',
+                                            'Generate a focused daily learning plan',
+                                            'Create sentence practice with: ephemeral, serendipity',
+                                            'Create a reading quiz from my latest article',
                                         ].map((q, i) => (
                                             <button
                                                 key={i}
@@ -497,10 +506,10 @@ const ChatSidebar = () => {
                             <div className="mx-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 animate-fade-in">
                                 <div className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
                                     <Database size={12} />
-                                    Agent 正在工作...
+                                    Agent is calling tools...
                                 </div>
                                 {toolCalls.map((tc, i) => {
-                                    const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '🔧' };
+                                    const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '*' };
                                     return (
                                         <div key={i} className="flex items-center gap-2 text-xs text-amber-600">
                                             <span>{toolInfo.icon}</span>
@@ -521,7 +530,7 @@ const ChatSidebar = () => {
                             <div className="mx-2 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl space-y-3 animate-fade-in">
                                 <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
                                     <CheckCircle2 size={14} />
-                                    学习套餐已准备好！点击跳转开始学习：
+                                    Action completed. Open the destination to continue:
                                 </div>
                                 <div className="space-y-2">
                                     {pendingActions.map((action, i) => {
@@ -564,10 +573,10 @@ const ChatSidebar = () => {
                                             );
                                         }
 
-                                        // 导航类 action cards（创建闪卡、笔记、写作、口语等）
+                                        // Handle action cards from tools
                                         const viewId = action._navigateTo;
                                         if (!viewId) {
-                                            // 没有导航目标的 action（如 no_cards），不渲染卡片
+                                            // Ignore actions that only return status without navigation target
                                             return null;
                                         }
                                         const info = VIEW_INFO[viewId] || { label: viewId, icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' };
@@ -644,11 +653,11 @@ const ChatSidebar = () => {
 
                         {chatMode === 'agent' && (
                             <button
-                                onClick={() => handleDirectMessage("请根据我的学习历史和数据，为我生成一份今天的学习计划综合建议，包含复习和新知识学习。")}
+                                onClick={() => handleDirectMessage("Please generate a practical daily study plan based on my recent learning data, including review and new learning tasks.")}
                                 className="mb-3 w-full py-2.5 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-2"
                             >
                                 <Zap size={14} className="text-orange-500" />
-                                ✨ 智能生成今日学习计划 (Daily Plan)
+                                Generate Daily Plan (Agent)
                             </button>
                         )}
 
@@ -669,7 +678,7 @@ const ChatSidebar = () => {
                                     }
                                     if (e.key === 'Escape') setShowSuggestions(false);
                                 }}
-                                placeholder={chatMode === 'agent' ? "给我几个单词或话题，我帮你准备全套学习..." : "Ask anything... (@ for context)"}
+                                placeholder={chatMode === 'agent' ? 'Ask the agent to read data and do actions (create/edit/delete/navigate)...' : 'Ask anything... (@ for context)'}
                                 className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-12 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
                             />
                             <button
@@ -688,3 +697,5 @@ const ChatSidebar = () => {
 };
 
 export default ChatSidebar;
+
+

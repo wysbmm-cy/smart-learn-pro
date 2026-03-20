@@ -581,20 +581,20 @@ export default function KnowledgeGraphView() {
             {/* Legend */}
             <div className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-sm p-3 rounded-lg border border-phy-border text-xs text-phy-muted space-y-1.5 select-none pointer-events-none">
                 <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span> 已掌握 (Mastered)
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span> 已掌握
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]"></span> 学习中 (Learning)
+                    <span className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.5)]"></span> 学习中
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]"></span> 需加强 (Weak)
+                    <span className="w-2 h-2 rounded-full bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]"></span> 需加强
                 </div>
                 <div className="h-px bg-phy-glassHover my-1"></div>
                 <div className="flex items-center gap-2">
-                    <span className="w-6 h-0.5 bg-red-400/50"></span> 形近词 (Spelling)
+                    <span className="w-6 h-0.5 bg-red-400/50"></span> 形近词
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="w-6 h-0.5 bg-emerald-400/50"></span> 含义相关 (Meaning)
+                    <span className="w-6 h-0.5 bg-emerald-400/50"></span> 含义相关
                 </div>
             </div>
         </div>

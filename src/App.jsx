@@ -8,6 +8,7 @@ import SkeletonLoader from './components/SkeletonLoader';
 // Lazy Load Views Factories (Exposed for Preloading)
 const viewFactories = {
     Dashboard: () => import('./views/Dashboard'),
+    ReviewCenterView: () => import('./views/ReviewCenterView'),
     ImportView: () => import('./views/ImportView'),
     StudyView: () => import('./views/StudyView'),
     HistoryView: () => import('./views/HistoryView'),
@@ -30,6 +31,7 @@ export const preloadAllViews = () => {
 };
 
 const Dashboard = lazy(viewFactories.Dashboard);
+const ReviewCenterView = lazy(viewFactories.ReviewCenterView);
 const ImportView = lazy(viewFactories.ImportView);
 const StudyView = lazy(viewFactories.StudyView);
 const HistoryView = lazy(viewFactories.HistoryView);
@@ -78,6 +80,8 @@ function AppContent() {
         switch (viewId) {
             case 'dashboard':
                 return <Dashboard onNavigate={setCurrentView} />;
+            case 'review':
+                return <ReviewCenterView onNavigate={setCurrentView} />;
             case 'import':
                 return <ImportView onAnalyzeSuccess={() => setCurrentView('study')} />;
             case 'study':

@@ -32,7 +32,15 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const container = document.getElementById('root');
+if (!container) {
+    throw new Error('Root container not found');
+}
+
+const root = window.__SMARTLEARN_ROOT__ || ReactDOM.createRoot(container);
+window.__SMARTLEARN_ROOT__ = root;
+
+root.render(
     <React.StrictMode>
         <ErrorBoundary>
             <App />

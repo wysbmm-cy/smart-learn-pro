@@ -549,7 +549,7 @@ const WriterView = ({ params }) => {
                     <button
                         onClick={() => setIsFocusMode(true)}
                         className="p-2 text-phy-muted hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors hidden md:block"
-                        title="专注模式 (Zen Mode)"
+                        title="专注模式"
                     >
                         <Maximize2 size={20} />
                     </button>
@@ -962,7 +962,7 @@ const WriterView = ({ params }) => {
                 <div className="w-full h-full max-w-4xl mx-auto flex flex-col bg-slate-950 relative animate-in fade-in duration-500">
                     {/* Focus Toolbar */}
                     <div className="absolute top-4 right-8 z-10 flex gap-4 opacity-30 hover:opacity-100 transition-opacity">
-                        <div className="text-sm text-phy-muted font-mono self-center">{wordCount} words</div>
+                        <div className="text-sm text-phy-muted font-mono self-center">{wordCount} 词</div>
                         <button onClick={() => setIsFocusMode(false)} className="p-2 bg-phy-glassHeavy rounded-full text-phy-muted hover:text-white">
                             <Minimize2 size={20} />
                         </button>
@@ -972,7 +972,7 @@ const WriterView = ({ params }) => {
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Untitled"
+                            placeholder="无标题"
                             className="bg-transparent text-4xl font-black text-phy-text font-bold mb-8 placeholder-slate-800 focus:outline-none w-full text-center"
                         />
                         <textarea
@@ -980,7 +980,7 @@ const WriterView = ({ params }) => {
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                             onSelect={handleSelectionChange}
-                            placeholder="Just write..."
+                            placeholder="在此开始写作..."
                             className="w-full h-full min-h-[80vh] bg-transparent text-xl leading-relaxed text-phy-muted focus:text-phy-text focus:outline-none resize-none font-serif text-center md:px-20 placeholder:text-phy-text font-bold"
                             spellCheck="false"
                             autoFocus
@@ -1053,7 +1053,7 @@ const WriterView = ({ params }) => {
                             // Update tips too
                             improvement_tips: [...(analysis?.improvement_tips || []), ...(res.improvement_tips || [])]
                         });
-                        toast.success("Added new analysis to the list!");
+                        toast.success("已添加新的分析结果到列表！");
                         setSelectionData(null);
                     }).catch(err => toast.error("Re-analysis failed: " + err.message));
                 }}

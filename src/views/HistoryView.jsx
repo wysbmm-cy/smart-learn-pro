@@ -32,13 +32,13 @@ const HistoryView = ({ onNavigate }) => {
 
     const handleDelete = async (e, id) => {
         e.stopPropagation();
-        if (confirm("Are you sure you want to delete this record?")) {
+        if (confirm("确定要删除这条记录吗？")) {
             await removeHistoryItem(id);
             await loadData();
         }
     };
 
-    if (loading) return <div className="p-10 text-center text-phy-muted">Loading history...</div>;
+    if (loading) return <div className="p-10 text-center text-phy-muted">正在加载历史记录...</div>;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-10">
@@ -47,20 +47,20 @@ const HistoryView = ({ onNavigate }) => {
                     <Clock size={24} />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold text-phy-text font-bold">History Review</h2>
-                    <p className="text-phy-muted text-sm">Review your past learning sessions.</p>
+                    <h2 className="text-2xl font-bold text-phy-text font-bold">历史回顾</h2>
+                    <p className="text-phy-muted text-sm">查看收您过去的学习记录。</p>
                 </div>
             </div>
 
             {history.length === 0 ? (
                 <div className="bg-phy-glass rounded-[2rem] p-12 text-center text-phy-muted border border-phy-border border-dashed">
                     <Clock size={48} className="mx-auto mb-4 opacity-20" />
-                    <p>No history records found.</p>
+                    <p>未找到历史记录。</p>
                     <button
                         onClick={() => onNavigate('import')}
                         className="mt-4 text-blue-600 font-bold hover:underline"
                     >
-                        Start a new analysis
+                        开始新的分析
                     </button>
                 </div>
             ) : (
@@ -77,17 +77,17 @@ const HistoryView = ({ onNavigate }) => {
                                 <div className="space-y-2 flex-1 pr-10">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                                            {item.level || 'Analysis'}
+                                            {item.level || '记录'}
                                         </span>
                                         <span className="text-xs text-phy-muted flex items-center gap-1">
                                             <Calendar size={12} /> {item.date}
                                         </span>
                                     </div>
                                     <h3 className="font-bold text-phy-text font-bold text-lg line-clamp-1 group-hover:text-blue-700 transition-colors">
-                                        {item.summary ? item.summary.substring(0, 50) + "..." : "Analysis Record"}
+                                        {item.summary ? item.summary.substring(0, 50) + "..." : "记录"}
                                     </h3>
                                     <p className="text-phy-muted text-sm line-clamp-2 leading-relaxed">
-                                        {item.article ? item.article.substring(0, 150) : "No content preview."}
+                                        {item.article ? item.article.substring(0, 150) : "无预览。"}
                                     </p>
                                 </div>
 
@@ -101,7 +101,7 @@ const HistoryView = ({ onNavigate }) => {
                             </div>
 
                             <div className="mt-4 flex items-center text-sm font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-4 group-hover:translate-x-0 duration-300">
-                                Review Now <ArrowRight size={16} className="ml-1" />
+                                立即查看 <ArrowRight size={16} className="ml-1" />
                             </div>
                         </div>
                     ))}

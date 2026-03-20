@@ -22,7 +22,7 @@
   /* Core Glassmorphism UI Kit */
   .glass-panel {
     @apply bg-phy-glass backdrop-blur-xl border border-phy-border shadow-lg;
-    transition: background-color 0.5s ease, border-color 0.5s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
   }
 
   .glass-panel-hover {
@@ -137,7 +137,7 @@ input, textarea, select {
 
 /* Mobile Segmented Control */
 .mobile-tabs {
-  @apply flex bg-phy-bg rounded-2xl p-1 gap-1 border border-phy-border;
+  @apply flex bg-phy-glass backdrop-blur-md rounded-2xl p-1 gap-1 border border-phy-border;
 }
 
 .mobile-tab-btn {
@@ -162,6 +162,10 @@ input, textarea, select {
   animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
+.mobile-safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+}
+
 /* FAB (Floating Action Button) */
 .fab {
   @apply fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-phy-accent text-white shadow-2xl flex items-center justify-center;
@@ -171,4 +175,4 @@ input, textarea, select {
 
 .fab:active {
   transform: scale(0.94);
-}
+}

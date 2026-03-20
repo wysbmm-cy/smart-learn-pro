@@ -139,10 +139,10 @@ const NotesView = ({ params }) => {
     });
 
     return (
-        <div className="h-full flex animate-in fade-in bg-transparent overflow-hidden relative">
+        <div className="h-full flex animate-in fade-in bg-transparent overflow-hidden overscroll-none relative">
 
             {/* --- Left Sidebar (Folders & Note List) --- */}
-            <div className={`${showList ? 'w-64 border-r border-phy-border' : 'w-0 opacity-0'} flex flex-col transition-all duration-300 glass-sidebar relative shrink-0`}>
+            <div className={`${showList ? 'w-64 border-r border-phy-border' : 'w-0 opacity-0'} flex flex-col transition-all duration-300 glass-sidebar relative shrink-0 overflow-hidden overscroll-contain`}>
 
                 {/* Header Actions */}
                 <div className="p-3 border-b border-phy-border flex items-center justify-between shrink-0">
@@ -151,7 +151,7 @@ const NotesView = ({ params }) => {
                         className="flex items-center gap-1 text-xs font-bold text-phy-muted hover:text-phy-text"
                     >
                         {isFoldersExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        FOLDERS
+                        文件夹
                     </button>
                     <button onClick={handleCreateFolder} className="text-phy-muted hover:text-phy-accent transition-colors" title="New Folder">
                         <FolderPlus size={14} />
@@ -160,13 +160,13 @@ const NotesView = ({ params }) => {
 
                 {/* Folder List */}
                 {isFoldersExpanded && (
-                    <div className="px-2 py-2 border-b border-phy-border overflow-y-auto max-h-[200px] shrink-0 custom-scrollbar">
+                    <div className="px-2 py-2 border-b border-phy-border overflow-y-auto overscroll-contain max-h-[200px] shrink-0 custom-scrollbar">
                         <div
                             onClick={() => setActiveFolder('All')}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs cursor-pointer mb-1 transition-colors ${activeFolder === 'All' ? 'bg-phy-accentGlass text-phy-accent' : 'text-phy-muted hover:bg-phy-glassHover'}`}
                         >
                             <Folder size={14} />
-                            <span>All Notes</span>
+                            <span>全部笔记</span>
                             <span className="ml-auto opacity-50">{notes.length}</span>
                         </div>
                         {folders.map(folder => (
@@ -197,7 +197,7 @@ const NotesView = ({ params }) => {
                         <Search size={14} className="absolute left-3 top-2.5 text-phy-muted" />
                         <input
                             type="text"
-                            placeholder="Search..."
+                            placeholder="搜索笔记..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="w-full pl-9 pr-3 py-2 bg-phy-bg border border-phy-border rounded-lg text-xs text-phy-text focus:ring-1 focus:ring-phy-accent/50 outline-none placeholder:text-phy-muted/60"
@@ -206,7 +206,7 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Note List */}
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1 custom-scrollbar">
                     {filteredNotes.map(note => (
                         <div
                             key={note.id}
@@ -217,7 +217,7 @@ const NotesView = ({ params }) => {
                                 }`}
                         >
                             <h4 className={`font-medium text-sm truncate ${activeNote?.id === note.id ? 'text-phy-text font-bold' : 'text-phy-text/80 group-hover:text-phy-text'}`}>
-                                {note.title || "Untitled"}
+                                {note.title || "无标题笔记"}
                             </h4>
                             <div className="flex items-center gap-2 mt-1">
                                 <span className={`text-[10px] ${activeNote?.id === note.id ? 'text-phy-accent' : 'text-phy-muted group-hover:text-phy-muted/80'}`}>
@@ -258,14 +258,14 @@ const NotesView = ({ params }) => {
                     ))}
                     {filteredNotes.length === 0 && (
                         <div className="text-center py-10 text-phy-muted text-xs">
-                            No notes found
+                            暂无笔记
                         </div>
                     )}
                 </div>
             </div>
 
             {/* --- Main Area (Editor + Preview) --- */}
-            <div className="flex-1 flex flex-col min-w-0 bg-transparent">
+            <div className="flex-1 flex flex-col min-w-0 bg-transparent overflow-hidden">
 
                 {/* Toolbar */}
                 <div className="h-14 border-b border-phy-border flex items-center justify-between px-4 bg-transparent shrink-0">
@@ -283,7 +283,7 @@ const NotesView = ({ params }) => {
                                     value={activeNote.title}
                                     onChange={(e) => handleUpdate({ title: e.target.value })}
                                     className="text-sm font-bold text-phy-text bg-transparent border-none outline-none focus:ring-0 placeholder:text-phy-muted/60 flex-1 min-w-0"
-                                    placeholder="Note Title"
+                                    placeholder="笔记标题"
                                 />
                                 {/* Folder Selector */}
                                 <select
@@ -302,7 +302,7 @@ const NotesView = ({ params }) => {
                     {activeNote && (
                         <div className="flex items-center gap-2 shrink-0">
                             <span className={`text-[10px] font-medium transition-opacity ${isSaving ? 'opacity-100 text-phy-accent' : 'opacity-0'}`}>
-                                Saving...
+                                正在保存...
                             </span>
                             <div className="h-4 w-px bg-phy-border mx-2" />
                             <button
@@ -320,21 +320,21 @@ const NotesView = ({ params }) => {
                                     className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'edit' ? 'bg-phy-accent text-white shadow-sm' : 'text-phy-muted hover:text-phy-text'}`}
                                     title="Edit Mode"
                                 >
-                                    EDIT
+                                    编辑
                                 </button>
                                 <button
                                     onClick={() => setViewMode('split')}
                                     className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'split' ? 'bg-phy-accent text-white shadow-sm' : 'text-phy-muted hover:text-phy-text'}`}
                                     title="Split Mode"
                                 >
-                                    SPLIT
+                                    分屏
                                 </button>
                                 <button
                                     onClick={() => setViewMode('read')}
                                     className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'read' ? 'bg-phy-accent text-white shadow-sm' : 'text-phy-muted hover:text-phy-text'}`}
                                     title="Read Mode"
                                 >
-                                    READ
+                                    阅读
                                 </button>
                             </div>
                         </div>
@@ -343,22 +343,22 @@ const NotesView = ({ params }) => {
 
                 {/* Content Area */}
                 {activeNote ? (
-                    <div className="flex-1 flex overflow-hidden">
+                    <div className="flex-1 flex overflow-hidden overscroll-none">
                         {/* Editor (Shown in Edit & Split) */}
                         {(viewMode === 'edit' || viewMode === 'split') && (
-                            <div className={`flex-1 flex flex-col ${viewMode === 'split' ? 'border-r border-phy-border' : ''}`}>
+                            <div className={`flex-1 flex flex-col overflow-hidden ${viewMode === 'split' ? 'border-r border-phy-border' : ''}`}>
                                 <textarea
                                     value={activeNote.content}
                                     onChange={(e) => handleUpdate({ content: e.target.value })}
-                                    className="flex-1 w-full p-6 resize-none outline-none border-none font-mono text-phy-text text-sm leading-7 selection:bg-phy-accent/30 bg-transparent placeholder:text-phy-muted/60"
-                                    placeholder="# Start writing..."
+                                    className="flex-1 w-full p-6 resize-none outline-none border-none font-mono text-phy-text text-sm leading-7 selection:bg-phy-accent/30 bg-transparent placeholder:text-phy-muted/60 overflow-y-auto overscroll-contain"
+                                    placeholder="# 开始记录..."
                                 />
                             </div>
                         )}
 
                         {/* Preview (Shown in Split & Read) */}
                         {(viewMode === 'read' || viewMode === 'split') && (
-                            <div className="flex-1 overflow-y-auto bg-phy-bg/30 p-6">
+                            <div className="flex-1 overflow-y-auto overscroll-contain bg-phy-bg/30 p-6">
                                 <SharedMarkdown
                                     remarkPlugins={[remarkBreaks]}
                                     rehypePlugins={[rehypeRaw, rehypeHighlight]}
@@ -372,7 +372,7 @@ const NotesView = ({ params }) => {
                         <div className="w-16 h-16 bg-phy-glass rounded-2xl flex items-center justify-center mb-4 border border-phy-border">
                             <Folder size={32} className="opacity-50" />
                         </div>
-                        <p className="text-sm">Select a folder or create a new note</p>
+                        <p className="text-sm">选择文件夹或创建新笔记</p>
                     </div>
                 )}
             </div>

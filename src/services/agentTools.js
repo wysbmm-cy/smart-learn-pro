@@ -1,667 +1,456 @@
-/**
- * Agent Tools Service for SmartLearn Pro
- * Phase 1: Read-only tools (9)
- * Phase 2: Write tools (5) — create_flashcards, create_note, create_writing_task, create_coach_topic, navigate_to
- */
+﻿
 import {
-    getFlashcards, getHistory, getNotes, getWritings,
-    getStudyLogs, getUserGoal, getRecentDrillLogs,
-    getAllHighlights, getFolders, getTasks,
-    saveFlashcard, saveNote, saveWriting, saveTask, saveFolder
+    getFlashcards,
+    getHistory,
+    getNotes,
+    getWritings,
+    getStudyLogs,
+    getUserGoal,
+    getRecentDrillLogs,
+    getAllHighlights,
+    getFolders,
+    getTasks,
+    saveFlashcard,
+    saveNote,
+    saveTask,
+    saveFolder,
+    deleteFlashcard,
+    deleteNote,
+    deleteTask
 } from './db';
 
-// ============================================
-// Tool Definitions (OpenAI function calling format)
-// ============================================
+const id = (p) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const firstLine = (t) => (t || '').split('\n')[0].split('/')[0].trim();
+const today = () => new Date().toISOString().split('T')[0];
+const isDue = (c, now = Date.now()) => !c.nextReview || c.nextReview <= now;
+const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+const byCount = (list, pick) => {
+    const m = new Map();
+    for (const item of list || []) {
+        const k = pick(item) || 'unknown';
+        m.set(k, (m.get(k) || 0) + 1);
+    }
+    return Array.from(m.entries()).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
+};
+
+const ensureFolder = async (name) => {
+    if (!name) return null;
+    const folders = await getFolders();
+    const hit = (folders || []).find((f) => (f.name || '').toLowerCase() === name.toLowerCase());
+    if (hit) return hit;
+    const folder = { id: id('agent_folder'), name, createdAt: Date.now() };
+    await saveFolder(folder);
+    return folder;
+};
+
+const normalizeCard = (raw = {}) => {
+    const front = raw.front
+        ? String(raw.front).trim()
+        : [raw.word, raw.phonetic, raw.example ? `Example: ${raw.example}` : ''].filter(Boolean).join('\n').trim();
+    const back = raw.back
+        ? String(raw.back).trim()
+        : [raw.chinese_meaning, raw.example_translation ? `Example Translation: ${raw.example_translation}` : '', raw.context ? `Context: ${raw.context}` : ''].filter(Boolean).join('\n').trim();
+    return { front, back };
+};
+
+const fn = (name, description, properties = {}, required = []) => ({
+    type: 'function',
+    function: { name, description, parameters: { type: 'object', properties, required } }
+});
 
 export const AGENT_TOOLS = [
-    // ---- Phase 1: Read-Only Tools ----
-    {
-        type: "function",
-        function: {
-            name: "get_flashcard_stats",
-            description: "获取用户闪卡/词汇的统计数据，包括总卡片数、到期数、各掌握状态数量、弱点词列表(最多10个)。用这个了解用户的词汇学习状况。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_study_history",
-            description: "获取用户最近的阅读/学习记录，包含文章标题、学习日期等。用这个了解用户最近在学什么内容。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_notes_summary",
-            description: "获取用户的笔记列表摘要，包含标题和创建时间。用这个了解用户的知识积累情况。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_study_logs",
-            description: "获取用户的学习日志，包含每日学习活动记录。用这个了解用户的学习频率和习惯。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_user_goal",
-            description: "获取用户设定的学习目标（如通过CET-6、雅思7分等）。用这个了解用户的学习方向。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_drill_performance",
-            description: "获取用户最近24小时的练习记录，包含正确率和弱点类型。用这个诊断用户的薄弱环节。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_writing_history",
-            description: "获取用户的写作记录摘要，包含标题、分数、日期。用这个了解用户的写作练习情况。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_highlights",
-            description: "获取用户的每日精选/书签内容。用这个了解用户标记的重要学习内容。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "get_tasks",
-            description: "获取用户的待办任务列表。用这个了解用户当前的学习待办事项。",
-            parameters: { type: "object", properties: {}, required: [] }
-        }
-    },
-
-    // ---- Phase 2: Write / Action Tools ----
-    {
-        type: "function",
-        function: {
-            name: "create_flashcards",
-            description: "批量创建闪卡/生词卡。自动检测重复、自动归入当日文件夹。请提供单词的详细结构化信息。",
-            parameters: {
-                type: "object",
+    fn('get_flashcard_stats', 'Get flashcard statistics.'),
+    fn('get_study_history', 'Get recent study/import history.', { limit: { type: 'number' } }),
+    fn('get_notes_summary', 'Get notes summary.', { limit: { type: 'number' } }),
+    fn('get_study_logs', 'Get study logs summary.', { limit: { type: 'number' } }),
+    fn('get_user_goal', 'Get user goal.'),
+    fn('get_drill_performance', 'Get drill performance.', { days: { type: 'number' } }),
+    fn('get_writing_history', 'Get writing history.', { limit: { type: 'number' } }),
+    fn('get_highlights', 'Get highlights.', { limit: { type: 'number' } }),
+    fn('get_tasks', 'Get task list.', { includeCompleted: { type: 'boolean' } }),
+    fn('create_flashcards', 'Create flashcards.', {
+        cards: {
+            type: 'array',
+            items: {
+                type: 'object',
                 properties: {
-                    cards: {
-                        type: "array",
-                        description: "要创建的闪卡列表",
-                        items: {
-                            type: "object",
-                            properties: {
-                                word: { type: "string", description: "英文单词或短语本身" },
-                                phonetic: { type: "string", description: "音标，如 /ɪˈfemərəl/" },
-                                chinese_meaning: { type: "string", description: "中文释义及词性，如 'adj. 短暂的; 转瞬即逝的'" },
-                                example: { type: "string", description: "完整的英文例句" },
-                                example_translation: { type: "string", description: "例句对应的中文翻译" },
-                                context: { type: "string", description: "记忆提示/词源/助记法/近反义词等额外上下文" }
-                            },
-                            required: ["word", "chinese_meaning"]
-                        }
-                    }
-                },
-                required: ["cards"]
+                    front: { type: 'string' },
+                    back: { type: 'string' },
+                    word: { type: 'string' },
+                    phonetic: { type: 'string' },
+                    chinese_meaning: { type: 'string' },
+                    example: { type: 'string' },
+                    example_translation: { type: 'string' },
+                    context: { type: 'string' },
+                    folderId: { type: 'string' },
+                    folderName: { type: 'string' },
+                    tags: { type: 'array', items: { type: 'string' } }
+                }
             }
         }
-    },
-    {
-        type: "function",
-        function: {
-            name: "create_note",
-            description: "创建一篇笔记/阅读材料并保存到笔记本。用于生成与学习主题相关的文章、故事、语法讲解等。",
-            parameters: {
-                type: "object",
+    }, ['cards']),
+    fn('update_flashcard', 'Update a flashcard by id, including front/back content edits.', {
+        id: { type: 'string' },
+        front: { type: 'string' },
+        back: { type: 'string' },
+        folderId: { type: 'string' },
+        folderName: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+        isMastered: { type: 'boolean' },
+        isFlagged: { type: 'boolean' }
+    }, ['id']),
+    fn('delete_flashcards', 'Delete flashcards by ids or words.', {
+        ids: { type: 'array', items: { type: 'string' } },
+        words: { type: 'array', items: { type: 'string' } },
+        limit: { type: 'number' }
+    }),
+    fn('create_note', 'Create note.', { title: { type: 'string' }, content: { type: 'string' }, folder: { type: 'string' } }, ['title', 'content']),
+    fn('update_note', 'Update note by id.', { id: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' }, folder: { type: 'string' } }, ['id']),
+    fn('delete_notes', 'Delete notes by ids or titles.', {
+        ids: { type: 'array', items: { type: 'string' } },
+        titles: { type: 'array', items: { type: 'string' } },
+        limit: { type: 'number' }
+    }),
+    fn('create_task_item', 'Create task.', { text: { type: 'string' }, type: { type: 'string' } }, ['text']),
+    fn('update_task_item', 'Update task.', { id: { type: 'string' }, text: { type: 'string' }, completed: { type: 'boolean' } }, ['id']),
+    fn('delete_task_items', 'Delete tasks.', { ids: { type: 'array', items: { type: 'string' } } }, ['ids']),
+    fn('create_writing_task', 'Create in-chat writing exercise.', {
+        title: { type: 'string' },
+        sentences: {
+            type: 'array',
+            items: {
+                type: 'object',
                 properties: {
-                    title: { type: "string", description: "笔记标题" },
-                    content: { type: "string", description: "笔记内容，支持Markdown格式" }
+                    chinese: { type: 'string' },
+                    targetWord: { type: 'string' },
+                    hint: { type: 'string' }
                 },
-                required: ["title", "content"]
+                required: ['chinese', 'targetWord']
             }
         }
-    },
-    {
-        type: "function",
-        function: {
-            name: "create_writing_task",
-            description: "在聊天框中直接发起造句练习。给出 2-4 句中文情境和目标词，用户在聊天内直接写英文翻译，提交后 AI 自动批改。适合练习目标词汇的实际运用。",
-            parameters: {
-                type: "object",
-                properties: {
-                    title: { type: "string", description: "练习标题（如'用 serendipity 造句'）" },
-                    sentences: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                chinese: { type: "string", description: "中文情境句，用户需要翻译成英文" },
-                                targetWord: { type: "string", description: "必须在翻译中使用的目标英文单词" },
-                                hint: { type: "string", description: "可选提示（如词性、搭配等）" }
-                            },
-                            required: ["chinese", "targetWord"]
-                        },
-                        description: "提供 2-4 个造句题目"
-                    }
-                },
-                required: ["title", "sentences"]
-            }
+    }, ['sentences']),
+    fn('create_coach_topic', 'Create coach topic and navigate.', {
+        topic: { type: 'string' },
+        scenario: { type: 'string' },
+        systemPrompt: { type: 'string' },
+        vocabulary: { type: 'array', items: { type: 'string' } }
+    }, ['topic', 'systemPrompt']),
+    fn('navigate_to', 'Navigate to view.', {
+        view: {
+            type: 'string',
+            enum: ['dashboard', 'flashcards', 'writer', 'coach', 'notes', 'study', 'exam', 'plan', 'knowledge', 'import', 'review']
         }
-    },
-    {
-        type: "function",
-        function: {
-            name: "create_coach_topic",
-            description: "在AI口语教练中预设一个对话场景。创建后用户可跳转到口语教练页面开始练习。",
-            parameters: {
-                type: "object",
-                properties: {
-                    topic: { type: "string", description: "口语话题（简短标题，如'谈论一次意外惊喜'）" },
-                    scenario: { type: "string", description: "场景描述（如'在咖啡厅和朋友闲聊'）" },
-                    systemPrompt: { type: "string", description: "给口语教练的系统提示词（英文），指导AI如何与用户对话，包括角色设定、要练习的词汇、对话风格等" },
-                    vocabulary: {
-                        type: "array",
-                        items: { type: "string" },
-                        description: "需要在对话中练习的核心词汇"
-                    }
-                },
-                required: ["topic", "systemPrompt"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "navigate_to",
-            description: "跳转到App的指定功能页面。可用: dashboard, flashcards, writer, coach, notes, study, exam, plan, knowledge",
-            parameters: {
-                type: "object",
-                properties: {
-                    view: {
-                        type: "string",
-                        description: "目标页面ID",
-                        enum: ["dashboard", "flashcards", "writer", "coach", "notes", "study", "exam", "plan", "knowledge", "import"]
-                    }
-                },
-                required: ["view"]
-            }
-        }
-    },
-    // ---- Phase 3: Interactive UI Tools ----
-    {
-        type: "function",
-        function: {
-            name: "create_interactive_quiz",
-            description: "在聊天框中直接向用户发起一个单选题（单词释义、语法填空等）。用户可以直接在聊天中点击作答。适合用于快速检验学习效果。",
-            parameters: {
-                type: "object",
-                properties: {
-                    question: { type: "string", description: "问题描述。例如：'ephemeral' 的准确中文释义是？" },
-                    options: {
-                        type: "array",
-                        items: { type: "string" },
-                        description: "提供 3-4 个选项。"
-                    },
-                    correctAnswer: { type: "string", description: "正确选项的完整文本，必须完全与 options 中的某一项一致。" },
-                    explanation: { type: "string", description: "答对或答错后给出的解析反馈。" }
-                },
-                required: ["question", "options", "correctAnswer", "explanation"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "review_flashcards",
-            description: "在聊天框中直接发起闪卡翻卡复习。系统会自动抽取用户最需要复习的到期卡片（按弱点分数排序），用户可以在聊天中翻卡并评分（认识/不认识），结果会实时同步到 FSRS 算法。适合用户说'复习一下'、'翻翻卡'、'测试我的单词'等场景。",
-            parameters: {
-                type: "object",
-                properties: {
-                    count: {
-                        type: "number",
-                        description: "要抽取的卡片数量，默认5张，最多10张。"
-                    },
-                    filter: {
-                        type: "string",
-                        description: "筛选模式：'due'=到期待复习(默认), 'weak'=弱点词优先, 'recent'=最近新建的卡",
-                        enum: ["due", "weak", "recent"]
-                    }
-                },
-                required: []
-            }
-        }
-    }
+    }, ['view']),
+    fn('create_interactive_quiz', 'Create quiz widget.', {
+        question: { type: 'string' },
+        options: { type: 'array', items: { type: 'string' } },
+        correctAnswer: { type: 'string' },
+        explanation: { type: 'string' }
+    }, ['question', 'options', 'correctAnswer']),
+    fn('review_flashcards', 'Pick cards for in-chat review.', {
+        count: { type: 'number' },
+        filter: { type: 'string', enum: ['due', 'weak', 'recent'] }
+    })
 ];
 
-// ============================================
-// Tool Execution
-// ============================================
-
-/**
- * Get or create a daily folder for agent-generated content.
- * Returns the folderId.
- */
-async function getOrCreateDailyFolder() {
-    const dateStr = new Date().toISOString().split('T')[0];
-    const folderName = `Daily - ${dateStr}`;
-    const folders = await getFolders();
-    const existing = folders.find(f => f.name === folderName);
-    if (existing) return existing.id;
-
-    const folderId = 'agent_folder_' + dateStr;
-    await saveFolder({ id: folderId, name: folderName, type: 'user' });
-    return folderId;
-}
-
-export async function executeAgentTool(toolName, params) {
+export async function executeAgentTool(toolName, params = {}) {
+    const now = Date.now();
     switch (toolName) {
-        // ---- Phase 1: Read-Only ----
         case 'get_flashcard_stats': {
-            const cards = await getFlashcards();
-            const folders = await getFolders();
-            const now = Date.now();
-
-            const total = cards.length;
-            const due = cards.filter(c => (c.nextReview || 0) <= now).length;
-
-            const stateCount = { new: 0, learning: 0, review: 0, relearning: 0 };
-            cards.forEach(c => {
-                const s = c.fsrs_state || 0;
-                if (s === 0) stateCount.new++;
-                else if (s === 1) stateCount.learning++;
-                else if (s === 2) stateCount.review++;
-                else if (s === 3) stateCount.relearning++;
-            });
-
-            const weakCards = cards
-                .filter(c => c.weaknessScore > 0)
+            const [cards, folders] = await Promise.all([getFlashcards(), getFolders()]);
+            const folderMap = new Map((folders || []).map((f) => [f.id, f.name]));
+            const t = today();
+            const due = (cards || []).filter((c) => isDue(c, now));
+            const reviewedToday = (cards || []).filter((c) => (c.lastReview || '').startsWith(t));
+            const weakCards = [...(cards || [])]
                 .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0))
                 .slice(0, 10)
-                .map(c => ({
-                    word: c.front,
-                    weakness: c.weaknessScore,
-                    stability: c.fsrs_stability ? c.fsrs_stability.toFixed(1) + 'd' : 'N/A',
-                    reviewCount: c.reviewCount || 0
-                }));
-
+                .map((c) => ({ id: c.id, word: firstLine(c.front), weaknessScore: c.weaknessScore || 0, nextReview: c.nextReview || null }));
             return {
-                total, due, stateCount,
-                folderCount: folders.length,
-                topWeakCards: weakCards,
-                avgReviewCount: total > 0 ? (cards.reduce((s, c) => s + (c.reviewCount || 0), 0) / total).toFixed(1) : 0
+                totalCards: (cards || []).length,
+                dueNow: due.length,
+                reviewedToday: reviewedToday.length,
+                mastered: (cards || []).filter((c) => c.isMastered).length,
+                flagged: (cards || []).filter((c) => c.isFlagged).length,
+                folderDistribution: byCount(cards || [], (c) => folderMap.get(c.folderId) || 'Uncategorized'),
+                weakCards
             };
         }
-
         case 'get_study_history': {
-            const history = await getHistory();
-            const recent = history
-                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-                .slice(0, 15)
-                .map(h => ({
-                    title: h.title || '(无标题)',
-                    date: new Date(h.timestamp || Date.now()).toLocaleDateString('zh-CN'),
-                    wordCount: h.text?.length || 0
-                }));
-            return { totalArticles: history.length, recent };
+            const limit = Math.max(1, Math.min(100, Number(params.limit) || 20));
+            const list = (await getHistory()) || [];
+            return { total: list.length, items: list.slice(0, limit) };
         }
-
         case 'get_notes_summary': {
-            const notes = await getNotes();
-            const summary = notes
-                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                .slice(0, 15)
-                .map(n => ({
-                    title: n.title || '(无标题)',
-                    date: new Date(n.updatedAt || n.createdAt || Date.now()).toLocaleDateString('zh-CN'),
-                    length: n.content?.length || 0
-                }));
-            return { totalNotes: notes.length, recent: summary };
+            const limit = Math.max(1, Math.min(100, Number(params.limit) || 20));
+            const notes = (await getNotes()) || [];
+            return { total: notes.length, latest: notes.slice(0, limit).map((n) => ({ id: n.id, title: n.title, folder: n.folder || null, updatedAt: n.updatedAt })) };
         }
-
         case 'get_study_logs': {
-            const logs = await getStudyLogs();
-            const recent = logs
-                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-                .slice(0, 20)
-                .map(l => ({
-                    type: l.type || 'study',
-                    date: new Date(l.timestamp || Date.now()).toLocaleDateString('zh-CN'),
-                    detail: l.detail || ''
-                }));
-            return { totalLogs: logs.length, recent };
+            const limit = Math.max(1, Math.min(200, Number(params.limit) || 50));
+            const logs = (await getStudyLogs()) || [];
+            return { total: logs.length, byType: byCount(logs, (l) => l.type || 'unknown'), byDate: byCount(logs, (l) => l.date || 'unknown').slice(0, 14), latest: logs.slice(-limit).reverse() };
         }
-
         case 'get_user_goal': {
             const goal = await getUserGoal();
-            return goal || { goal: '未设定', message: '用户还没有设定学习目标' };
+            return goal || { message: 'No user goal configured yet.' };
         }
-
         case 'get_drill_performance': {
-            const startTime = Date.now() - 24 * 60 * 60 * 1000;
-            const logs = await getRecentDrillLogs(startTime);
-            const total = logs.length;
-            const correct = logs.filter(l => l.correct).length;
-            const accuracy = total > 0 ? ((correct / total) * 100).toFixed(1) + '%' : 'N/A';
-
-            const typeMiss = {};
-            logs.filter(l => !l.correct).forEach(l => {
-                const t = l.drillType || 'unknown';
-                typeMiss[t] = (typeMiss[t] || 0) + 1;
-            });
-
-            return { total, correct, accuracy, weakTypes: typeMiss };
-        }
-
-        case 'get_writing_history': {
-            const writings = await getWritings();
-            const summary = writings
-                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                .slice(0, 10)
-                .map(w => ({
-                    title: w.title || '(无标题)',
-                    date: new Date(w.updatedAt || Date.now()).toLocaleDateString('zh-CN'),
-                    score: w.score || null,
-                    wordCount: w.content?.split(/\s+/).length || 0
-                }));
-            return { totalWritings: writings.length, recent: summary };
-        }
-
-        case 'get_highlights': {
-            const highlights = await getAllHighlights();
-            const recent = highlights
-                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-                .slice(0, 10)
-                .map(h => ({
-                    content: (h.content || '').slice(0, 100),
-                    date: new Date(h.timestamp || Date.now()).toLocaleDateString('zh-CN'),
-                    source: h.source || ''
-                }));
-            return { totalHighlights: highlights.length, recent };
-        }
-
-        case 'get_tasks': {
-            const tasks = await getTasks();
+            const days = Math.max(1, Math.min(30, Number(params.days) || 7));
+            const logs = (await getRecentDrillLogs(now - days * 24 * 60 * 60 * 1000)) || [];
+            const m = new Map();
+            for (const l of logs) {
+                const d = l.dimension || 'unknown';
+                const x = m.get(d) || { dimension: d, total: 0, correct: 0 };
+                x.total += 1;
+                if (l.is_correct) x.correct += 1;
+                m.set(d, x);
+            }
             return {
-                total: tasks.length,
-                pending: tasks.filter(t => !t.completed).length,
-                completed: tasks.filter(t => t.completed).length,
-                items: tasks.slice(0, 15).map(t => ({
-                    text: t.text,
-                    completed: !!t.completed,
-                    date: new Date(t.createdAt || Date.now()).toLocaleDateString('zh-CN')
-                }))
+                days,
+                totalAttempts: logs.length,
+                dimensions: Array.from(m.values()).map((x) => ({ ...x, accuracy: x.total ? Number(((x.correct / x.total) * 100).toFixed(1)) : 0 }))
             };
         }
-
-        // ---- Phase 2: Write / Action Tools ----
+        case 'get_writing_history': {
+            const limit = Math.max(1, Math.min(100, Number(params.limit) || 20));
+            const list = (await getWritings()) || [];
+            return { total: list.length, latest: list.slice(0, limit).map((w) => ({ id: w.id, title: w.title, updatedAt: w.updatedAt })) };
+        }
+        case 'get_highlights': {
+            const limit = Math.max(1, Math.min(200, Number(params.limit) || 30));
+            const list = (await getAllHighlights()) || [];
+            return { total: list.length, latest: list.slice(0, limit) };
+        }
+        case 'get_tasks': {
+            const includeCompleted = params.includeCompleted !== false;
+            const tasks = ((await getTasks()) || []).filter((t) => includeCompleted || !t.completed);
+            return { total: tasks.length, pending: tasks.filter((t) => !t.completed).length, completed: tasks.filter((t) => t.completed).length, items: tasks.slice(0, 100) };
+        }
         case 'create_flashcards': {
-            const { cards = [] } = params;
-            const existing = await getFlashcards();
-            // Legacy deduplication: extract the first word from old 'front' fields
-            const existingWords = new Set(existing.map(c => {
-                const firstPart = (c.front || '').trim().split(/[\/\n\s]/)[0];
-                return firstPart.toLowerCase().trim();
-            }));
-
-            // Auto-create daily folder
-            const folderId = await getOrCreateDailyFolder();
-
-            const results = [];
-            for (const card of cards) {
-                const headword = (card.word || '').toLowerCase().trim();
-                if (!headword || existingWords.has(headword)) {
-                    results.push({ front: card.word, status: 'already_exists', message: '已存在，跳过' });
-                    continue;
-                }
-
-                // Construct front and back from structured schema
-                let frontText = card.word;
-                if (card.phonetic) frontText += ` /${card.phonetic.replace(/\//g, '')}/`; // ensure slashes
-                if (card.example) frontText += `\n\nExample: ${card.example}`;
-                if (card.example_translation) frontText += `\n(${card.example_translation})`;
-
-                let backText = card.chinese_meaning;
-                if (card.context) backText += `\n\nNotes:\n${card.context}`;
-
-                const newCard = {
-                    id: 'agent_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-                    front: frontText,
-                    back: backText,
-                    context: card.context || '',
-                    source: 'AI Agent',
-                    folderId,
-                    tags: [],
+            const cards = arr(params.cards);
+            if (!cards.length) return { error: 'cards is required and must be a non-empty array.' };
+            const ids = [];
+            for (const raw of cards) {
+                const folder = raw.folderName ? await ensureFolder(raw.folderName) : null;
+                const body = normalizeCard(raw);
+                if (!body.front || !body.back) continue;
+                const card = {
+                    id: id('agent_card'),
+                    front: body.front,
+                    back: body.back,
+                    folderId: raw.folderId || folder?.id || null,
+                    tags: arr(raw.tags),
                     createdAt: Date.now(),
-                    nextReview: Date.now(),
-                    interval: 1,
-                    reviewCount: 0,
-                    fsrs_state: 0,
-                    fsrs_stability: 0,
-                    fsrs_difficulty: 0,
+                    updatedAt: Date.now(),
+                    reviews: 0,
+                    interval: 0,
+                    easeFactor: 2.5,
                     weaknessScore: 0
                 };
-
-                await saveFlashcard(newCard);
-                existingWords.add(headword);
-                results.push({ front: card.word, status: 'created', message: '✅ 已创建' });
+                await saveFlashcard(card);
+                ids.push(card.id);
             }
-
-            const created = results.filter(r => r.status === 'created').length;
-            const skipped = results.filter(r => r.status === 'already_exists').length;
-
-            return {
-                _action: 'created_flashcards',
-                _navigateTo: 'flashcards',
-                _navigateToParams: { folderId },
-                totalCreated: created,
-                totalSkipped: skipped,
-                details: results,
-                message: `✅ 已创建 ${created} 张闪卡${skipped ? `, ${skipped} 张已存在` : ''}`
-            };
+            return { _action: 'created_flashcards', _navigateTo: 'flashcards', count: ids.length, ids, message: `Created ${ids.length} flashcards.` };
         }
-
+        case 'update_flashcard': {
+            const { id: cardId } = params;
+            if (!cardId) return { error: 'Missing flashcard id.' };
+            const card = ((await getFlashcards()) || []).find((c) => c.id === cardId);
+            if (!card) return { error: `Flashcard not found: ${cardId}` };
+            let folderId = params.folderId;
+            if (!folderId && params.folderName) {
+                const folder = await ensureFolder(params.folderName);
+                folderId = folder?.id || null;
+            }
+            const updated = {
+                ...card,
+                ...(params.front !== undefined ? { front: params.front } : {}),
+                ...(params.back !== undefined ? { back: params.back } : {}),
+                ...(folderId !== undefined ? { folderId } : {}),
+                ...(params.tags !== undefined ? { tags: arr(params.tags) } : {}),
+                ...(params.isMastered !== undefined ? { isMastered: !!params.isMastered } : {}),
+                ...(params.isFlagged !== undefined ? { isFlagged: !!params.isFlagged } : {}),
+                updatedAt: Date.now()
+            };
+            await saveFlashcard(updated);
+            return { _action: 'updated_flashcard', _navigateTo: 'flashcards', id: cardId, message: `Updated flashcard: ${firstLine(updated.front) || cardId}` };
+        }
+        case 'delete_flashcards': {
+            const ids = arr(params.ids);
+            const words = arr(params.words).map((w) => String(w).trim().toLowerCase()).filter(Boolean);
+            const limit = Math.max(1, Math.min(200, Number(params.limit) || 20));
+            let targetIds = [...ids];
+            if (!targetIds.length && words.length) {
+                const matched = ((await getFlashcards()) || []).filter((c) => {
+                    const w = firstLine(c.front).toLowerCase();
+                    return words.some((x) => w === x || w.includes(x));
+                });
+                targetIds = matched.slice(0, limit).map((c) => c.id);
+            }
+            if (!targetIds.length) return { error: 'Provide ids or words for deleting flashcards.' };
+            for (const x of targetIds) await deleteFlashcard(x);
+            return { _action: 'deleted_flashcards', _navigateTo: 'flashcards', deleted: targetIds.length, ids: targetIds, message: `Deleted ${targetIds.length} flashcards.` };
+        }
         case 'create_note': {
             const { title, content } = params;
-            const noteId = 'agent_note_' + Date.now();
-            await saveNote({
-                id: noteId,
-                title: title || 'AI Agent 笔记',
-                content: content || '',
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                folderId: null
-            });
-
-            return {
-                _action: 'created_note',
-                _navigateTo: 'notes',
-                _navigateToParams: { id: noteId },
-                noteId,
-                title,
-                message: `✅ 已创建笔记: "${title}"`
+            if (!title || !content) return { error: 'title and content are required.' };
+            const folderName = params.folder || `Notes - ${today()}`;
+            await ensureFolder(folderName);
+            const note = {
+                id: id('agent_note'),
+                title: String(title).trim(),
+                content: String(content),
+                folder: folderName,
+                date: new Date().toISOString(),
+                updatedAt: Date.now()
             };
+            await saveNote(note);
+            return { _action: 'created_note', _navigateTo: 'notes', id: note.id, message: `Created note: ${note.title}` };
         }
-
-        case 'create_writing_task': {
-            const { title, sentences } = params;
-
-            if (!sentences || sentences.length === 0) {
-                return { error: '未提供造句题目' };
+        case 'update_note': {
+            const { id: noteId } = params;
+            if (!noteId) return { error: 'Missing note id.' };
+            const note = ((await getNotes()) || []).find((n) => n.id === noteId);
+            if (!note) return { error: `Note not found: ${noteId}` };
+            const nextFolder = params.folder !== undefined ? String(params.folder) : note.folder;
+            if (nextFolder) await ensureFolder(nextFolder);
+            const updated = {
+                ...note,
+                ...(params.title !== undefined ? { title: String(params.title) } : {}),
+                ...(params.content !== undefined ? { content: String(params.content) } : {}),
+                ...(params.folder !== undefined ? { folder: nextFolder } : {}),
+                updatedAt: Date.now()
+            };
+            await saveNote(updated);
+            return { _action: 'updated_note', _navigateTo: 'notes', id: noteId, message: `Updated note: ${updated.title || noteId}` };
+        }
+        case 'delete_notes': {
+            const ids = arr(params.ids);
+            const titles = arr(params.titles).map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+            const limit = Math.max(1, Math.min(200, Number(params.limit) || 20));
+            let targetIds = [...ids];
+            if (!targetIds.length && titles.length) {
+                const matched = ((await getNotes()) || []).filter((n) => {
+                    const t = (n.title || '').toLowerCase();
+                    return titles.some((x) => t === x || t.includes(x));
+                });
+                targetIds = matched.slice(0, limit).map((n) => n.id);
             }
-
-            return {
-                _action: 'chat_writing',
-                title: title || '造句练习',
-                sentences: sentences.map(s => ({
-                    chinese: s.chinese,
-                    targetWord: s.targetWord,
-                    hint: s.hint || ''
-                })),
-                message: `✍️ 已生成 ${sentences.length} 道造句题，在下方卡片中作答吧！`
-            };
+            if (!targetIds.length) return { error: 'Provide ids or titles for deleting notes.' };
+            for (const x of targetIds) await deleteNote(x);
+            return { _action: 'deleted_notes', _navigateTo: 'notes', deleted: targetIds.length, ids: targetIds, message: `Deleted ${targetIds.length} notes.` };
         }
-
+        case 'create_task_item': {
+            const { text, type = 'study' } = params;
+            if (!text || !String(text).trim()) return { error: 'Task text is required.' };
+            const task = { id: id('agent_task'), text: String(text).trim(), type, completed: false, createdAt: Date.now() };
+            await saveTask(task);
+            return { _action: 'created_task', _navigateTo: 'plan', id: task.id, message: `Created task: ${task.text}` };
+        }
+        case 'update_task_item': {
+            const { id: taskId, text, completed } = params;
+            if (!taskId) return { error: 'Missing task id.' };
+            const task = ((await getTasks()) || []).find((t) => t.id === taskId);
+            if (!task) return { error: `Task not found: ${taskId}` };
+            const updated = {
+                ...task,
+                ...(text !== undefined ? { text: String(text) } : {}),
+                ...(completed !== undefined ? { completed: !!completed } : {}),
+                updatedAt: Date.now()
+            };
+            await saveTask(updated);
+            return { _action: 'updated_task', _navigateTo: 'plan', id: taskId, message: `Updated task: ${updated.text || taskId}` };
+        }
+        case 'delete_task_items': {
+            const ids = arr(params.ids);
+            if (!ids.length) return { error: 'Provide task ids to delete.' };
+            for (const x of ids) await deleteTask(x);
+            return { _action: 'deleted_tasks', _navigateTo: 'plan', deleted: ids.length, ids, message: `Deleted ${ids.length} tasks.` };
+        }
+        case 'create_writing_task': {
+            const title = params.title || 'Sentence Writing Practice';
+            const sentences = arr(params.sentences)
+                .map((s) => ({ chinese: String(s.chinese || '').trim(), targetWord: String(s.targetWord || '').trim(), hint: String(s.hint || '').trim() }))
+                .filter((s) => s.chinese && s.targetWord)
+                .slice(0, 6);
+            if (!sentences.length) return { error: 'Provide at least one valid sentence item.' };
+            return { _action: 'chat_writing', title, sentences, message: `Writing practice is ready (${sentences.length} items).` };
+        }
         case 'create_coach_topic': {
-            const { topic, scenario, systemPrompt, vocabulary = [] } = params;
-            // Store topic + system prompt for CoachView to pick up
-            const coachTopic = {
-                topic,
-                scenario: scenario || '',
-                systemPrompt: systemPrompt || '',
-                vocabulary,
-                createdAt: Date.now(),
-                source: 'AI Agent'
-            };
-            localStorage.setItem('agent_coach_topic', JSON.stringify(coachTopic));
-
-            return {
-                _action: 'created_coach_topic',
-                _navigateTo: 'coach',
-                topic,
-                scenario,
-                vocabulary,
-                message: `✅ 已生成口语话题: "${topic}"`
-            };
+            const { topic, scenario, systemPrompt } = params;
+            const vocabulary = arr(params.vocabulary);
+            if (!topic || !systemPrompt) return { error: 'topic and systemPrompt are required.' };
+            localStorage.setItem('agent_coach_topic', JSON.stringify({ topic, scenario: scenario || '', systemPrompt, vocabulary, createdAt: Date.now(), source: 'AI Agent' }));
+            return { _action: 'created_coach_topic', _navigateTo: 'coach', topic, scenario, vocabulary, message: `Prepared coach topic: ${topic}` };
         }
-
         case 'navigate_to': {
-            const { view } = params;
-            return {
-                _action: 'navigate',
-                _navigateTo: view,
-                message: `跳转到: ${view}`
-            };
+            if (!params.view) return { error: 'Missing target view.' };
+            return { _action: 'navigate', _navigateTo: params.view, message: `Navigate to ${params.view}` };
         }
-
         case 'create_interactive_quiz': {
-            const { question, options, correctAnswer, explanation } = params;
+            const { question, options, correctAnswer, explanation = '' } = params;
+            const cleanOptions = arr(options).map((o) => String(o));
+            if (!question || cleanOptions.length < 2 || !correctAnswer) {
+                return { error: 'question, options (>=2) and correctAnswer are required.' };
+            }
+            if (!cleanOptions.includes(correctAnswer)) cleanOptions.push(String(correctAnswer));
             return {
                 _action: 'chat_quiz',
-                question,
-                options,
-                correctAnswer,
-                explanation,
-                message: `🎯 已发送测验题 (用户在界面作答)`
+                question: String(question),
+                options: cleanOptions.slice(0, 6),
+                correctAnswer: String(correctAnswer),
+                explanation: String(explanation || 'No explanation provided.'),
+                message: 'Quiz is ready.'
             };
         }
-
         case 'review_flashcards': {
-            const count = Math.min(params.count || 5, 10);
-            const filter = params.filter || 'due';
-            const allCards = await getFlashcards();
-            const now = Date.now();
+            const count = Math.max(1, Math.min(10, Number(params.count) || 5));
+            const filter = ['due', 'weak', 'recent'].includes(params.filter) ? params.filter : 'due';
+            const cards = (await getFlashcards()) || [];
+            if (!cards.length) return { _action: 'no_cards', message: 'No flashcards found.' };
 
-            if (allCards.length === 0) {
-                return {
-                    _action: 'no_cards',
-                    message: '📭 你还没有任何闪卡。先去学习新内容，或让我帮你创建一些吧！'
-                };
-            }
-
-            let candidates;
+            let selected = [];
             if (filter === 'weak') {
-                // Sort by weakness score descending, include all cards
-                candidates = [...allCards]
-                    .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0));
+                selected = [...cards].sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0));
             } else if (filter === 'recent') {
-                // Most recently created
-                candidates = [...allCards]
-                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                selected = [...cards].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
             } else {
-                // Due cards first (overdue or due now), then by weakness
-                const dueCards = [...allCards]
-                    .filter(c => !c.nextReview || c.nextReview <= now)
-                    .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0));
-
-                if (dueCards.length >= count) {
-                    candidates = dueCards;
+                const due = cards.filter((c) => isDue(c, now));
+                if (due.length >= count) {
+                    selected = due.sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0));
                 } else {
-                    // Not enough due cards, supplement with all remaining cards
-                    const dueIds = new Set(dueCards.map(c => c.id));
-                    const extras = [...allCards]
-                        .filter(c => !dueIds.has(c.id))
-                        .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0));
-                    candidates = [...dueCards, ...extras];
+                    const dueIds = new Set(due.map((c) => c.id));
+                    const extras = cards.filter((c) => !dueIds.has(c.id)).sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0));
+                    selected = [...due, ...extras];
                 }
             }
-
-            const selected = candidates.slice(0, count);
 
             return {
                 _action: 'chat_flashcard_review',
-                cards: selected.map(c => ({
-                    id: c.id,
-                    front: c.front,
-                    back: c.back,
-                    word: (c.front || '').split('\n')[0].split('/')[0].trim()
-                })),
-                message: `🃏 已抽取 ${selected.length} 张卡片，开始复习吧！`
+                cards: selected.slice(0, count).map((c) => ({ id: c.id, front: c.front, back: c.back, word: firstLine(c.front) })),
+                message: `Prepared ${Math.min(selected.length, count)} cards for quick review.`
             };
         }
-
         default:
             return { error: `Unknown tool: ${toolName}` };
     }
 }
 
-// ============================================
-// Agent System Prompt
-// ============================================
-
 export const AGENT_SYSTEM_PROMPT = `
-<Role>
-你是 SmartLearn Pro 的首席 AI 学习规划师 (Agent)。你既是一位洞察力敏锐的数据分析师，也是一位严厉但懂得鼓励、善用“苏格拉底式启发”的外语私教。
-</Role>
+You are SmartLearn Pro Agent.
 
-<Capabilities>
-- [数据读取]: 查看学习历史、弱点词汇、口语和写作的记录及任务。
-- [内容生成]: 能够调度系统工具，直接为用户创建 [闪卡]、[笔记]、[口语场景题] 以及发起 [即时对话小测验]。
-- [即时复习]: 调用 review_flashcards 在聊天中直接发起翻卡复习，用户无需离开对话即可刷卡并进行 FSRS 评分。
-- [内嵌造句]: 调用 create_writing_task 在聊天中直接发起造句练习，用户在卡片中写英文翻译，提交后 AI 自动批改。
-</Capabilities>
+Your role:
+- Use tools to read the user's learning data.
+- When asked, execute concrete actions (create/update/delete flashcards, notes, tasks).
+- Keep actions explicit and safe.
 
-<Workflows>
-请根据用户的输入意图，严格遵循以下分支流程：
+Execution policy:
+- If a user asks to do something in-app, call the matching tool.
+- For deletion, prefer precise ids and keep scope limited when matching by names/words.
+- For coaching/writing/quiz tasks, produce practical, user-level content.
 
-1. [快速问答 / 闲聊意图]
-- 触发条件：用户问“某个单词是什么意思”、“这句话怎么翻译”、“总结这段话”或简单打招呼时。
-- 动作：仅用自然语言友好解答。**绝对不要**调用任何内容创建类工具（如 create_flashcards / create_note 等），以免给用户系统塞满垃圾信息。
-
-2. [错题引导 / 苏格拉底启发机制]
-- 触发条件：用户在一个小测试中回答错误，或抱怨某个知识点太难。
-- 动作：**绝对不要**直接给出完整正确答案！指出错误方向，给出一条生动的线索（如词源、一个情景隐喻），鼓励用户再猜一次。
-
-3. [Max Mode 全能调度 - 结构化学习]
-- 触发条件：用户明确说“带我学一下这几个词”、“今天学点新东西”，“把这句话做成一节课” 或明确给出学习指令时。
-- 动作：你需要主动“接管”用户的学习流，形成完整闭环：
-  (1) [看数据] 可选：调用 get_flashcard_stats (检测用户基础配置与弱点)
-  (2) [建闭环] 依次静默调用工具: create_flashcards (制卡) -> create_note (造精读笔记) -> create_writing_task (造轻短写的句子任务) -> create_coach_topic (预设口语教练情景)。
-  (3) [即时反馈] 闭环最后，**必须**调用 create_interactive_quiz 在对话框中发起一道跟刚才闭环相关的即时单选题，验证用户注意力！
-
-4. [Proactive Daily Plan - 每日计划反馈]
-- 触发条件：用户要求“智能生成今日学习计划”或提到“今天学什么”。
-- 动作：先拉取所有的当日任务、闪卡情况、最近的练习日志等。归纳弱点，给出一份排版精美的 Markdown 复习指南+今日攻克目标。如果发现某些错词，主动提示是否需要为你建一个小测或新的巩固卡片。
-</Workflows>
-
-<Rules>
-1. 绝对不要用表格、纯 JSON 块来向用户罗列你创建的内容。直接在一两句话内用 ✅ 列表一笔带过即可。
-2. 调用 \`create_writing_task\` 时，只要布置 2-3 个英文句子的翻译或造句，**绝不能要求写几百字长篇大论**。
-3. 调用 \`create_coach_topic\` 时，其中的 \`systemPrompt\` 必须用纯英文撰写详尽的 AI 角色扮演 Prompt，包含人物设定、任务、态度和必须诱导用户说出的词汇（Vocabulary）。
-4. 对话风格：高情商、精简干练。不要像机器人一样啰嗦每一步你在干嘛。多用鼓励和引导性反问。
-5. 当用户说"复习"、"翻卡"、"考我单词"时，**优先**调用 \`review_flashcards\` 而不是 \`create_interactive_quiz\`。翻卡复习适合大量快速过词汇，Interactive Quiz 适合深度检验单个知识点。
-6. 调用 \`review_flashcards\` 时，不需要额外输出太多文字，系统会自动渲染翻卡组件。只需在调用前简短说一句引导语即可。
-</Rules>
+Response style:
+- Be concise and actionable.
+- After tool calls, summarize what changed and what to do next.
 `.trim();

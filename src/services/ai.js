@@ -14,6 +14,7 @@ export const sendChat = async (messages, settings, jsonRequired = false) => {
 const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3) => {
   const { apiKey, apiBaseUrl, modelName } = settings;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+  let lastError = null;
 
   for (let i = 0; i < retries; i++) {
     try {
@@ -34,6 +35,7 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3)
       if (!response.ok) {
         if (response.status === 429) {
           console.warn(`API Rate Limit (429). Retrying in ${(i + 1) * 2}s...`);
+          lastError = new Error("429 Too Many Requests: API rate limit reached.");
           await delay((i + 1) * 2000); // Backoff: 2s, 4s, 6s...
           continue;
         }
@@ -46,12 +48,19 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3)
       }
 
       const data = await response.json();
-      return data.choices[0].message.content;
+      const content = data?.choices?.[0]?.message?.content;
+      if (content === undefined || content === null) {
+        throw new Error("AI response missing message content.");
+      }
+      return content;
     } catch (error) {
+      lastError = error;
       if (i === retries - 1) throw error;
       console.warn(`API Request failed. Retrying... (${i + 1}/${retries})`);
     }
   }
+
+  throw lastError || new Error("AI request failed after retries.");
 };
 
 export const digitalizeExam = async (text, settings, drillType = null) => {
@@ -59,8 +68,12 @@ export const digitalizeExam = async (text, settings, drillType = null) => {
 
   // 🚄 Optimization: Auto-Splitting for Long Exams (Parallel Processing)
   // Only apply if text is long enough AND logic is 'full' (drill modes are usually targeted/short)
-  // Fix: Sanitize text to remove potential binary or weird control chars that break API
-  text = text.replace(/[\x00-\x09\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+  // Fix: sanitize text to remove non-printable control chars that can break requests.
+  text = Array.from(text).filter((ch) => {
+    const code = ch.charCodeAt(0);
+    if (code === 9 || code === 10 || code === 13) return true; // keep tab/newline
+    return !(code <= 31 || code === 127);
+  }).join('');
   const shouldChunk = (!drillType || drillType === 'full') && text.length > 3000;
 
   if (shouldChunk) {
@@ -291,6 +304,55 @@ export const analyzeText = async (text, settings) => {
   } catch (error) {
     console.warn("Parallel Analysis Partial Failure, retrying safely...", error);
     throw error;
+  }
+};
+
+export const generateReadingComprehensionQuiz = async (text, settings, questionCount = 5) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const safeText = text.length > 9000 ? text.substring(0, 9000) + "..." : text;
+  const count = Math.min(10, Math.max(3, Number(questionCount) || 5));
+
+  const systemPrompt = `
+  Role: Experienced English reading comprehension examiner.
+  Task: Create a comprehension quiz based ONLY on the provided article.
+
+  Requirements:
+  1. Generate ${count} multiple-choice questions.
+  2. Each question must test understanding (main idea, detail, inference, tone, logic).
+  3. Each question must have exactly 4 options (A/B/C/D).
+  4. Mark one correct answer and provide a brief Chinese explanation.
+  5. Do not ask vocabulary-only questions unless context-based meaning is required.
+
+  Output JSON only:
+  {
+    "title": "Reading Comprehension Quiz",
+    "questions": [
+      {
+        "id": 1,
+        "question": "String",
+        "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+        "answer": "A",
+        "explanation": "String (Chinese)"
+      }
+    ]
+  }
+  `;
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: safeText }
+  ], settings, true);
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (!Array.isArray(parsed.questions)) parsed.questions = [];
+    return parsed;
+  } catch (e) {
+    const extracted = extractJSON(jsonStr);
+    if (!extracted) throw new Error("AI returned invalid quiz format");
+    if (!Array.isArray(extracted.questions)) extracted.questions = [];
+    return extracted;
   }
 };
 
@@ -700,7 +762,13 @@ export const generatePlanInsight = async (history, userGoal = null, recentLogs =
       { role: "user", content: `History: ${JSON.stringify(history.slice(0, 5))}` }
     ], settings, true);
 
-    const parsed = JSON.parse(jsonStr);
+    if (typeof jsonStr !== 'string' || !jsonStr.trim()) {
+      throw new Error("Empty AI response.");
+    }
+
+    const trimmed = jsonStr.trim();
+    const jsonBody = trimmed.match(/\{[\s\S]*\}/)?.[0] || trimmed;
+    const parsed = JSON.parse(jsonBody);
 
     // Normalize Data Structure just in case AI mocks up
     if (!parsed.radar) parsed.radar = [];
@@ -732,7 +800,7 @@ export const extractVocabulary = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 
   // Split input into words/phrases (comma or newline separated)
-  const rawItems = text.split(/[,，\n\r]+/).map(s => s.trim()).filter(s => s.length > 0);
+  const rawItems = text.split(/[,，\n\r]+/).map((s) => s.trim()).filter((s) => s.length > 0);
 
   // If it looks like a word list (more than 5 comma/newline separated items)
   const isWordList = rawItems.length > 5;
@@ -764,33 +832,35 @@ const extractVocabularyBatched = async (words, settings) => {
     console.log(`Processing batch ${i + 1}/${batches.length}: ${batch.length} words`);
 
     const prompt = `
-    Role: Expert Language Teacher.
-    Task: Create a flashcard for EACH word in the list below.
-    
+    Role: Expert language teacher.
+    Task: For EACH word in the list below, return one vocabulary item.
+
     WORDS TO PROCESS (${batch.length} words):
     ${batch.join(', ')}
-    
-    Output: JSON array with exactly ${batch.length} flashcards.
+
+    Output: JSON array with exactly ${batch.length} items.
     [
-      { "front": "word", "back": "中文释义" },
+      { "word": "abandon", "phonetic": "əˈbændən", "meaning": "放弃；遗弃" },
       ...
     ]
-    
+
     Rules:
-    - One flashcard per word, no skipping.
-    - "back": ONLY Chinese definition, no English, no examples.
+    - One item per word, no skipping.
+    - "phonetic" should be IPA-like string without slash; empty string is allowed if unavailable.
+    - "meaning" must be concise Chinese definition only.
+    - Keep word in original form where possible.
     - Output ONLY the JSON array.
     `;
 
     try {
       const jsonStr = await fetchFromAI([
         { role: "system", content: prompt },
-        { role: "user", content: "Generate flashcards now." }
+        { role: "user", content: "Generate vocabulary now." }
       ], settings, true);
 
       const parsed = parseVocabResponse(jsonStr);
       allResults.push(...parsed);
-      console.log(`Batch ${i + 1} returned ${parsed.length} cards`);
+      console.log(`Batch ${i + 1} returned ${parsed.length} items`);
     } catch (e) {
       console.error(`Batch ${i + 1} failed:`, e.message);
       // Continue with other batches even if one fails
@@ -802,7 +872,7 @@ const extractVocabularyBatched = async (words, settings) => {
     }
   }
 
-  console.log(`Total extracted: ${allResults.length} flashcards`);
+  console.log(`Total extracted: ${allResults.length} vocabulary items`);
   return allResults;
 };
 
@@ -813,17 +883,18 @@ const extractVocabularySingle = async (text, settings) => {
     : "all vocabulary words";
 
   const prompt = `
-  Role: Expert Language Teacher.
-  Task: Extract vocabulary from the text and create flashcards.
-  
-  Output Format: JSON Array
+  Role: Expert language teacher.
+  Task: Extract vocabulary from the text.
+
+  Output format: JSON array
   [
-    { "front": "English Word", "back": "中文释义" }
+    { "word": "English Word", "phonetic": "IPA", "meaning": "中文释义" }
   ]
-  
+
   Requirements:
   - Extract ${countTarget}.
-  - "back": Concise Chinese definition ONLY.
+  - "meaning": concise Chinese definition only.
+  - "phonetic": IPA-like pronunciation if available, otherwise empty string.
   - Output ONLY the JSON array.
   `;
 
@@ -836,12 +907,50 @@ const extractVocabularySingle = async (text, settings) => {
   return parseVocabResponse(jsonStr);
 };
 
-// Helper: Parse AI response into flashcard array
+const normalizeVocabItem = (item = {}) => {
+  const normalizeText = (value) => (value === null || value === undefined ? '' : String(value).trim());
+  const stripSurroundingSlash = (value) => normalizeText(value).replace(/^\/+|\/+$/g, '');
+
+  const extractWordFromFront = (frontText) => {
+    const line = normalizeText(frontText).split('\n')[0] || '';
+    return line.replace(/\/[^/]+\/.*/, '').trim();
+  };
+
+  const extractPhoneticFromFront = (frontText) => {
+    const match = normalizeText(frontText).match(/\/([^/]+)\//);
+    return match ? stripSurroundingSlash(match[1]) : '';
+  };
+
+  const rawFront = normalizeText(item.front);
+  const rawBack = normalizeText(item.back);
+  const word = normalizeText(item.word || item.term || item.vocab || extractWordFromFront(rawFront));
+  const phonetic = stripSurroundingSlash(item.phonetic || item.pronunciation || item.ipa || extractPhoneticFromFront(rawFront));
+  const meaning = normalizeText(item.meaning || item.definition || item.chinese_meaning || item.cn || rawBack);
+
+  return {
+    ...item,
+    word,
+    phonetic,
+    meaning,
+    // Keep backward compatibility for callers that still read front/back.
+    front: rawFront || word,
+    back: rawBack || meaning
+  };
+};
+
+const normalizeVocabArray = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map(normalizeVocabItem)
+    .filter((item) => item.word || item.meaning || item.front || item.back);
+};
+
+// Helper: Parse AI response into normalized vocabulary array
 const parseVocabResponse = (jsonStr) => {
   console.log("AI Raw Response (first 300 chars):", jsonStr.substring(0, 300));
 
   // Clean up common JSON issues
-  let cleaned = jsonStr
+  const cleaned = jsonStr
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/gi, '')
     .trim();
@@ -849,31 +958,33 @@ const parseVocabResponse = (jsonStr) => {
   try {
     const parsed = JSON.parse(cleaned);
 
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed.flashcards && Array.isArray(parsed.flashcards)) return parsed.flashcards;
-    if (parsed.vocabulary && Array.isArray(parsed.vocabulary)) return parsed.vocabulary;
-    if (parsed.cards && Array.isArray(parsed.cards)) return parsed.cards;
-    if (parsed.words && Array.isArray(parsed.words)) return parsed.words;
-    if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+    if (Array.isArray(parsed)) return normalizeVocabArray(parsed);
+    if (parsed.flashcards && Array.isArray(parsed.flashcards)) return normalizeVocabArray(parsed.flashcards);
+    if (parsed.vocabulary && Array.isArray(parsed.vocabulary)) return normalizeVocabArray(parsed.vocabulary);
+    if (parsed.cards && Array.isArray(parsed.cards)) return normalizeVocabArray(parsed.cards);
+    if (parsed.words && Array.isArray(parsed.words)) return normalizeVocabArray(parsed.words);
+    if (parsed.data && Array.isArray(parsed.data)) return normalizeVocabArray(parsed.data);
 
     const values = Object.values(parsed);
-    const arr = values.find(v => Array.isArray(v));
-    if (arr) return arr;
+    const arr = values.find((value) => Array.isArray(value));
+    if (arr) return normalizeVocabArray(arr);
 
-    if (parsed.front && parsed.back) return [parsed];
+    if (parsed.front || parsed.back || parsed.word || parsed.meaning) {
+      return normalizeVocabArray([parsed]);
+    }
 
-    throw new Error("Invalid Array Format");
+    throw new Error("Invalid array format");
   } catch (e) {
     // Regex fallback
     const match = jsonStr.match(/\[\s*\{[\s\S]*?\}\s*(?:,\s*\{[\s\S]*?\}\s*)*\]/);
     if (match) {
       try {
-        return JSON.parse(match[0]);
+        return normalizeVocabArray(JSON.parse(match[0]));
       } catch (parseErr) {
         console.error("Regex fallback failed:", parseErr);
       }
     }
-    throw new Error(`JSON解析失败: ${e.message}`);
+    throw new Error(`Vocabulary JSON parse failed: ${e.message}`);
   }
 };
 
