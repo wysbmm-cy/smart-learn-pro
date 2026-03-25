@@ -599,52 +599,88 @@ const FlashcardView = ({ params }) => {
         try {
             const text = await file.text();
             const parsed = JSON.parse(text);
-            const importedCards = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.flashcards) ? parsed.flashcards : []);
+            const importedCards = Array.isArray(parsed)
+                ? parsed
+                : (Array.isArray(parsed?.flashcards)
+                    ? parsed.flashcards
+                    : (Array.isArray(parsed?.cards) ? parsed.cards : []));
+            const importedFolders = Array.isArray(parsed?.folders) ? parsed.folders : [];
             if (!importedCards.length) throw new Error('文件中没有可导入的闪卡数据');
 
             const [existingCards, folderList] = await Promise.all([
                 loadUserFlashcards(),
                 getFolders()
             ]);
+
+            const localFolderNameById = new Map(folderList.map((f) => [f.id, normalizeCardField(f.name)]));
             const folderMap = new Map(
                 folderList
                     .filter((f) => normalizeCardField(f.name))
                     .map((f) => [normalizeCardField(f.name).toLowerCase(), f.id])
             );
+            const sourceFolderIdMap = new Map();
 
-            const existingCardKeys = new Set(
-                existingCards.map((c) => `${normalizeCardField(c.front).toLowerCase()}|||${normalizeCardField(c.back).toLowerCase()}`)
-            );
-
-            const ensureFolder = async (name) => {
-                const safe = normalizeCardField(name);
-                if (!safe) return undefined;
-                const key = safe.toLowerCase();
-                if (folderMap.has(key)) return folderMap.get(key);
-                const id = crypto.randomUUID();
-                await saveFolder({ id, name: safe, type: 'user', createdAt: Date.now() });
-                folderMap.set(key, id);
-                return id;
+            const buildCardKey = (front, back, folderId) => {
+                const folderName = normalizeCardField(localFolderNameById.get(folderId) || '').toLowerCase();
+                return `${normalizeCardField(front).toLowerCase()}|||${normalizeCardField(back).toLowerCase()}|||${folderName}`;
             };
+
+            const existingCardKeys = new Set(existingCards.map((c) => buildCardKey(c.front, c.back, c.folderId)));
+
+            let createdFolders = 0;
+            const ensureFolder = async (name, sourceId) => {
+                const sourceKey = sourceId !== undefined && sourceId !== null ? String(sourceId) : '';
+                if (sourceKey && sourceFolderIdMap.has(sourceKey)) return sourceFolderIdMap.get(sourceKey);
+                const safe = normalizeCardField(name);
+                if (!safe) {
+                    if (sourceKey) sourceFolderIdMap.set(sourceKey, undefined);
+                    return undefined;
+                }
+                const key = safe.toLowerCase();
+                let folderId = folderMap.get(key);
+                if (!folderId) {
+                    folderId = crypto.randomUUID();
+                    await saveFolder({ id: folderId, name: safe, type: 'user', createdAt: Date.now() });
+                    folderMap.set(key, folderId);
+                    localFolderNameById.set(folderId, safe);
+                    createdFolders += 1;
+                }
+                if (sourceKey) sourceFolderIdMap.set(sourceKey, folderId);
+                return folderId;
+            };
+
+            // Pre-create folder mapping from export metadata if available.
+            for (const folder of importedFolders) {
+                const sourceId = folder?.id !== undefined && folder?.id !== null ? String(folder.id) : '';
+                const folderName = folder?.name || folder?.title || '';
+                await ensureFolder(folderName, sourceId);
+            }
 
             let added = 0;
             let skipped = 0;
             const batchKeys = new Set();
             for (const raw of importedCards) {
-                const front = normalizeCardField(raw?.front ?? raw?.word);
-                const back = normalizeCardField(raw?.back ?? raw?.meaning);
-                if (!front || !back) {
+                const front = normalizeCardField(raw?.front ?? raw?.word ?? raw?.term ?? raw?.question);
+                let back = normalizeCardField(raw?.back ?? raw?.meaning ?? raw?.definition ?? raw?.translation ?? raw?.answer);
+                if (!front) {
                     skipped += 1;
                     continue;
                 }
-                const dedupeKey = `${front.toLowerCase()}|||${back.toLowerCase()}`;
+                if (!back) back = '（待补充释义）';
+
+                const rawFolderId = raw?.folderId !== undefined && raw?.folderId !== null ? String(raw.folderId) : '';
+                const folderNameFromId = rawFolderId
+                    ? (importedFolders.find((f) => String(f?.id ?? '') === rawFolderId)?.name || '')
+                    : '';
+                const folderName = raw?.folderName || raw?.folder || folderNameFromId;
+                const folderId = await ensureFolder(folderName, rawFolderId);
+
+                const dedupeKey = buildCardKey(front, back, folderId);
                 if (existingCardKeys.has(dedupeKey) || batchKeys.has(dedupeKey)) {
                     skipped += 1;
                     continue;
                 }
 
-                const folderName = raw?.folderName || raw?.folder || '';
-                const folderId = await ensureFolder(folderName);
                 const now = Date.now();
                 const createdAt = Number(raw?.createdAt) || now;
                 const nextReview = Number(raw?.nextReview) || now;
@@ -688,7 +724,7 @@ const FlashcardView = ({ params }) => {
             }
 
             await loadData();
-            toast.success(`导入完成：新增 ${added}，跳过 ${skipped}`);
+            toast.success(`导入完成：新增 ${added}，跳过 ${skipped}，新建文件夹 ${createdFolders}`);
         } catch (e) {
             toast.error(`导入失败: ${e.message}`);
         } finally {
@@ -1739,12 +1775,12 @@ const FlashcardView = ({ params }) => {
                     </div>
 
                     {/* Flashcard Study Area */}
-                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative`}>
+                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative ${isMobile ? 'pb-[calc(env(safe-area-inset-bottom,0px)+88px)]' : ''}`}>
                         {/* Progress Bar */}
                         <div className="absolute top-0 left-0 h-1 bg-phy-accent transition-all duration-300 z-10" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
 
                         {/* Left: Main Card Area */}
-                        <div className={`flex-1 flex flex-col items-center justify-center relative perspective-1000 ${isMobile ? 'p-3 pt-4 overflow-hidden' : 'p-8 overflow-y-auto'} ${isMobile && isFlipped && showGradePanel ? 'pb-28' : ''}`}>
+                        <div className={`flex-1 flex flex-col items-center ${isMobile ? 'justify-start' : 'justify-center'} relative perspective-1000 ${isMobile ? 'p-2 pt-2 overflow-hidden' : 'p-8 overflow-y-auto'} ${isMobile && isFlipped && showGradePanel ? 'pb-20' : ''}`}>
 
                             {/* Toolbar inside Study Area */}
                             {!isMobile && <div className="absolute top-4 right-4 z-20 flex gap-2">
@@ -1769,7 +1805,7 @@ const FlashcardView = ({ params }) => {
                             {!isDrillMode && (
                                 <div
                                     key={currentCard?.id || currentCardIndex}
-                                    className={`relative w-full shadow-xl border border-phy-border flex flex-col items-center justify-center text-center cursor-pointer transform-style-3d ${disableFlipAnimation ? 'transition-none' : 'transition-transform duration-500'} ${isMobile ? 'min-h-[52vh] max-h-[62vh] rounded-2xl p-4' : 'aspect-video rounded-3xl p-8'} ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
+                                    className={`relative w-full shadow-xl border border-phy-border flex flex-col items-center justify-center text-center cursor-pointer transform-style-3d ${disableFlipAnimation ? 'transition-none' : 'transition-transform duration-500'} ${isMobile ? 'h-[44vh] min-h-[250px] max-h-[340px] rounded-2xl p-3' : 'aspect-video rounded-3xl p-8'} ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
                                     style={{ maxWidth: isMobile ? '100%' : (showDetailPanel ? '800px' : '900px') }}
                                     onClick={async () => {
                                         if (isAdvancingCard) return;
@@ -1809,16 +1845,16 @@ const FlashcardView = ({ params }) => {
                                         )}
 
                                         <div className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">Question</div>
-                                        <div className={`font-black text-slate-900 break-words w-full leading-tight ${isMobile ? (questionText.length > 40 ? 'text-3xl' : 'text-4xl') : (questionText.length > 50 ? 'text-xl' : 'text-4xl')}`}>
+                                        <div className={`font-black text-slate-900 break-words w-full leading-tight ${isMobile ? (questionText.length > 40 ? 'text-2xl' : 'text-3xl') : (questionText.length > 50 ? 'text-xl' : 'text-4xl')}`}>
                                             {questionText}
                                         </div>
-                                        <div className="mt-6 flex items-center gap-4">
+                                        <div className={`${isMobile ? 'mt-4' : 'mt-6'} flex items-center gap-4`}>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); speakText(questionText); }}
-                                                className="p-3 bg-phy-glassHover hover:bg-phy-accentGlass text-phy-accent rounded-full shadow-sm hover:shadow transition-all border border-transparent hover:border-phy-accent/30"
+                                                className={`${isMobile ? 'p-2.5' : 'p-3'} bg-phy-glassHover hover:bg-phy-accentGlass text-phy-accent rounded-full shadow-sm hover:shadow transition-all border border-transparent hover:border-phy-accent/30`}
                                                 title="朗读发音"
                                             >
-                                                <Volume2 size={24} />
+                                                <Volume2 size={isMobile ? 20 : 24} />
                                             </button>
                                         </div>
                                         <div className={`${isMobile ? 'mt-4' : 'mt-8'} text-xs text-slate-600 font-medium flex items-center gap-2`}>
@@ -1830,15 +1866,15 @@ const FlashcardView = ({ params }) => {
                                     <div className={`absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center ${isMobile ? 'rounded-2xl p-4' : 'rounded-3xl p-8'} bg-phy-accent text-white leading-relaxed overflow-hidden border border-phy-accentHover`}>
                                         <div className={`absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none ${isMobile ? 'rounded-2xl' : 'rounded-3xl'}`} />
                                         <div className="text-xs font-bold text-white/70 uppercase mb-4 tracking-widest z-10">Answer</div>
-                                        <div className={`font-bold break-words w-full z-10 ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
+                                        <div className={`font-bold break-words w-full z-10 ${isMobile ? (answerText.length > 100 ? 'text-base' : 'text-2xl') : (answerText.length > 100 ? 'text-lg' : 'text-3xl')}`}>
                                             {answerText}
                                         </div>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); speakText(answerText); }}
-                                            className="mt-6 p-3 bg-phy-glassHover hover:bg-white/20 rounded-full text-white transition-all backdrop-blur z-10 border border-white/20"
+                                            className={`${isMobile ? 'mt-4 p-2.5' : 'mt-6 p-3'} bg-phy-glassHover hover:bg-white/20 rounded-full text-white transition-all backdrop-blur z-10 border border-white/20`}
                                             title="朗读发音"
                                         >
-                                            <Volume2 size={24} />
+                                            <Volume2 size={isMobile ? 20 : 24} />
                                         </button>
                                     </div>
                                 </div>
