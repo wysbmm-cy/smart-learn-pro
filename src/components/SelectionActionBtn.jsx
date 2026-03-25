@@ -8,7 +8,7 @@ const SelectionActionBtn = ({ data, onReanalyze }) => {
     return ReactDOM.createPortal(
         <div
             style={{
-                top: data.y - 40, // Float above selection
+                top: data.y - 40,
                 left: data.x
             }}
             className="fixed z-[9999] transform -translate-x-1/2 animate-in fade-in zoom-in duration-200 pointer-events-auto"

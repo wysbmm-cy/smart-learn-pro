@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import ChatSidebar from '../components/ChatSidebar';
 import PomodoroTimer from '../components/PomodoroTimer';
@@ -43,6 +43,29 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const [showPomodoro, setShowPomodoro] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
+    const [examCanvasMode, setExamCanvasMode] = useState(() => localStorage.getItem('exam_canvas_mode') || 'classic');
+
+    useEffect(() => {
+        const handleExamCanvasModeChange = (e) => {
+            const mode = e?.detail?.mode;
+            if (mode === 'classic' || mode === 'expanded') {
+                setExamCanvasMode(mode);
+            }
+        };
+        window.addEventListener('exam-canvas-mode-change', handleExamCanvasModeChange);
+        return () => window.removeEventListener('exam-canvas-mode-change', handleExamCanvasModeChange);
+    }, []);
+
+    const isExamExpanded = currentView === 'exam' && examCanvasMode === 'expanded';
+    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam';
+    const contentContainerClass = currentView === 'notes'
+        ? 'h-full w-full max-w-none mx-0 p-0'
+        : currentView === 'exam'
+            ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
+            : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto pt-4 md:pt-6 pb-24 md:pb-8`;
+    const splitPaneContainerClass = currentView === 'exam'
+        ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
+        : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full pt-6`;
 
     const handleContextMenu = (e, itemId) => {
         e.preventDefault();
@@ -232,16 +255,16 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             left={<div className="h-full overflow-y-auto p-2 bg-phy-glassHeavy">{secondaryContent}</div>}
                             right={
                                 <main className="h-full overflow-y-auto px-8 pb-8 scroll-smooth bg-transparent">
-                                    <div className="max-w-6xl mx-auto h-full pt-6">{children}</div>
+                                    <div className={splitPaneContainerClass}>{children}</div>
                                 </main>
                             }
                         />
                     ) : (
                         <main
-                            className={`h-full scroll-smooth ${currentView === 'notes' ? 'overflow-hidden p-0' : 'overflow-y-auto px-4 md:px-8'}`}
+                            className={`h-full scroll-smooth ${isFixedCanvasView ? 'overflow-hidden p-0' : 'overflow-y-auto px-4 md:px-8'}`}
                             style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
                         >
-                            <div className="max-w-6xl mx-auto pt-4 md:pt-6 pb-24 md:pb-8">
+                            <div className={contentContainerClass}>
                                 {children}
                             </div>
                         </main>

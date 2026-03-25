@@ -24,6 +24,7 @@ const firstLine = (t) => (t || '').split('\n')[0].split('/')[0].trim();
 const today = () => new Date().toISOString().split('T')[0];
 const isDue = (c, now = Date.now()) => !c.nextReview || c.nextReview <= now;
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+const clean = (v) => String(v ?? '').trim();
 const byCount = (list, pick) => {
     const m = new Map();
     for (const item of list || []) {
@@ -51,6 +52,67 @@ const normalizeCard = (raw = {}) => {
         ? String(raw.back).trim()
         : [raw.chinese_meaning, raw.example_translation ? `Example Translation: ${raw.example_translation}` : '', raw.context ? `Context: ${raw.context}` : ''].filter(Boolean).join('\n').trim();
     return { front, back };
+};
+
+const findCardByWord = (cards = [], word = '') => {
+    const needle = clean(word).toLowerCase();
+    if (!needle) return null;
+    return cards.find((c) => firstLine(c.front).toLowerCase() === needle)
+        || cards.find((c) => (c.front || '').toLowerCase().includes(needle))
+        || null;
+};
+
+const generateDeepNoteMarkdown = async ({ word, context = '', translation = '', settings = {} }) => {
+    const apiKey = clean(settings.apiKey);
+    const apiBaseUrl = clean(settings.apiBaseUrl || 'https://api.moonshot.cn/v1');
+    const modelName = clean(settings.modelName || 'kimi-k2-0905-preview');
+    if (!apiKey || !apiBaseUrl) return null;
+
+    const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+    const prompt = `
+You are an expert English vocabulary tutor.
+Create a practical deep-learning vocabulary note in Markdown for: "${word}".
+Learner context sentence: "${context || 'Not provided'}".
+Reference translation/meaning: "${translation || 'Not provided'}".
+
+Requirements:
+1) Keep output concise but exam-oriented (CET/IELTS/TOEFL writing & reading).
+2) Use clear Chinese explanations where helpful for Chinese learners.
+3) Output strictly with this structure:
+
+## ${word}
+### 1. 词性与词源
+### 2. 核心释义
+### 3. 常见搭配与用法
+### 4. 近义词辨析
+### 5. 例句（英文 + 中文）
+### 6. 提分应用建议
+### 7. 记忆钩子
+`.trim();
+
+    const response = await fetch(`${cleanUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: modelName,
+            messages: [
+                { role: 'system', content: 'You are a strict but helpful English teacher. Return clean Markdown only.' },
+                { role: 'user', content: prompt }
+            ],
+            temperature: 0.4
+        })
+    });
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Deep note API error ${response.status}: ${text || 'unknown error'}`);
+    }
+
+    const data = await response.json();
+    return clean(data?.choices?.[0]?.message?.content) || null;
 };
 
 const fn = (name, description, properties = {}, required = []) => ({
@@ -150,10 +212,19 @@ export const AGENT_TOOLS = [
     fn('review_flashcards', 'Pick cards for in-chat review.', {
         count: { type: 'number' },
         filter: { type: 'string', enum: ['due', 'weak', 'recent'] }
+    }),
+    fn('generate_deep_note', 'Generate a deep vocabulary note with AI and save it into Notes; can optionally bind to a flashcard.', {
+        flashcardId: { type: 'string' },
+        word: { type: 'string' },
+        context: { type: 'string' },
+        translation: { type: 'string' },
+        folder: { type: 'string' },
+        title: { type: 'string' }
     })
 ];
 
-export async function executeAgentTool(toolName, params = {}) {
+export async function executeAgentTool(toolName, params = {}, options = {}) {
+    const settings = options?.settings || null;
     const now = Date.now();
     switch (toolName) {
         case 'get_flashcard_stats': {
@@ -432,6 +503,62 @@ export async function executeAgentTool(toolName, params = {}) {
                 message: `Prepared ${Math.min(selected.length, count)} cards for quick review.`
             };
         }
+        case 'generate_deep_note': {
+            if (!settings?.apiKey) {
+                return { error: 'Missing API key in settings. Please configure API key first.' };
+            }
+
+            const cards = (await getFlashcards()) || [];
+            let targetCard = null;
+            if (params.flashcardId) {
+                targetCard = cards.find((c) => c.id === params.flashcardId) || null;
+                if (!targetCard) return { error: `Flashcard not found: ${params.flashcardId}` };
+            } else if (params.word) {
+                targetCard = findCardByWord(cards, params.word);
+            }
+
+            const word = clean(params.word) || firstLine(targetCard?.front);
+            if (!word) {
+                return { error: 'Provide flashcardId or word to generate deep note.' };
+            }
+
+            const context = clean(params.context) || clean(targetCard?.context);
+            const translation = clean(params.translation) || clean(targetCard?.back);
+            const markdown = await generateDeepNoteMarkdown({ word, context, translation, settings });
+            if (!markdown) {
+                return { error: `Failed to generate deep note for "${word}".` };
+            }
+
+            let flashcardId = null;
+            if (targetCard) {
+                const updated = { ...targetCard, notes: markdown, updatedAt: Date.now() };
+                await saveFlashcard(updated);
+                flashcardId = targetCard.id;
+            }
+
+            const folder = clean(params.folder) || '深度笔记';
+            await ensureFolder(folder);
+
+            const note = {
+                id: targetCard ? `dn_${targetCard.id}` : id('agent_deep_note'),
+                title: clean(params.title) || `深度笔记 - ${word}`,
+                content: `# ${word}\n\n${translation ? `> ${translation}\n\n` : ''}${markdown}`,
+                folder,
+                date: new Date().toISOString(),
+                updatedAt: Date.now()
+            };
+            await saveNote(note);
+
+            return {
+                _action: 'generated_deep_note',
+                _navigateTo: 'notes',
+                _navigateToParams: { id: note.id },
+                noteId: note.id,
+                flashcardId,
+                word,
+                message: `Generated deep note for ${word}.`
+            };
+        }
         default:
             return { error: `Unknown tool: ${toolName}` };
     }
@@ -442,12 +569,13 @@ You are SmartLearn Pro Agent.
 
 Your role:
 - Use tools to read the user's learning data.
-- When asked, execute concrete actions (create/update/delete flashcards, notes, tasks).
+- When asked, execute concrete actions (create/update/delete flashcards, notes, tasks, deep notes).
 - Keep actions explicit and safe.
 
 Execution policy:
 - If a user asks to do something in-app, call the matching tool.
 - For deletion, prefer precise ids and keep scope limited when matching by names/words.
+- For deep note requests, prefer generate_deep_note and save results into Notes.
 - For coaching/writing/quiz tasks, produce practical, user-level content.
 
 Response style:

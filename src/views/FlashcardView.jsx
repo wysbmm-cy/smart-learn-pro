@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap, Brain, Loader2, PanelRightClose, PanelRightOpen, Lightbulb, MessageSquare, Edit3, BookOpen, Sparkles, Link as LinkIcon, FileText, Search, X, Maximize2, Minimize2, MoreHorizontal, Settings } from 'lucide-react';
+import { flushSync } from 'react-dom';
+import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap, Brain, Loader2, PanelRightClose, PanelRightOpen, Lightbulb, MessageSquare, Edit3, BookOpen, Sparkles, Link as LinkIcon, FileText, Search, X, Maximize2, Minimize2, MoreHorizontal, Settings, Download, Upload } from 'lucide-react';
 import SharedMarkdown from '../components/SharedMarkdown';
 import { useApp, fsrs, restoreFSRSCard, Rating } from '../context/AppContext';
 import SplitPane from '../components/SplitPane';
@@ -50,6 +51,9 @@ const FlashcardView = ({ params }) => {
     const [isSwapped, setIsSwapped] = useState(false); // Toggle Q/A sides
     const [showStats, setShowStats] = useState(false); // Toggle statistics panel
     const [sortMode, setSortMode] = useState('mastery_asc'); // 'default' | 'mastery_asc' | 'mastery_desc'
+    const [isExportingCards, setIsExportingCards] = useState(false);
+    const [isImportingCards, setIsImportingCards] = useState(false);
+    const importCardsInputRef = useRef(null);
 
     // ===== NEW: Dialog States =====
     const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -70,6 +74,9 @@ const FlashcardView = ({ params }) => {
     const [studyQueue, setStudyQueue] = useState([]);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [showGradePanel, setShowGradePanel] = useState(false);
+    const [isAdvancingCard, setIsAdvancingCard] = useState(false);
+    const [disableFlipAnimation, setDisableFlipAnimation] = useState(false);
     const [sessionStats, setSessionStats] = useState({ reviewed: 0, correct: 0 });
 
     // Lottery State
@@ -302,6 +309,7 @@ const FlashcardView = ({ params }) => {
         // Restore previous state
         setCurrentCardIndex(lastAction.prevIndex);
         setIsFlipped(false);
+        setShowGradePanel(false);
         setSessionStats(lastAction.prevStats);
 
         // Remove retry card if it was added
@@ -397,8 +405,15 @@ const FlashcardView = ({ params }) => {
 
             // Move to next card
             if (currentCardIndex < studyQueue.length - 1) {
-                setCurrentCardIndex(prev => prev + 1);
-                setIsFlipped(false);
+                flushSync(() => {
+                    setDisableFlipAnimation(true);
+                    setIsFlipped(false);
+                    setShowGradePanel(false);
+                });
+                requestAnimationFrame(() => {
+                    setCurrentCardIndex(prev => prev + 1);
+                    requestAnimationFrame(() => setDisableFlipAnimation(false));
+                });
             } else {
                 // Session complete
                 loadData();
@@ -537,6 +552,150 @@ const FlashcardView = ({ params }) => {
         });
     };
 
+    const normalizeCardField = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+    const handleExportFlashcards = async () => {
+        setIsExportingCards(true);
+        try {
+            const [cards, folderList] = await Promise.all([
+                loadUserFlashcards(),
+                getFolders()
+            ]);
+            const folderNameById = new Map(folderList.map((f) => [f.id, f.name]));
+            const payload = {
+                format: 'smartlearn_flashcards',
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                flashcards: cards.map((c) => ({
+                    ...c,
+                    folderName: c.folderId ? folderNameById.get(c.folderId) || '' : ''
+                })),
+                folders: folderList.map((f) => ({ id: f.id, name: f.name, type: f.type || 'user' }))
+            };
+            const content = JSON.stringify(payload, null, 2);
+            const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            anchor.href = url;
+            anchor.download = `smartlearn-flashcards-${stamp}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+            URL.revokeObjectURL(url);
+            toast.success(`已导出 ${cards.length} 张闪卡`);
+        } catch (e) {
+            toast.error(`导出失败: ${e.message}`);
+        } finally {
+            setIsExportingCards(false);
+        }
+    };
+
+    const handleImportFlashcards = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        setIsImportingCards(true);
+        try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const importedCards = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.flashcards) ? parsed.flashcards : []);
+            if (!importedCards.length) throw new Error('文件中没有可导入的闪卡数据');
+
+            const [existingCards, folderList] = await Promise.all([
+                loadUserFlashcards(),
+                getFolders()
+            ]);
+            const folderMap = new Map(
+                folderList
+                    .filter((f) => normalizeCardField(f.name))
+                    .map((f) => [normalizeCardField(f.name).toLowerCase(), f.id])
+            );
+
+            const existingCardKeys = new Set(
+                existingCards.map((c) => `${normalizeCardField(c.front).toLowerCase()}|||${normalizeCardField(c.back).toLowerCase()}`)
+            );
+
+            const ensureFolder = async (name) => {
+                const safe = normalizeCardField(name);
+                if (!safe) return undefined;
+                const key = safe.toLowerCase();
+                if (folderMap.has(key)) return folderMap.get(key);
+                const id = crypto.randomUUID();
+                await saveFolder({ id, name: safe, type: 'user', createdAt: Date.now() });
+                folderMap.set(key, id);
+                return id;
+            };
+
+            let added = 0;
+            let skipped = 0;
+            const batchKeys = new Set();
+            for (const raw of importedCards) {
+                const front = normalizeCardField(raw?.front ?? raw?.word);
+                const back = normalizeCardField(raw?.back ?? raw?.meaning);
+                if (!front || !back) {
+                    skipped += 1;
+                    continue;
+                }
+                const dedupeKey = `${front.toLowerCase()}|||${back.toLowerCase()}`;
+                if (existingCardKeys.has(dedupeKey) || batchKeys.has(dedupeKey)) {
+                    skipped += 1;
+                    continue;
+                }
+
+                const folderName = raw?.folderName || raw?.folder || '';
+                const folderId = await ensureFolder(folderName);
+                const now = Date.now();
+                const createdAt = Number(raw?.createdAt) || now;
+                const nextReview = Number(raw?.nextReview) || now;
+                const interval = Number(raw?.interval) || 1;
+                const repetitions = Number(raw?.repetitions) || 0;
+                const easeFactor = Number(raw?.easeFactor) || 2.5;
+                const tags = Array.isArray(raw?.tags) ? raw.tags.filter(Boolean) : [];
+
+                const newCard = {
+                    id: crypto.randomUUID(),
+                    front,
+                    back,
+                    folderId,
+                    tags,
+                    createdAt,
+                    nextReview,
+                    interval,
+                    repetitions,
+                    easeFactor,
+                    notes: typeof raw?.notes === 'string' ? raw.notes : undefined,
+                    isFlagged: Boolean(raw?.isFlagged),
+                    mastered: Boolean(raw?.mastered),
+                    weaknessScore: Number(raw?.weaknessScore) || 0
+                };
+                if (raw?.lastReview !== undefined && raw?.lastReview !== null) {
+                    if (typeof raw.lastReview === 'string') newCard.lastReview = raw.lastReview;
+                    else if (!Number.isNaN(Number(raw.lastReview))) newCard.lastReview = new Date(Number(raw.lastReview)).toISOString();
+                }
+                if (!Number.isNaN(Number(raw?.stability))) newCard.stability = Number(raw.stability);
+                if (!Number.isNaN(Number(raw?.difficulty))) newCard.difficulty = Number(raw.difficulty);
+                if (!Number.isNaN(Number(raw?.retrievability))) newCard.retrievability = Number(raw.retrievability);
+                if (!Number.isNaN(Number(raw?.reviews))) newCard.reviews = Number(raw.reviews);
+                if (!Number.isNaN(Number(raw?.correctStreak))) newCard.correctStreak = Number(raw.correctStreak);
+                if (Array.isArray(raw?.drillCards)) newCard.drillCards = raw.drillCards;
+                if (!Number.isNaN(Number(raw?.drillGeneratedAt))) newCard.drillGeneratedAt = Number(raw.drillGeneratedAt);
+
+                await addFlashcard(newCard);
+                existingCardKeys.add(dedupeKey);
+                batchKeys.add(dedupeKey);
+                added += 1;
+            }
+
+            await loadData();
+            toast.success(`导入完成：新增 ${added}，跳过 ${skipped}`);
+        } catch (e) {
+            toast.error(`导入失败: ${e.message}`);
+        } finally {
+            setIsImportingCards(false);
+        }
+    };
+
     // --- Study Logic ---
     // Note: getEffectiveWeaknessScore is now imported from '../utils/flashcardUtils'
 
@@ -597,6 +756,9 @@ const FlashcardView = ({ params }) => {
         setStudyQueue(lightShuffle);
         setCurrentCardIndex(0);
         setIsFlipped(false);
+        setShowGradePanel(false);
+        setDisableFlipAnimation(false);
+        setIsAdvancingCard(false);
         setSessionStats({ reviewed: 0, correct: 0 });
         setSessionStartTime(Date.now());
         setLastAction(null);
@@ -610,17 +772,48 @@ const FlashcardView = ({ params }) => {
     useEffect(() => {
         if (mode !== 'study') return;
         const handleKeyDown = (e) => {
-            // Prevent shortcuts when typing in inputs
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            const targetTag = (e.target?.tagName || '').toUpperCase();
+            const activeEl = document.activeElement;
+            const activeTag = (activeEl?.tagName || '').toUpperCase();
+            const isEditing =
+                targetTag === 'INPUT' ||
+                targetTag === 'TEXTAREA' ||
+                targetTag === 'SELECT' ||
+                activeEl?.isContentEditable;
+            if (isEditing) return;
+
+            const isSpaceKey = e.code === 'Space' || e.key === ' ' || e.key === 'Space' || e.key === 'Spacebar';
 
             // Universal shortcuts
             if (e.key === 'Escape') {
                 setMode('manage');
                 return;
             }
-            if (e.key === ' ' || e.key === 'Space') {
+
+            // Make Space consistently flip card:
+            // 1) block browser default button activation
+            // 2) ignore long-press repeat
+            if (isSpaceKey) {
                 e.preventDefault();
-                setIsFlipped(prev => !prev);
+                e.stopPropagation();
+                if (e.repeat) return;
+
+                if (activeTag === 'BUTTON' || activeTag === 'A') {
+                    activeEl.blur?.();
+                }
+                if (isFlipped) {
+                    setIsFlipped(false);
+                    setShowGradePanel(false);
+                } else {
+                    setIsFlipped(true);
+                    setShowGradePanel(false);
+                }
+                return;
+            }
+
+            if (e.key === 'Enter' && isFlipped) {
+                e.preventDefault();
+                setShowGradePanel(prev => !prev);
                 return;
             }
             if ((e.key === 's' || e.key === 'S') && currentCard) {
@@ -634,15 +827,15 @@ const FlashcardView = ({ params }) => {
 
             // Grading shortcuts (only when flipped)
             if (isFlipped) {
-                if (e.key === '1') handleNextCard(1);
-                if (e.key === '2') handleNextCard(2);
-                if (e.key === '3') handleNextCard(3);
-                if (e.key === '4') handleNextCard(4);
+                if (e.key === '1') { setShowGradePanel(true); handleNextCard(1); }
+                if (e.key === '2') { setShowGradePanel(true); handleNextCard(2); }
+                if (e.key === '3') { setShowGradePanel(true); handleNextCard(3); }
+                if (e.key === '4') { setShowGradePanel(true); handleNextCard(4); }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [mode, isFlipped, currentCardIndex, studyQueue, lastAction]);
+    }, [mode, isFlipped, showGradePanel, currentCardIndex, studyQueue, lastAction]);
 
     // FSRS: Preview the scheduled interval for each rating
     const getPreviewInterval = (card, rating) => {
@@ -856,51 +1049,73 @@ const FlashcardView = ({ params }) => {
     };
 
     const handleNextCard = async (quality) => {
+        if (isAdvancingCard) return;
         const currentCard = studyQueue[currentCardIndex];
+        if (!currentCard) return;
+        setIsAdvancingCard(true);
+        try {
 
-        // Store undo state BEFORE making changes
-        setLastAction({
-            cardId: currentCard.id,
-            prevIndex: currentCardIndex,
-            prevStats: { ...sessionStats },
-            quality,
-            timestamp: Date.now()
-        });
-
-        // Clear any existing undo timeout
-        if (undoTimeout) clearTimeout(undoTimeout);
-        const timeout = setTimeout(() => setLastAction(null), UNDO_TIMEOUT_MS);
-        setUndoTimeout(timeout);
-
-        // SRS Update
-        // Quality: 1=Again, 2=Hard, 3=Good, 4=Easy
-        await updateFlashcardProgress(currentCard.id, quality);
-
-        // Queue Logic
-        if (quality === 1) {
-            // Again: Re-queue this card to end of session
-            setStudyQueue(prev => {
-                const newB = [...prev];
-                newB.push({ ...currentCard, _isRetry: true });
-                return newB;
+            // Store undo state BEFORE making changes
+            setLastAction({
+                cardId: currentCard.id,
+                prevIndex: currentCardIndex,
+                prevStats: { ...sessionStats },
+                quality,
+                timestamp: Date.now()
             });
-        }
 
-        const newStats = {
-            reviewed: sessionStats.reviewed + 1,
-            correct: quality >= 3 ? sessionStats.correct + 1 : sessionStats.correct
-        };
-        setSessionStats(newStats);
+            // Clear any existing undo timeout
+            if (undoTimeout) clearTimeout(undoTimeout);
+            const timeout = setTimeout(() => setLastAction(null), UNDO_TIMEOUT_MS);
+            setUndoTimeout(timeout);
 
-        if (currentCardIndex < studyQueue.length - 1) {
-            setCurrentCardIndex(prev => prev + 1);
-            setIsFlipped(false);
-        } else {
+            // SRS Update
+            // Quality: 1=Again, 2=Hard, 3=Good, 4=Easy
+            await updateFlashcardProgress(currentCard.id, quality);
+
+            // Queue Logic
+            if (quality === 1) {
+                // Again: Re-queue this card to end of session
+                setStudyQueue(prev => {
+                    const newB = [...prev];
+                    newB.push({ ...currentCard, _isRetry: true });
+                    return newB;
+                });
+            }
+
+            const newStats = {
+                reviewed: sessionStats.reviewed + 1,
+                correct: quality >= 3 ? sessionStats.correct + 1 : sessionStats.correct
+            };
+            setSessionStats(newStats);
+
+            if (currentCardIndex < studyQueue.length - 1) {
+                flushSync(() => {
+                    setDisableFlipAnimation(true);
+                    setIsFlipped(false);
+                    setShowGradePanel(false);
+                });
+                requestAnimationFrame(() => {
+                    setCurrentCardIndex(prev => prev + 1);
+                    requestAnimationFrame(() => {
+                        setDisableFlipAnimation(false);
+                        setIsAdvancingCard(false);
+                    });
+                });
+                return;
+            }
+
             // Session complete!
             await loadData();
             updateStreak(); // Update daily streak
             clearStudySession(); // Clear saved session
             setShowSessionSummary(true); // Show summary modal instead of alert
+            setIsAdvancingCard(false);
+        } catch (e) {
+            console.error('Next card transition failed:', e);
+            setDisableFlipAnimation(false);
+            setIsAdvancingCard(false);
+            toast.error('评分失败，请重试');
         }
     };
 
@@ -960,7 +1175,7 @@ const FlashcardView = ({ params }) => {
         return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-md animate-fade-in p-4">
                 <div className="glass-modal rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[70vh] animate-scale-in overflow-hidden border border-phy-border">
-                    <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur">
+                    <div className={`border-b border-phy-border flex justify-between items-center gap-2 bg-phy-glassHeavy backdrop-blur ${isMobile ? 'px-3 py-2' : 'p-4'}`}>
                         <h3 className="font-bold text-phy-text flex items-center gap-2">
                             <LinkIcon size={18} className="text-phy-accent" /> 关联已有笔记
                         </h3>
@@ -1171,6 +1386,13 @@ const FlashcardView = ({ params }) => {
                     left={Sidebar}
                     right={
                         <div className="h-full flex flex-col bg-transparent">
+                            <input
+                                ref={importCardsInputRef}
+                                type="file"
+                                accept=".json,application/json"
+                                onChange={handleImportFlashcards}
+                                className="hidden"
+                            />
                             {/* Toolbar */}
                             <div className="p-2 md:p-4 border-b border-phy-border flex items-center justify-between gap-2 bg-phy-glassHeavy backdrop-blur sticky top-0 z-10">
                                 <h3 className="min-w-0 flex-1 text-sm md:text-lg font-bold flex items-center gap-2 whitespace-nowrap overflow-hidden">
@@ -1214,6 +1436,22 @@ const FlashcardView = ({ params }) => {
                                                     <button onClick={() => { setIsAddingCard(true); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
                                                         <Plus size={16} /> 添加卡片
                                                     </button>
+                                                    <button
+                                                        onClick={() => { handleExportFlashcards(); setShowMoreActions(false); }}
+                                                        disabled={isExportingCards}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors disabled:opacity-50"
+                                                    >
+                                                        {isExportingCards ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                                                        导出闪卡
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { importCardsInputRef.current?.click(); setShowMoreActions(false); }}
+                                                        disabled={isImportingCards}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors disabled:opacity-50"
+                                                    >
+                                                        {isImportingCards ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                                                        导入闪卡
+                                                    </button>
                                                     <button onClick={() => { setShowStats(!showStats); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
                                                         <BarChart3 size={16} /> {showStats ? '隐藏统计' : '查看统计'}
                                                     </button>
@@ -1250,6 +1488,22 @@ const FlashcardView = ({ params }) => {
                                                 else if (sortMode === 'mastery_asc') setSortMode('mastery_desc');
                                                 else setSortMode('default');
                                             }} className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text" title="排序"><Trophy size={18} /></button>
+                                            <button
+                                                onClick={handleExportFlashcards}
+                                                disabled={isExportingCards}
+                                                className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text disabled:opacity-50"
+                                                title="导出闪卡"
+                                            >
+                                                {isExportingCards ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                                            </button>
+                                            <button
+                                                onClick={() => importCardsInputRef.current?.click()}
+                                                disabled={isImportingCards}
+                                                className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text disabled:opacity-50"
+                                                title="导入闪卡"
+                                            >
+                                                {isImportingCards ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+                                            </button>
                                             <button onClick={() => setIsMultiSelect(!isMultiSelect)} className="p-2 hover:bg-phy-glassHover rounded-lg text-phy-muted hover:text-phy-text" title="多选"><LayoutGrid size={18} /></button>
                                             <button onClick={() => setIsAddingCard(true)} className="p-2 hover:bg-phy-accentGlass rounded-lg text-phy-accent" title="添加"><Plus size={18} /></button>
                                         </div>
@@ -1425,16 +1679,16 @@ const FlashcardView = ({ params }) => {
                     rightClassName="bg-transparent"
                 />
             ) : (
-                <div className="h-full flex flex-col bg-transparent">
+                <div className={`h-full flex flex-col bg-transparent ${isMobile ? 'relative' : ''}`}>
                     {/* Toolbar */}
-                    <div className="p-4 border-b border-phy-border flex justify-between items-center bg-phy-glassHeavy backdrop-blur">
-                        <h3 className="text-lg font-bold text-phy-text flex items-center gap-2">
-                            <RotateCw size={20} className="text-phy-accent" />
+                    <div className={`border-b border-phy-border flex justify-between items-center gap-2 bg-phy-glassHeavy backdrop-blur ${isMobile ? 'px-3 py-2' : 'p-4'}`}>
+                        <h3 className={`${isMobile ? 'text-base' : 'text-lg'} font-bold text-phy-text flex items-center gap-2 min-w-0`}>
+                            <RotateCw size={isMobile ? 18 : 20} className="text-phy-accent shrink-0" />
                             复习模式 ({studyQueue.length - currentCardIndex} left)
                         </h3>
                         <button
                             onClick={() => setIsSwapped(!isSwapped)}
-                            className={`ml-4 px-3 py-1 text-xs font-bold border rounded-lg transition-all flex items-center gap-2 ${isSwapped ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
+                            className={`${isMobile ? 'px-2 py-1 text-[11px]' : 'ml-4 px-3 py-1 text-xs'} font-bold border rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${isSwapped ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
                         >
                             <RotateCw size={12} />
                             {isSwapped ? 'Answer → Question' : 'Question → Answer'}
@@ -1473,27 +1727,27 @@ const FlashcardView = ({ params }) => {
                             </button>
                         )}
                         <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-phy-muted">SESSION SCORE:</span>
+                            {!isMobile && <span className="text-xs font-bold text-phy-muted">SESSION SCORE:</span>}
                             <span className="text-sm font-bold text-phy-accent">{sessionStats.correct}/{sessionStats.reviewed}</span>
                             <button
                                 onClick={() => setMode('manage')}
-                                className="ml-4 p-2 hover:bg-phy-glassHover rounded-full text-phy-muted hover:text-phy-text transition-colors"
+                                className={`${isMobile ? 'p-1.5' : 'ml-4 p-2'} hover:bg-phy-glassHover rounded-full text-phy-muted hover:text-phy-text transition-colors`}
                             >
-                                <XCircle size={20} />
+                                <XCircle size={isMobile ? 18 : 20} />
                             </button>
                         </div>
                     </div>
 
                     {/* Flashcard Study Area */}
-                    <div className="flex-1 flex flex-row items-stretch overflow-hidden bg-phy-bg/30 relative">
+                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative`}>
                         {/* Progress Bar */}
                         <div className="absolute top-0 left-0 h-1 bg-phy-accent transition-all duration-300 z-10" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
 
                         {/* Left: Main Card Area */}
-                        <div className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto relative perspective-1000">
+                        <div className={`flex-1 flex flex-col items-center justify-center relative perspective-1000 ${isMobile ? 'p-3 pt-4 overflow-hidden' : 'p-8 overflow-y-auto'} ${isMobile && isFlipped && showGradePanel ? 'pb-28' : ''}`}>
 
                             {/* Toolbar inside Study Area */}
-                            <div className="absolute top-4 right-4 z-20 flex gap-2">
+                            {!isMobile && <div className="absolute top-4 right-4 z-20 flex gap-2">
                                 <button
                                     onClick={() => setShowDetailPanel(!showDetailPanel)}
                                     className={`p-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all ${showDetailPanel ? 'bg-phy-accent text-white shadow-md' : 'bg-phy-glass text-phy-muted border border-phy-border hover:text-phy-accent hover:border-phy-borderHover shadow-sm'}`}
@@ -1501,7 +1755,7 @@ const FlashcardView = ({ params }) => {
                                     {showDetailPanel ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                                     {showDetailPanel ? '收起详情' : '深度笔记'}
                                 </button>
-                            </div>
+                            </div>}
 
                             {/* Drill Generating Indicator */}
                             {isGeneratingDrill && (
@@ -1514,9 +1768,11 @@ const FlashcardView = ({ params }) => {
                             {/* Card Container */}
                             {!isDrillMode && (
                                 <div
-                                    className={`relative w-full aspect-video rounded-3xl shadow-xl border border-phy-border p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
-                                    style={{ maxWidth: showDetailPanel ? '800px' : '900px' }}
+                                    key={currentCard?.id || currentCardIndex}
+                                    className={`relative w-full shadow-xl border border-phy-border flex flex-col items-center justify-center text-center cursor-pointer transform-style-3d ${disableFlipAnimation ? 'transition-none' : 'transition-transform duration-500'} ${isMobile ? 'min-h-[52vh] max-h-[62vh] rounded-2xl p-4' : 'aspect-video rounded-3xl p-8'} ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
+                                    style={{ maxWidth: isMobile ? '100%' : (showDetailPanel ? '800px' : '900px') }}
                                     onClick={async () => {
+                                        if (isAdvancingCard) return;
                                         if (!isFlipped) {
                                             // Check if flagged card should trigger drill mode
                                             // NEW LOGIC: Only if reviewing in Flagged folder AND drills exist
@@ -1527,14 +1783,22 @@ const FlashcardView = ({ params }) => {
                                                 setIsDrillMode(true);
                                                 return;
                                             }
+                                            setIsFlipped(true);
+                                            setShowGradePanel(true);
+                                            return;
                                         }
-                                        setIsFlipped(!isFlipped);
+                                        if (!showGradePanel) {
+                                            setShowGradePanel(true);
+                                            return;
+                                        }
+                                        setIsFlipped(false);
+                                        setShowGradePanel(false);
                                     }}
                                 >
                                     {/* Front Face */}
-                                    <div className="backface-hidden w-full h-full flex flex-col items-center justify-center relative">
+                                    <div className="backface-hidden w-full h-full flex flex-col items-center justify-center relative text-slate-900">
                                         {/* Mastery Badge */}
-                                        <div className="absolute top-0 right-0 py-1 px-3 bg-phy-glass backdrop-blur rounded-full text-[10px] font-bold text-phy-muted uppercase tracking-widest border border-phy-border">
+                                        <div className="absolute top-0 right-0 py-1 px-3 bg-white/85 backdrop-blur rounded-full text-[10px] font-bold text-slate-600 uppercase tracking-widest border border-slate-300/70">
                                             Level: {getMasteryLabel(currentCard)}
                                         </div>
 
@@ -1544,8 +1808,8 @@ const FlashcardView = ({ params }) => {
                                             </div>
                                         )}
 
-                                        <div className="text-xs font-bold text-phy-muted uppercase mb-4 tracking-widest opacity-60">Question</div>
-                                        <div className={`font-black text-phy-text break-words w-full ${questionText.length > 50 ? 'text-xl' : 'text-4xl'}`}>
+                                        <div className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">Question</div>
+                                        <div className={`font-black text-slate-900 break-words w-full leading-tight ${isMobile ? (questionText.length > 40 ? 'text-3xl' : 'text-4xl') : (questionText.length > 50 ? 'text-xl' : 'text-4xl')}`}>
                                             {questionText}
                                         </div>
                                         <div className="mt-6 flex items-center gap-4">
@@ -1557,14 +1821,14 @@ const FlashcardView = ({ params }) => {
                                                 <Volume2 size={24} />
                                             </button>
                                         </div>
-                                        <div className="mt-8 text-xs text-phy-muted font-medium flex items-center gap-2">
+                                        <div className={`${isMobile ? 'mt-4' : 'mt-8'} text-xs text-slate-600 font-medium flex items-center gap-2`}>
                                             <RotateCw size={12} /> 点击翻转 / Space
                                         </div>
                                     </div>
 
                                     {/* Back Face */}
-                                    <div className="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center rounded-3xl p-8 bg-phy-accent text-white leading-relaxed overflow-hidden border border-phy-accentHover">
-                                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none rounded-3xl" />
+                                    <div className={`absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center ${isMobile ? 'rounded-2xl p-4' : 'rounded-3xl p-8'} bg-phy-accent text-white leading-relaxed overflow-hidden border border-phy-accentHover`}>
+                                        <div className={`absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none ${isMobile ? 'rounded-2xl' : 'rounded-3xl'}`} />
                                         <div className="text-xs font-bold text-white/70 uppercase mb-4 tracking-widest z-10">Answer</div>
                                         <div className={`font-bold break-words w-full z-10 ${answerText.length > 100 ? 'text-lg' : 'text-3xl'}`}>
                                             {answerText}
@@ -1581,7 +1845,7 @@ const FlashcardView = ({ params }) => {
                             )}
 
                             {/* FSRS R/S/D Stats */}
-                            {isFlipped && !isDrillMode && (
+                            {isFlipped && showGradePanel && !isDrillMode && !isMobile && (
                                 <div className="mt-8 grid grid-cols-3 gap-4 w-full max-w-[360px] opacity-60 hover:opacity-100 transition-opacity">
                                     <div className="text-center font-mono">
                                         <div className="text-[10px] font-bold text-phy-muted uppercase tracking-wider">记忆保留 R</div>
@@ -1635,7 +1899,7 @@ const FlashcardView = ({ params }) => {
                         </div>
 
                         {/* Right: Detail Panel */}
-                        <div className={`border-l border-phy-border bg-phy-glassHeavy backdrop-blur transition-all duration-300 flex flex-col shadow-inner z-30 ${showDetailPanel ? 'w-[400px] translate-x-0' : 'w-0 translate-x-full opacity-0'}`}>
+                        <div className={`border-l border-phy-border bg-phy-glassHeavy backdrop-blur transition-all duration-300 flex flex-col shadow-inner z-30 ${isMobile ? 'hidden' : (showDetailPanel ? 'w-[400px] translate-x-0' : 'w-0 translate-x-full opacity-0')}`}>
                             <div className="p-6 h-full overflow-y-auto">
                                 <h3 className="font-bold text-phy-text mb-6 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -1755,52 +2019,60 @@ const FlashcardView = ({ params }) => {
                     </div>
 
                     {/* Control Buttons (4-Level FSRS) moved inside container */}
-                    {isFlipped && (
-                        <div className="mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4">
+                    {isFlipped && showGradePanel && (
+                        <div className={`${isMobile ? 'fixed left-2 right-2 bottom-[calc(env(safe-area-inset-bottom,0px)+8px)] z-40 grid grid-cols-4 gap-2 p-2 rounded-2xl border border-phy-border bg-phy-glassHeavy/95 backdrop-blur mobile-safe-bottom' : 'mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4'}`}>
                             <button
                                 onClick={() => handleNextCard(1)}
-                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-rose-500/10 text-rose-500 border border-phy-border hover:border-rose-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                disabled={isAdvancingCard}
+                                className={`flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-rose-500/10 text-rose-500 border border-phy-border hover:border-rose-500/30 ${isMobile ? 'py-2 rounded-lg min-h-[52px]' : 'py-3 rounded-xl'} font-bold transition-all shadow-sm active:scale-95 group disabled:opacity-60 disabled:cursor-not-allowed`}
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-rose-400/70 group-hover:text-rose-400">Again</span>
-                                <span className="text-lg">忘记 (1)</span>
-                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Again)}</span>
+                                <span className={`font-black uppercase tracking-wider text-rose-400/70 group-hover:text-rose-400 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Again</span>
+                                <span className={isMobile ? 'text-sm' : 'text-lg'}>忘记 (1)</span>
+                                {!isMobile && <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Again)}</span>}
                             </button>
 
                             <button
                                 onClick={() => handleNextCard(2)}
-                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-amber-500/10 text-amber-500 border border-phy-border hover:border-amber-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                disabled={isAdvancingCard}
+                                className={`flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-amber-500/10 text-amber-500 border border-phy-border hover:border-amber-500/30 ${isMobile ? 'py-2 rounded-lg min-h-[52px]' : 'py-3 rounded-xl'} font-bold transition-all shadow-sm active:scale-95 group disabled:opacity-60 disabled:cursor-not-allowed`}
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-amber-400/70 group-hover:text-amber-400">Hard</span>
-                                <span className="text-lg">困难 (2)</span>
-                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Hard)}</span>
+                                <span className={`font-black uppercase tracking-wider text-amber-400/70 group-hover:text-amber-400 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Hard</span>
+                                <span className={isMobile ? 'text-sm' : 'text-lg'}>困难 (2)</span>
+                                {!isMobile && <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Hard)}</span>}
                             </button>
 
                             <button
                                 onClick={() => handleNextCard(3)}
-                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-emerald-500/10 text-emerald-500 border border-phy-border hover:border-emerald-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                disabled={isAdvancingCard}
+                                className={`flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-emerald-500/10 text-emerald-500 border border-phy-border hover:border-emerald-500/30 ${isMobile ? 'py-2 rounded-lg min-h-[52px]' : 'py-3 rounded-xl'} font-bold transition-all shadow-sm active:scale-95 group disabled:opacity-60 disabled:cursor-not-allowed`}
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-emerald-400/70 group-hover:text-emerald-400">Good</span>
-                                <span className="text-lg">良好 (3)</span>
-                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Good)}</span>
+                                <span className={`font-black uppercase tracking-wider text-emerald-400/70 group-hover:text-emerald-400 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Good</span>
+                                <span className={isMobile ? 'text-sm' : 'text-lg'}>良好 (3)</span>
+                                {!isMobile && <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Good)}</span>}
                             </button>
 
                             <button
                                 onClick={() => handleNextCard(4)}
-                                className="flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-blue-500/10 text-blue-500 border border-phy-border hover:border-blue-500/30 py-3 rounded-xl font-bold transition-all shadow-sm active:scale-95 group"
+                                disabled={isAdvancingCard}
+                                className={`flex-1 flex flex-col items-center gap-1 glass-panel hover:bg-blue-500/10 text-blue-500 border border-phy-border hover:border-blue-500/30 ${isMobile ? 'py-2 rounded-lg min-h-[52px]' : 'py-3 rounded-xl'} font-bold transition-all shadow-sm active:scale-95 group disabled:opacity-60 disabled:cursor-not-allowed`}
                             >
-                                <span className="text-xs font-black uppercase tracking-wider text-blue-400/70 group-hover:text-blue-400">Easy</span>
-                                <span className="text-lg">简单 (4)</span>
-                                <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Easy)}</span>
+                                <span className={`font-black uppercase tracking-wider text-blue-400/70 group-hover:text-blue-400 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>Easy</span>
+                                <span className={isMobile ? 'text-sm' : 'text-lg'}>简单 (4)</span>
+                                {!isMobile && <span className="text-[10px] font-mono text-phy-muted">{getPreviewInterval(currentCard, Rating.Easy)}</span>}
                             </button>
                         </div>
                     )}
 
                     {/* Keyboard Shortcut Hints */}
-                    {mode === 'study' && !isDrillMode && (
+                    {mode === 'study' && !isDrillMode && !isMobile && (
                         <div className="py-3 px-6 bg-phy-glassHeavy backdrop-blur border-t border-phy-border flex items-center justify-center gap-6 text-xs text-phy-muted">
                             <span className="flex items-center gap-1.5">
                                 <kbd className="px-2 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">Space</kbd>
                                 翻转
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <kbd className="px-2 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">Enter</kbd>
+                                评分面板
                             </span>
                             <span className="flex items-center gap-1.5">
                                 <kbd className="px-1.5 py-0.5 bg-phy-glass border border-phy-border rounded text-[10px] font-mono text-phy-text shadow-sm">1-4</kbd>

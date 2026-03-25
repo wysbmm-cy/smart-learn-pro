@@ -10,6 +10,8 @@ import {
 import { useApp } from '../context/AppContext';
 import { saveHighlight, getFolders, saveFolder } from '../services/db';
 
+const getTodayNotesFolderName = () => `今日笔记 ${new Date().toISOString().split('T')[0]}`;
+
 const NotesView = ({ params }) => {
     const { loadUserNotes, saveToNotes, removeNoteItem } = useApp();
     const [notes, setNotes] = useState([]);
@@ -26,6 +28,20 @@ const NotesView = ({ params }) => {
 
     // Debounce Save Timer
     const saveTimerRef = useRef(null);
+
+    const ensureNotebookFolder = async (name) => {
+        if (!name) return;
+        const all = await getFolders();
+        const exists = (all || []).some((f) => (f.name || '').toLowerCase() === name.toLowerCase());
+        if (!exists) {
+            await saveFolder({
+                id: crypto.randomUUID(),
+                name,
+                type: 'notebook',
+                createdAt: Date.now()
+            });
+        }
+    };
 
     useEffect(() => {
         refreshNotes();
@@ -50,31 +66,40 @@ const NotesView = ({ params }) => {
         ]);
         setNotes(noteData);
 
-        // Extract unique folders from both Notes (legacy string) and DB (objects)
-        const uniqueFolders = new Set(['Uncategorized']);
-
-        // 1. Add folders from DB
-        folderData.forEach(f => uniqueFolders.add(f.name));
-
-        // 2. Add ad-hoc folders from existing notes (in case they differ)
+        const todayFolder = getTodayNotesFolderName();
+        const uniqueFolders = new Set(['Uncategorized', todayFolder]);
+        folderData
+            .filter((f) => f?.name && (!f.type || f.type === 'notebook' || f.type === 'notes'))
+            .forEach((f) => uniqueFolders.add(f.name));
         noteData.forEach(n => {
             if (n.folder) uniqueFolders.add(n.folder);
         });
 
-        setFolders(Array.from(uniqueFolders));
+        const ordered = Array.from(uniqueFolders).sort((a, b) => {
+            if (a === todayFolder) return -1;
+            if (b === todayFolder) return 1;
+            if (a === 'Uncategorized') return 1;
+            if (b === 'Uncategorized') return -1;
+            return a.localeCompare(b, 'zh-Hans-CN');
+        });
+        setFolders(ordered);
     };
 
     const handleCreate = async () => {
+        const todayFolder = getTodayNotesFolderName();
+        const targetFolder = activeFolder === 'All' ? todayFolder : activeFolder;
+        await ensureNotebookFolder(targetFolder);
         const newNote = {
             id: Date.now().toString(),
             title: "Untitled Note",
             content: "# New Note\nStart writing here...",
-            folder: activeFolder === 'All' ? 'Uncategorized' : activeFolder,
+            folder: targetFolder,
             updatedAt: Date.now()
         };
         await saveToNotes(newNote);
         await refreshNotes();
         setActiveNote(newNote);
+        setActiveFolder(targetFolder);
         setViewMode('edit'); // Switch to edit on create
     };
 
@@ -139,10 +164,10 @@ const NotesView = ({ params }) => {
     });
 
     return (
-        <div className="h-full flex animate-in fade-in bg-transparent overflow-hidden overscroll-none relative">
+        <div className="h-full min-h-0 flex animate-in fade-in bg-transparent overflow-hidden overscroll-none relative">
 
             {/* --- Left Sidebar (Folders & Note List) --- */}
-            <div className={`${showList ? 'w-64 border-r border-phy-border' : 'w-0 opacity-0'} flex flex-col transition-all duration-300 glass-sidebar relative shrink-0 overflow-hidden overscroll-contain`}>
+            <div className={`${showList ? 'w-64 border-r border-phy-border' : 'w-0 opacity-0'} h-full min-h-0 flex flex-col transition-all duration-300 glass-sidebar relative shrink-0 overflow-hidden overscroll-contain`}>
 
                 {/* Header Actions */}
                 <div className="p-3 border-b border-phy-border flex items-center justify-between shrink-0">
@@ -265,7 +290,7 @@ const NotesView = ({ params }) => {
             </div>
 
             {/* --- Main Area (Editor + Preview) --- */}
-            <div className="flex-1 flex flex-col min-w-0 bg-transparent overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col min-w-0 bg-transparent overflow-hidden">
 
                 {/* Toolbar */}
                 <div className="h-14 border-b border-phy-border flex items-center justify-between px-4 bg-transparent shrink-0">
@@ -343,10 +368,10 @@ const NotesView = ({ params }) => {
 
                 {/* Content Area */}
                 {activeNote ? (
-                    <div className="flex-1 flex overflow-hidden overscroll-none">
+                    <div className="flex-1 min-h-0 flex overflow-hidden overscroll-none">
                         {/* Editor (Shown in Edit & Split) */}
                         {(viewMode === 'edit' || viewMode === 'split') && (
-                            <div className={`flex-1 flex flex-col overflow-hidden ${viewMode === 'split' ? 'border-r border-phy-border' : ''}`}>
+                            <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${viewMode === 'split' ? 'border-r border-phy-border' : ''}`}>
                                 <textarea
                                     value={activeNote.content}
                                     onChange={(e) => handleUpdate({ content: e.target.value })}
@@ -358,7 +383,7 @@ const NotesView = ({ params }) => {
 
                         {/* Preview (Shown in Split & Read) */}
                         {(viewMode === 'read' || viewMode === 'split') && (
-                            <div className="flex-1 overflow-y-auto overscroll-contain bg-phy-bg/30 p-6">
+                            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-phy-bg/30 p-6">
                                 <SharedMarkdown
                                     remarkPlugins={[remarkBreaks]}
                                     rehypePlugins={[rehypeRaw, rehypeHighlight]}

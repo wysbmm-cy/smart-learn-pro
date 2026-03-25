@@ -1,8 +1,8 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import SharedMarkdown from './SharedMarkdown';
-import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, History, Plus, Trash2, MessageSquare, Zap, MessageCircle, Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, BookOpen } from 'lucide-react';
+import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, History, Plus, Trash2, MessageSquare, Zap, MessageCircle, Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, BookOpen, ImagePlus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { streamChatMessage, streamAgentChat } from '../services/ai';
+import { analyzeImagesForChat, streamChatMessage, streamAgentChat } from '../services/ai';
 import ChatQuizWidget from './ChatQuizWidget';
 import ChatFlashcardWidget from './ChatFlashcardWidget';
 import ChatWritingWidget from './ChatWritingWidget';
@@ -33,6 +33,7 @@ const TOOL_LABELS = {
     navigate_to: { label: 'Navigate', icon: 'GO' },
     review_flashcards: { label: 'Quick review cards', icon: 'CARD' },
     create_interactive_quiz: { label: 'Interactive quiz', icon: 'QUIZ' },
+    generate_deep_note: { label: 'Generate deep note', icon: 'NOTE+' },
 };
 
 // View ID -> display info
@@ -57,6 +58,7 @@ const ChatSidebar = () => {
     } = useApp();
     const [input, setInput] = useState(() => localStorage.getItem('draft_chat_input') || '');
     const [isSending, setIsSending] = useState(false);
+    const [imageAttachments, setImageAttachments] = useState([]);
 
     // Persist chat draft
     useEffect(() => {
@@ -85,6 +87,7 @@ const ChatSidebar = () => {
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const imageInputRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -178,6 +181,32 @@ const ChatSidebar = () => {
         inputRef.current?.focus();
     };
 
+    const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+    const appendImages = async (files) => {
+        const imageFiles = (Array.from(files || [])).filter((f) => f.type?.startsWith('image/')).slice(0, 4);
+        if (!imageFiles.length) return;
+        try {
+            const converted = await Promise.all(imageFiles.map(async (f) => ({
+                id: crypto.randomUUID(),
+                name: f.name || 'clipboard-image',
+                dataUrl: await fileToDataUrl(f)
+            })));
+            setImageAttachments((prev) => [...prev, ...converted].slice(0, 4));
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const removeImageAttachment = (id) => {
+        setImageAttachments((prev) => prev.filter((x) => x.id !== id));
+    };
+
     // Auto-resize textarea
     useEffect(() => {
         if (inputRef.current) {
@@ -186,16 +215,37 @@ const ChatSidebar = () => {
         }
     }, [input]);
 
-    const handleDirectMessage = async (msgText) => {
-        if (!msgText.trim() || isSending) return;
+    const handleDirectMessage = async (msgText, attachments = []) => {
+        const pureText = String(msgText || '').trim();
+        if ((!pureText && attachments.length === 0) || isSending) return;
 
-        addChatMessage('user', msgText);
+        let aiUserMessage = pureText || '请分析我上传的图片内容。';
+        const uiUserMessage = attachments.length > 0
+            ? `${aiUserMessage}\n\n[附加图片 ${attachments.length} 张]`
+            : aiUserMessage;
+
+        addChatMessage('user', uiUserMessage);
         setIsSending(true);
         setToolCalls([]);
         // Don't clear pending actions here if we want them to stay, but usually we do
         setPendingActions([]);
 
         try {
+            if (attachments.length > 0) {
+                try {
+                    const summary = await analyzeImagesForChat(
+                        attachments.map((x) => x.dataUrl),
+                        settings,
+                        '请提取图片里的文字并给出简洁内容说明，方便后续英语学习问答。'
+                    );
+                    if (summary?.trim()) {
+                        aiUserMessage = `${aiUserMessage}\n\n[图片识别结果]\n${summary.trim()}`;
+                    }
+                } catch (e) {
+                    aiUserMessage = `${aiUserMessage}\n\n[图片识别失败：${e.message}]`;
+                }
+            }
+
             if (!settings.apiKey) {
                 setTimeout(() => {
                     addChatMessage('assistant', 'Please configure your API Key in Settings first.');
@@ -210,7 +260,7 @@ const ChatSidebar = () => {
                     role: m.role,
                     content: m.content
                 }));
-            history.push({ role: 'user', content: msgText });
+            history.push({ role: 'user', content: aiUserMessage });
 
             addChatMessage('assistant', '');
 
@@ -271,10 +321,12 @@ const ChatSidebar = () => {
     };
 
     const handleSend = () => {
-        if (!input.trim() || isSending) return;
+        if ((!input.trim() && imageAttachments.length === 0) || isSending) return;
         const userMsg = input.trim();
+        const attachments = imageAttachments;
         setInput('');
-        handleDirectMessage(userMsg);
+        setImageAttachments([]);
+        handleDirectMessage(userMsg, attachments);
     };
 
 
@@ -464,6 +516,7 @@ const ChatSidebar = () => {
                                         {[
                                             'Show my flashcard stats and weak words',
                                             'Generate a focused daily learning plan',
+                                            'Generate deep notes for the word: ephemeral',
                                             'Create sentence practice with: ephemeral, serendipity',
                                             'Create a reading quiz from my latest article',
                                         ].map((q, i) => (
@@ -661,11 +714,50 @@ const ChatSidebar = () => {
                             </button>
                         )}
 
+                        {imageAttachments.length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-2">
+                                {imageAttachments.map((img) => (
+                                    <div key={img.id} className="relative rounded-lg overflow-hidden border border-phy-border bg-phy-bg">
+                                        <img src={img.dataUrl} alt={img.name} className="w-14 h-14 object-cover" />
+                                        <button
+                                            onClick={() => removeImageAttachment(img.id)}
+                                            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] flex items-center justify-center"
+                                            title="移除"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <div className="relative">
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={async (e) => {
+                                    await appendImages(e.target.files);
+                                    e.target.value = '';
+                                }}
+                            />
                             <textarea
                                 ref={inputRef}
                                 value={input}
                                 onChange={handleInputChange}
+                                onPaste={async (e) => {
+                                    const items = Array.from(e.clipboardData?.items || []);
+                                    const imageFiles = items
+                                        .filter((it) => it.type?.startsWith('image/'))
+                                        .map((it) => it.getAsFile())
+                                        .filter(Boolean);
+                                    if (imageFiles.length > 0) {
+                                        e.preventDefault();
+                                        await appendImages(imageFiles);
+                                    }
+                                }}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
                                         if (showSuggestions && suggestions.length > 0) {
@@ -679,11 +771,18 @@ const ChatSidebar = () => {
                                     if (e.key === 'Escape') setShowSuggestions(false);
                                 }}
                                 placeholder={chatMode === 'agent' ? 'Ask the agent to read data and do actions (create/edit/delete/navigate)...' : 'Ask anything... (@ for context)'}
-                                className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-12 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
+                                className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-20 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
                             />
                             <button
+                                onClick={() => imageInputRef.current?.click()}
+                                className="absolute right-11 top-2 p-2 text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy rounded-lg transition-colors"
+                                title="上传图片或粘贴截图"
+                            >
+                                <ImagePlus size={16} />
+                            </button>
+                            <button
                                 onClick={handleSend}
-                                disabled={!input.trim() || isSending}
+                                disabled={(!input.trim() && imageAttachments.length === 0) || isSending}
                                 className={`absolute right-2 top-2 p-2 text-white bg-phy-accent hover:bg-phy-accentHover rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md shadow-phy-accent/20 border border-phy-accentHover`}
                             >
                                 <Send size={16} />

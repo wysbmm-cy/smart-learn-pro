@@ -11,15 +11,20 @@ export const sendChat = async (messages, settings, jsonRequired = false) => {
   return await fetchFromAI(messages, settings, jsonRequired);
 };
 
-const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3) => {
+const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3, options = {}) => {
   const { apiKey, apiBaseUrl, modelName } = settings;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+  const signal = options?.signal;
   let lastError = null;
 
   for (let i = 0; i < retries; i++) {
     try {
+      if (signal?.aborted) {
+        throw new DOMException('Request aborted', 'AbortError');
+      }
       const response = await fetch(`${cleanUrl}/chat/completions`, {
         method: 'POST',
+        signal,
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
@@ -54,6 +59,9 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3)
       }
       return content;
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw error;
+      }
       lastError = error;
       if (i === retries - 1) throw error;
       console.warn(`API Request failed. Retrying... (${i + 1}/${retries})`);
@@ -356,6 +364,49 @@ export const generateReadingComprehensionQuiz = async (text, settings, questionC
   }
 };
 
+export const generateListeningQuizFromTranscript = async (transcript, settings, questionCount = 6) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+  const safeText = String(transcript || '').trim();
+  if (!safeText) throw new Error("Transcript is empty");
+  const count = Math.min(10, Math.max(3, Number(questionCount) || 6));
+
+  const prompt = `
+Role: Senior English listening test designer (CET/IELTS style).
+Task: Generate listening comprehension questions from transcript only.
+Requirements:
+1. Create ${count} multiple-choice questions (A/B/C/D).
+2. Mix detail, inference, speaker attitude, intent, and logic.
+3. Provide one correct answer and concise Chinese explanation.
+4. Add an evidence quote from transcript for each question.
+5. Return JSON only.
+
+Schema:
+{
+  "title": "Listening Quiz",
+  "questions": [
+    {
+      "id": 1,
+      "question": "string",
+      "options": ["A. ...","B. ...","C. ...","D. ..."],
+      "answer": "A",
+      "explanation": "string",
+      "evidence_sentence": "string"
+    }
+  ]
+}
+`;
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: prompt },
+    { role: "user", content: safeText.slice(0, 12000) }
+  ], settings, true);
+
+  const parsed = extractJSON(jsonStr);
+  if (!parsed) throw new Error("AI returned invalid listening quiz format");
+  if (!Array.isArray(parsed.questions)) parsed.questions = [];
+  return parsed;
+};
+
 const extractJSON = (str) => {
   try {
     const match = str.match(/\{[\s\S]*\}/);
@@ -365,95 +416,567 @@ const extractJSON = (str) => {
   }
 };
 
-/**
- * AI Writing Polish Engine (CET-4/6 Standard)
- */
-export const analyzeWriting = async (text, settings, analysisMode = 'polish') => {
-  if (!settings.apiKey) throw new Error("Missing API Key");
-
-  // Merge analysisMode into settings for internal use if needed, or just use it directly
-  // Actually, I updated the prompt generation to read `settings.analysisMode` OR `mode` arg effectively.
-  // Let's adhere to the convention: Pass mode as the NEW 3rd argument, but also allow settings override.
-  const effectiveSettings = { ...settings, analysisMode: analysisMode };
-  return analyzeWritingInternal(text, effectiveSettings);
+const toOptionText = (opt = "") => String(opt).replace(/^[A-D][\.\)\:\-\s]+/i, "").trim();
+const MATCHING_LABELS = "ABCDEFGHIJKL".split("");
+const isStrictCETMatchingMode = (mode = "") => String(mode || "").toLowerCase() === "cet_strict_matching";
+const toAnswerKey = (value = "A") => {
+  const key = String(value || "").trim().toUpperCase().charAt(0);
+  return MATCHING_LABELS.includes(key) ? key : "A";
 };
 
-const analyzeWritingInternal = async (text, settings) => {
+const splitParagraphs = (text = "") => {
+  return String(text)
+    .split(/\n{1,}/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+};
 
-  const level = settings.writingLevel || "CET-4/6";
-  const mode = settings.analysisMode || "polish"; // 'grammar' | 'polish' | 'academic'
+const toParagraphLabel = (index) => String.fromCharCode(65 + index);
 
-  const modePrompts = {
-    'grammar': "STRICTLY GRAMMAR CHECK. Focus ONLY on fixing object errors (Grammar, Spelling, Punctuation). Do NOT change the user's style or vocabulary unless incorrect.",
-    'polish': "STANDARD POLISHING. Fix errors and improve vocabulary/flow to make it natural and native-like.",
-    'academic': "ACADEMIC REWRITING. Elevate the writing to a formal, academic standard. Use advanced sentence structures (inversion, subjunctive) and sophisticated vocabulary."
+const chunkTextIntoParagraphs = (text = "", targetCount = 12) => {
+  const clean = String(text || "").replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  if (targetCount <= 1) return [clean];
+
+  const segments = [];
+  const total = clean.length;
+  let cursor = 0;
+  const avg = Math.ceil(total / targetCount);
+
+  for (let i = 0; i < targetCount && cursor < total; i += 1) {
+    let end = Math.min(total, cursor + avg);
+    if (end < total) {
+      const probe = clean.slice(end, Math.min(total, end + 120));
+      const punctAt = probe.search(/[\.!?;。！？；]/);
+      if (punctAt >= 0) end += punctAt + 1;
+    }
+    const slice = clean.slice(cursor, end).trim();
+    if (slice) segments.push(slice);
+    cursor = end;
+  }
+
+  if (cursor < total) {
+    const rest = clean.slice(cursor).trim();
+    if (rest) segments.push(rest);
+  }
+
+  return segments.filter(Boolean);
+};
+
+const normalizeReadingDrill = (raw = {}, fallbackPassage = "", fallbackMode = "mixed") => {
+  const sourcePassage = String(fallbackPassage || "").trim();
+  const aiPassage = String(raw.passage || raw.content || "").trim();
+  // Prefer AI passage only when it is meaningful; otherwise fallback to user-provided full article.
+  const passage = (!aiPassage || (sourcePassage && aiPassage.length < Math.min(200, Math.floor(sourcePassage.length * 0.2))))
+    ? sourcePassage
+    : aiPassage;
+  const mode = String(raw.mode || fallbackMode || "mixed").toLowerCase();
+  const strictCET = isStrictCETMatchingMode(mode);
+
+  const questions = (Array.isArray(raw.questions) ? raw.questions : []).map((q, idx) => {
+    const opts = Array.isArray(q.options) ? q.options : Array.isArray(q.choices) ? q.choices : [];
+    const normalizedOptions = opts.map(toOptionText).filter(Boolean).slice(0, 4);
+    while (normalizedOptions.length < 4) {
+      normalizedOptions.push(`选项 ${String.fromCharCode(65 + normalizedOptions.length)}`);
+    }
+    return {
+      id: Number(q.id ?? idx + 1) || idx + 1,
+      question: String(q.question || q.text || "").trim(),
+      options: normalizedOptions,
+      answer: toAnswerKey(q.answer || q.correct || "A"),
+      explanation: String(q.explanation || q.reason || "").trim(),
+      evidence_sentence: String(q.evidence_sentence || q.evidence || "").trim(),
+      rebuttal_hint: String(q.rebuttal_hint || "").trim()
+    };
+  }).filter((q) => q.question);
+
+  const rawMatching = raw.matching || {};
+  let paragraphs = Array.isArray(rawMatching.paragraphs) ? rawMatching.paragraphs : [];
+  if (!paragraphs.length && passage) {
+    const split = splitParagraphs(passage);
+    if (strictCET) {
+      const strictParagraphs = split.length >= 10 ? split.slice(0, 12) : chunkTextIntoParagraphs(passage, 12);
+      paragraphs = strictParagraphs.slice(0, 12).map((text, idx) => ({ label: MATCHING_LABELS[idx], text }));
+    } else {
+      paragraphs = split.slice(0, 8).map((text, idx) => ({ label: toParagraphLabel(idx), text }));
+    }
+  }
+  paragraphs = paragraphs.map((p, idx) => ({
+    label: strictCET ? MATCHING_LABELS[idx] : toAnswerKey(p.label || toParagraphLabel(idx)),
+    text: String(p.text || p.content || "").trim()
+  })).filter((p) => p.text);
+  if (strictCET) {
+    paragraphs = paragraphs.slice(0, 12).map((p, idx) => ({
+      ...p,
+      label: MATCHING_LABELS[idx]
+    }));
+  }
+
+  let statements = (Array.isArray(rawMatching.statements) ? rawMatching.statements : []).map((s, idx) => ({
+    id: Number(s.id ?? (strictCET ? 36 + idx : idx + 1)) || (strictCET ? 36 + idx : idx + 1),
+    text: String(s.text || s.statement || "").trim(),
+    answer: toAnswerKey(s.answer || s.correct || "A"),
+    explanation: String(s.explanation || "").trim(),
+    evidence_sentence: String(s.evidence_sentence || s.evidence || "").trim()
+  })).filter((s) => s.text);
+  if (strictCET) {
+    statements = statements
+      .sort((a, b) => a.id - b.id)
+      .slice(0, 10)
+      .map((s, idx) => ({
+        ...s,
+        id: Number(s.id) || (36 + idx)
+      }));
+  }
+
+  return {
+    title: String(raw.title || "阅读理解对抗训练").trim(),
+    mode,
+    passage,
+    questions,
+    matching: {
+      paragraphs,
+      statements
+    }
   };
+};
 
-  const currentModeInstruction = modePrompts[mode] || modePrompts['polish'];
-  const customInstruction = settings.writingPrompt || "Standard strict grading.";
+export const generateAdversarialReadingDrill = async (payload, settings, options = {}) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const mode = String(payload?.mode || "mixed").toLowerCase();
+  const strictCET = isStrictCETMatchingMode(mode);
+  const sourceType = payload?.sourceType || "article";
+  const passage = String(payload?.passage || "").trim().slice(0, 14000);
+  const questionText = String(payload?.questionText || "").trim().slice(0, 12000);
+  const questionCount = strictCET ? 10 : Math.max(3, Math.min(10, Number(payload?.questionCount) || 6));
+
+  if (!passage) throw new Error("Missing passage text");
+  if (sourceType === "import" && !questionText) throw new Error("Missing imported questions");
 
   const systemPrompt = `
-  Role: Professional English Examiner (Target Level: ${level}).
-  
-  Task: Analyze the student's essay.
-  CURRENT MODE: ${currentModeInstruction}
+Role: Senior CET/IELTS reading examiner and debate coach.
+Task: Build a high-quality adversarial reading drill.
 
-  User Custom Instruction: ${customInstruction}
-  
-  Grading Standards (15 Points Max):
-  - 14-15 (Excellent): Relevant, articulate, diverse vocabulary, advanced grammar, effective cohesion.
-  - 11-13 (Good): Relevant, generally clear, some variety in language, minor errors.
-  - 8-10 (Fair): Mostly relevant, basic structure clear, frequent but not major errors.
-  - 5-7 (Poor): Unclear structure, limited vocabulary, frequent grammar errors affecting understanding.
-  - 2-4 (Very Poor): Off-topic or mostly unintelligible.
-  
-  Output Requirements (JSON Only):
-  {
-    "score": Number (0-15),
-    "level": "String (Excellent/Good/Fair/Poor/Very Poor)",
-    "comment": "String (Short overall comment, ~50 words, encouraging but strict)",
-    "corrected_text": "String (The FULL essay rewritten based on the CURRENT MODE)",
-    "issues": [
+Hard constraints:
+1. Use ONLY user-provided content. Never invent unrelated facts.
+2. For each MCQ, provide one correct answer + concise Chinese explanation + evidence sentence (quote from passage).
+3. For paragraph matching, provide paragraph labels and statement-to-paragraph mapping with evidence sentence.
+4. Questions must test inference, logic, author attitude, detail, and structure (not pure vocabulary).
+5. Return strict JSON only.
+${strictCET ? `6. STRICT CET-6 Section B mode:
+- mode must be "cet_strict_matching".
+- questions must be [] (no MCQ in this mode).
+- matching.paragraphs should be 10-12 paragraphs labeled sequentially A-L.
+- matching.statements should be exactly 10 items with ids 36-45.
+- answers must be one of A-L and can repeat.
+- preserve user text semantics; do not invent outside facts.` : ""}
+
+Output schema:
+{
+  "title": "string",
+  "mode": "reading|matching|mixed|cet_strict_matching",
+  "passage": "string",
+  "questions": [
+    {
+      "id": 1,
+      "question": "string",
+      "options": ["string","string","string","string"],
+      "answer": "A|B|C|D",
+      "explanation": "string",
+      "evidence_sentence": "string",
+      "rebuttal_hint": "string"
+    }
+  ],
+  "matching": {
+    "paragraphs": [{ "label": "A", "text": "string" }],
+    "statements": [
       {
-        "type": "String (e.g., Grammar, Cohesion, Style, Vocab)",
-        "severity": "String (critical | improvement | style)",
-        "original": "String (Exact substring from original text)",
-        "fixed": "String (Suggested fix)",
-        "reason": "String (Brief explanation in Chinese)"
+        "id": 1,
+        "text": "string",
+        "answer": "A|B|C|D|E|F|G|H|I|J|K|L",
+        "explanation": "string",
+        "evidence_sentence": "string"
       }
-    ],
-    "improvement_tips": ["String", "String", "String"],
-    "vocabulary_analysis": [
-      { "word": "String", "level": "String", "suggestion": "String" }
-    ],
-    "knowledge_summary": "String (Markdown)"
+    ]
   }
-  
-  Severity Guide:
-  - critical: MAJOR Errors (Grammar, Spelling, Punctuation) -> shown as Red Wavy Lines.
-  - improvement: Minor improvements (Word choice, redundancy) -> shown as Amber Blocks.
-  - style: Advanced styling (Flow, Nativeness) -> shown as Purple Blocks.
+}
+`;
 
-  CRITICAL INSTRUCTION:
-  - DENSITY: Aim for a balanced feedback density. For a standard essay, identify at least 1 issue every 2-3 sentences.
-  - For LONG texts, ensure the feedback is distributed EVENLY throughout the entire text, not just the beginning.
-  - Do NOT flag every single minor change unless it's a 'critical' error. Focus on impactful improvements.
-  `;
+  const userPrompt = sourceType === "import"
+    ? `
+Mode: ${mode}
+Requested MCQ count: ${questionCount}
+Passage:
+${passage}
 
-  const safeText = text.substring(0, 5000); // Limit input
+Imported Question Material (must preserve semantics):
+${questionText}
+`
+    : `
+Mode: ${mode}
+Requested MCQ count: ${questionCount}
+Passage:
+${passage}
+
+Please generate exam-grade reading drill with evidence anchors.
+`;
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
+  ], settings, true, 3, options);
+
+  const parsed = extractJSON(jsonStr);
+  if (!parsed) throw new Error("AI returned invalid adversarial drill format");
+  return normalizeReadingDrill(parsed, passage, mode);
+};
+
+export const debateReadingEvidence = async (payload, settings, options = {}) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const history = Array.isArray(payload?.history) ? payload.history.slice(-8) : [];
+  const question = payload?.question || {};
+  const questionType = question.type || "mcq";
+  const userMessage = String(payload?.userMessage || "").trim();
+  const userAnswer = String(payload?.userAnswer || "").trim().toUpperCase();
+
+  if (!userMessage) throw new Error("Missing user debate message");
+
+  const systemPrompt = `
+Role: Strict reading examiner in evidence-duel mode.
+Language: Chinese.
+Behavior rules:
+1. Challenge weak reasoning. Require direct evidence sentence from passage.
+2. Do NOT provide full chain-of-thought. Give concise examiner feedback.
+3. If student reasoning is strong, acknowledge it and ask one deeper follow-up.
+4. Keep reply practical: verdict + why + next evidence challenge.
+5. Return JSON only.
+
+Output schema:
+{
+  "assistant_reply": "string",
+  "verdict": "supported|partial|unsupported",
+  "required_evidence": "string",
+  "hint": "string"
+}
+`;
+
+  const contextPrompt = `
+Passage:
+${String(payload?.passage || "").slice(0, 12000)}
+
+Question type: ${questionType}
+Question:
+${question.question || question.text || ""}
+
+Options:
+${Array.isArray(question.options) ? question.options.map((x, idx) => `${String.fromCharCode(65 + idx)}. ${x}`).join("\n") : "N/A"}
+
+Official answer: ${question.answer || payload?.officialAnswer || ""}
+Official evidence: ${question.evidence_sentence || payload?.officialEvidence || ""}
+Student selected answer: ${userAnswer || "未作答"}
+`;
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "system", content: contextPrompt },
+    ...history
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && m.content)
+      .map((m) => ({ role: m.role, content: String(m.content).slice(0, 1200) })),
+    { role: "user", content: userMessage.slice(0, 1800) }
+  ];
+
+  const jsonStr = await fetchFromAI(messages, settings, true, 2, options);
+  const parsed = extractJSON(jsonStr);
+  if (!parsed) throw new Error("AI returned invalid debate format");
+
+  return {
+    assistant_reply: String(parsed.assistant_reply || "").trim() || "请给出你引用的原句，我再继续反驳。",
+    verdict: ["supported", "partial", "unsupported"].includes(parsed.verdict) ? parsed.verdict : "partial",
+    required_evidence: String(parsed.required_evidence || "").trim(),
+    hint: String(parsed.hint || "").trim()
+  };
+};
+
+/**
+ * AI Writing Engine V2 (Exam-focused)
+ */
+const normalizeRubricScores = (rubric = {}, fallbackScore = 0) => {
+  const rawTask = Number(rubric.task_response ?? rubric.task ?? rubric.content);
+  const rawCoherence = Number(rubric.coherence ?? rubric.organization);
+  const rawLexical = Number(rubric.lexical_resource ?? rubric.lexical ?? rubric.vocab);
+  const rawGrammar = Number(rubric.grammar_range_accuracy ?? rubric.grammar);
+  const defaultPart = Math.max(0, Math.min(5, Math.round((fallbackScore || 0) / 3)));
+  return {
+    task_response: Number.isFinite(rawTask) ? rawTask : defaultPart,
+    coherence: Number.isFinite(rawCoherence) ? rawCoherence : defaultPart,
+    lexical_resource: Number.isFinite(rawLexical) ? rawLexical : defaultPart,
+    grammar_range_accuracy: Number.isFinite(rawGrammar) ? rawGrammar : defaultPart
+  };
+};
+
+const normalizeIssues = (issues = []) => {
+  return (Array.isArray(issues) ? issues : []).map((issue) => {
+    const sentenceIndex = Number(issue.sentence_index ?? issue.sentenceIndex ?? issue.paragraph_index ?? issue.paragraphIndex ?? 0);
+    return {
+      type: issue.type || 'Language',
+      severity: (issue.severity || 'improvement').toLowerCase(),
+      original: issue.original || '',
+      fixed: issue.fixed || issue.suggestion || '',
+      reason: issue.reason || issue.explanation || '',
+      sentence_index: Number.isFinite(sentenceIndex) ? Math.max(0, sentenceIndex) : 0,
+      paragraph_index: Number(issue.paragraph_index ?? issue.paragraphIndex ?? 0) || 0
+    };
+  }).filter((issue) => issue.original || issue.fixed || issue.reason);
+};
+
+const normalizeParagraphFeedback = (rows = []) => {
+  return (Array.isArray(rows) ? rows : []).map((row, idx) => ({
+    paragraph_index: Number(row.paragraph_index ?? row.paragraphIndex ?? idx) || idx,
+    purpose: row.purpose || '',
+    issue: row.issue || '',
+    suggestion: row.suggestion || '',
+    rewritten_paragraph: row.rewritten_paragraph || row.rewrite || ''
+  }));
+};
+
+const normalizeImprovementPlan = (plan, tips = []) => {
+  if (Array.isArray(plan) && plan.length > 0) {
+    return plan.map((item, idx) => {
+      if (typeof item === 'string') {
+        return { id: idx + 1, title: `Action ${idx + 1}`, action: item };
+      }
+      return {
+        id: Number(item.id) || idx + 1,
+        title: item.title || `Action ${idx + 1}`,
+        action: item.action || item.tip || '',
+        example: item.example || ''
+      };
+    }).filter((item) => item.action);
+  }
+  return (Array.isArray(tips) ? tips : []).map((tip, idx) => ({
+    id: idx + 1,
+    title: `Action ${idx + 1}`,
+    action: tip,
+    example: ''
+  }));
+};
+
+const scoreToLevel = (score) => {
+  if (score >= 14) return 'Excellent';
+  if (score >= 11) return 'Good';
+  if (score >= 8) return 'Fair';
+  if (score >= 5) return 'Poor';
+  return 'Very Poor';
+};
+
+const normalizeWritingAnalysis = (raw = {}) => {
+  const scoreTotal = Number(raw.score_total ?? raw.score ?? 0);
+  const safeScore = Number.isFinite(scoreTotal) ? Math.max(0, Math.min(15, scoreTotal)) : 0;
+  const rubricScores = normalizeRubricScores(raw.rubric_scores || raw.rubric || {}, safeScore);
+  const level = raw.level || scoreToLevel(safeScore);
+  const overallComment = raw.overall_comment || raw.comment || '';
+  const rewrittenText = raw.rewritten_text || raw.corrected_text || '';
+  const issues = normalizeIssues(raw.issues || []);
+  const paragraphFeedback = normalizeParagraphFeedback(raw.paragraph_feedback || []);
+  const improvementPlan = normalizeImprovementPlan(raw.improvement_plan, raw.improvement_tips);
+  const tips = improvementPlan.map((x) => x.action).filter(Boolean);
+  const vocabAnalysis = Array.isArray(raw.vocabulary_analysis) ? raw.vocabulary_analysis : [];
+  const vocabularyInjection = Array.isArray(raw.vocabulary_injection) ? raw.vocabulary_injection : [];
+
+  return {
+    score_total: safeScore,
+    rubric_scores: rubricScores,
+    level,
+    overall_comment: overallComment,
+    rewritten_text: rewrittenText,
+    paragraph_feedback: paragraphFeedback,
+    issues,
+    improvement_plan: improvementPlan,
+    knowledge_summary: raw.knowledge_summary || '',
+    vocabulary_analysis: vocabAnalysis,
+    vocabulary_injection: vocabularyInjection,
+
+    // Legacy compatibility fields (V1 UI or old records)
+    score: safeScore,
+    comment: overallComment,
+    corrected_text: rewrittenText,
+    improvement_tips: tips
+  };
+};
+
+export const generateWritingOutline = async (payload, settings, options = {}) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+  const signal = options?.signal;
+  const examType = payload?.examType || 'CET-6';
+  const genre = payload?.genre || 'Argumentative';
+  const targetScore = payload?.targetScore || 12;
+  const wordTarget = payload?.wordTarget || 200;
+  const topic = (payload?.prompt || payload?.topic || '').trim();
+  const sourceText = (typeof payload === 'string' ? payload : topic).substring(0, 1200);
+
+  if (!sourceText) throw new Error('Missing writing prompt');
+
+  const systemPrompt = `
+Role: Senior exam-writing coach.
+Task: Generate a practical writing outline for exam prep.
+Context:
+- Exam: ${examType}
+- Genre: ${genre}
+- Target score: ${targetScore}/15
+- Target words: ${wordTarget}
+
+Return STRICT JSON:
+{
+  "thesis": "string",
+  "stance": "for|against|balanced",
+  "paragraphs": [
+    {
+      "paragraph_index": 0,
+      "purpose": "string",
+      "topic_sentence": "string",
+      "keywords": ["string"],
+      "evidence_hint": "string",
+      "concession": false
+    }
+  ],
+  "conclusion": "string",
+  "checklist": ["string", "string", "string"]
+}
+Rules:
+- Keep it specific and exam-ready.
+- At least 4 paragraphs (intro/body/body/conclusion).
+- Include one concession paragraph when appropriate.
+- No markdown, no extra text.
+`;
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: sourceText }
+  ], settings, true, 3, { signal });
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (e) {
+    parsed = extractJSON(jsonStr);
+  }
+  if (!parsed) throw new Error("Outline parsing failed");
+
+  const paragraphs = Array.isArray(parsed.paragraphs) ? parsed.paragraphs : [];
+  return {
+    thesis: parsed.thesis || '',
+    stance: parsed.stance || 'balanced',
+    conclusion: parsed.conclusion || '',
+    paragraphs: paragraphs.map((p, idx) => ({
+      paragraph_index: Number(p.paragraph_index ?? idx) || idx,
+      purpose: p.purpose || '',
+      topic_sentence: p.topic_sentence || '',
+      keywords: Array.isArray(p.keywords) ? p.keywords : [],
+      evidence_hint: p.evidence_hint || '',
+      concession: Boolean(p.concession)
+    })),
+    checklist: Array.isArray(parsed.checklist) ? parsed.checklist : []
+  };
+};
+
+export const analyzeWriting = async (text, settings, analysisMode = 'polish', options = {}) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+  const safeText = (text || '').substring(0, 5000);
+  if (!safeText.trim()) throw new Error("Empty writing content");
+
+  const level = settings.writingLevel || "CET-6";
+  const mode = analysisMode || settings.analysisMode || "polish";
+  const examContext = options?.examContext || {};
+  const outline = options?.outline || null;
+  const signal = options?.signal;
+
+  const modePrompts = {
+    grammar: "STRICT GRAMMAR: fix only grammar/spelling/punctuation with minimal style change.",
+    polish: "BALANCED POLISH: improve clarity, flow, and vocabulary while keeping original intent.",
+    academic: "ACADEMIC UPGRADE: formal tone, stronger cohesion, advanced syntax and lexical precision."
+  };
+  const currentModeInstruction = modePrompts[mode] || modePrompts.polish;
+  const customInstruction = settings.writingPrompt || "Strict but constructive examiner mode.";
+
+  const systemPrompt = `
+Role: Professional English writing examiner and coach.
+Task: Analyze and improve the student's essay for exam prep.
+Target level: ${level}
+Mode: ${currentModeInstruction}
+Custom instruction: ${customInstruction}
+
+Exam context:
+- exam_type: ${examContext.examType || 'CET-6'}
+- genre: ${examContext.genre || 'Argumentative'}
+- target_score: ${examContext.targetScore || 12}/15
+- word_target: ${examContext.wordTarget || 200}
+- prompt: ${examContext.prompt || ''}
+
+Outline (optional):
+${outline ? JSON.stringify(outline).substring(0, 1200) : 'null'}
+
+Return STRICT JSON with this schema:
+{
+  "score_total": 0-15 number,
+  "level": "Excellent|Good|Fair|Poor|Very Poor",
+  "rubric_scores": {
+    "task_response": 0-5 number,
+    "coherence": 0-5 number,
+    "lexical_resource": 0-5 number,
+    "grammar_range_accuracy": 0-5 number
+  },
+  "overall_comment": "string",
+  "rewritten_text": "full improved essay string",
+  "paragraph_feedback": [
+    {
+      "paragraph_index": 0,
+      "purpose": "string",
+      "issue": "string",
+      "suggestion": "string",
+      "rewritten_paragraph": "string"
+    }
+  ],
+  "issues": [
+    {
+      "type": "Grammar|Coherence|Lexical|Style|Task",
+      "severity": "critical|improvement|style",
+      "sentence_index": 0,
+      "paragraph_index": 0,
+      "original": "exact quote from original",
+      "fixed": "suggested fix",
+      "reason": "Chinese explanation"
+    }
+  ],
+  "improvement_plan": [
+    { "id": 1, "title": "string", "action": "string", "example": "string" }
+  ],
+  "vocabulary_injection": [
+    { "word": "string", "why": "string", "where": "string" }
+  ],
+  "knowledge_summary": "markdown string"
+}
+
+Rules:
+- sentence_index is required for every issue.
+- Keep feedback balanced across the whole essay.
+- Do not return markdown wrappers or extra text.
+`;
 
   const jsonStr = await fetchFromAI([
     { role: "system", content: systemPrompt },
     { role: "user", content: `Here is my essay:\n\n${safeText}` }
-  ], settings, true);
+  ], settings, true, 3, { signal });
 
+  let parsed;
   try {
-    return JSON.parse(jsonStr);
+    parsed = JSON.parse(jsonStr);
   } catch (e) {
-    const extracted = extractJSON(jsonStr);
-    if (!extracted) throw new Error("AI Parsing Failed: " + jsonStr.substring(0, 100));
-    return extracted;
+    parsed = extractJSON(jsonStr);
   }
+  if (!parsed) throw new Error("AI Parsing Failed: " + jsonStr.substring(0, 120));
+  return normalizeWritingAnalysis(parsed);
 };
 
 export const checkConnection = async (settings) => {
@@ -503,6 +1026,55 @@ export const sendChatMessage = async (messages, settings) => {
   const content = await fetchFromAI(finalMessages, settings, false);
 
   return content;
+};
+
+export const analyzeImagesForChat = async (images, settings, instruction = '') => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+  const imageUrls = (Array.isArray(images) ? images : [images]).filter(Boolean).slice(0, 4);
+  if (!imageUrls.length) return "";
+
+  const { apiKey, apiBaseUrl, modelName } = settings;
+  const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+  const visionPrompt = instruction || `
+You are a vision assistant for English learning.
+Task:
+1. Extract all readable text from the image(s) as accurately as possible.
+2. Summarize key information.
+3. If this is exam content, keep question numbers and options structure.
+Output in Chinese with sections:
+- OCR文本
+- 内容摘要
+`;
+
+  const content = [
+    { type: "text", text: visionPrompt.trim() },
+    ...imageUrls.map((url) => ({ type: "image_url", image_url: { url } }))
+  ];
+
+  const response = await fetch(`${cleanUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: modelName || "gpt-4o-mini",
+      messages: [{ role: "user", content }],
+      stream: false,
+      temperature: 0.2
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Image analysis failed: ${response.status} - ${err.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const raw = data?.choices?.[0]?.message?.content;
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) return raw.map((x) => (typeof x === 'string' ? x : x?.text || '')).join('\n').trim();
+  return '';
 };
 
 export const streamChatMessage = async (messages, settings, onDelta) => {
@@ -1722,7 +2294,7 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall) =
         if (onToolCall) onToolCall({ name: toolName, status: 'calling' });
 
         // Execute tool
-        const result = await executeAgentTool(toolName, toolArgs);
+        const result = await executeAgentTool(toolName, toolArgs, { settings });
 
         // Notify UI done (pass result for action detection)
         if (onToolCall) onToolCall({ name: toolName, status: 'done', result });

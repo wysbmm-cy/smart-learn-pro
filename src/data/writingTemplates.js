@@ -3,67 +3,64 @@ export const writingTemplates = [
         id: 'ielts-task2',
         category: 'Academic',
         name: '雅思大作文 (IELTS Task 2)',
-        description: '经典的四段式议论文结构，适用于观点阐述类题目。',
+        description: '经典四段式结构，适用于观点论证题。',
         content: `# Topic: [Insert Topic Here]
 
 ## Introduction
-People have differing views with regard to the question of whether [rephrase topic]. While some argue that [viewpoint A], I believe that [viewpoint B].
+People hold different views on whether [rephrase topic]. While some believe [viewpoint A], I argue that [viewpoint B].
 
 ## Body Paragraph 1
-On the one hand, it is arguable that...
+One key reason is that...
 For example,...
-However,...
+This demonstrates that...
 
 ## Body Paragraph 2
-On the other hand, I would argue that...
-This is because...
-Furthermore,...
+Another important point is that...
+In addition,...
+As a result,...
 
 ## Conclusion
-In conclusion, although [concession], I firmly believe that...`
+In conclusion, although [concession], I strongly believe that...`
     },
     {
         id: 'toefl-independent',
         category: 'Academic',
         name: '托福独立写作 (TOEFL Independent)',
-        description: '五段式结构，强强调逻辑连接与论据支撑。',
+        description: '五段式结构，强调逻辑连接与论据支持。',
         content: `# Topic: Do you agree or disagree?
 
 ## Introduction
-The question of whether [topic] has been a subject of debate. In my opinion, [thesis statement]. I feel this way for two main reasons, which I will explore in the following essay.
+The issue of whether [topic] remains controversial. In my view, [thesis]. I hold this opinion for two key reasons.
 
 ## Body Paragraph 1
-First of all, [Reason 1].
-My personal experience demonstrates this reality.
-Therefore,...
+First, [Reason 1].
+My own experience shows that...
 
 ## Body Paragraph 2
-Secondly, [Reason 2].
+Second, [Reason 2].
 For instance,...
-This clearly shows that...
 
 ## Conclusion
-In conclusion, I strongly believe that [thesis restatement]. This is because [summary of reason 1] and [summary of reason 2].`
+In summary, I firmly support [thesis restatement] because [reason 1] and [reason 2].`
     },
     {
         id: 'cold-email',
         category: 'Business',
         name: '商务求职信 (Cold Email)',
-        description: '专业的求职/套磁邮件，简洁有力。',
+        description: '专业简洁，强调价值与行动请求。',
         content: `Subject: Application for [Role Name] - [Your Name]
 
 Dear Hiring Manager,
 
 I am writing to express my interest in the [Role Name] position at [Company Name], as advertised on [Platform].
 
-With a solid background in [Your Field] and [Number] years of experience in [Key Skill], I am confident in my ability to contribute to your team. In my previous role at [Previous Company], I successfully [Achievement 1].
+With a background in [Your Field] and [Number] years of experience in [Key Skill], I am confident that I can contribute to your team. In my previous role at [Previous Company], I successfully [Achievement].
 
-I have attached my resume for your review. I would welcome the opportunity to discuss how my skills align with [Company Name]'s needs.
+I have attached my resume for your review. I would welcome the opportunity to discuss how my skills align with your needs.
 
 Thank you for your time and consideration.
 
 Best regards,
-
 [Your Name]
 [Your Phone Number]
 [Your LinkedIn Profile]`
