@@ -65,6 +65,7 @@ const FlashcardView = ({ params }) => {
     const [newFront, setNewFront] = useState("");
     const [newBack, setNewBack] = useState("");
     const [isAddingCard, setIsAddingCard] = useState(false);
+    const [showMobileAddComposer, setShowMobileAddComposer] = useState(false);
 
     // Study Setup State
     const [studySelection, setStudySelection] = useState(['all']); // Array of folder IDs to study
@@ -426,12 +427,12 @@ const FlashcardView = ({ params }) => {
     // Handle Startup Signal (e.g. from Dashboard "开始复习")
     useEffect(() => {
         if (flashcardStartupState && allCards.length > 0) {
-            const { mode, folder } = flashcardStartupState;
+            const { mode, folder, queueIds } = flashcardStartupState;
             if (mode === 'study' && folder) {
-                // Explicit startup from Dashboard: clear any saved session and start fresh
+                // Explicit startup from Dashboard or ReviewCenter: clear any saved session and start fresh
                 localStorage.removeItem('flashcard_study_session');
                 setSelectedFolderId(folder);
-                startSession(folder, true); // useAllCards=true for FSRS review
+                startSession(folder, true, queueIds); // useAllCards=true for FSRS review, pass explicit queueIds if any
                 setFlashcardStartupState(null); // Consume
                 return; // Don't process pendingRestore
             }
@@ -536,6 +537,7 @@ const FlashcardView = ({ params }) => {
         setNewFront("");
         setNewBack("");
         setIsAddingCard(false);
+        setShowMobileAddComposer(false);
         loadData();
     };
 
@@ -736,60 +738,75 @@ const FlashcardView = ({ params }) => {
     // Note: getEffectiveWeaknessScore is now imported from '../utils/flashcardUtils'
 
 
-    const startSession = (overrideFolderId, useAllCards = false) => {
+    const startSession = (overrideFolderId, useAllCards = false, explicitQueueIds = null) => {
         const targetFolder = overrideFolderId || selectedFolderId;
 
-        let candidates = [];
-        if (isMultiSelect && !overrideFolderId) {
-            // Multi-select mode: filter by included folder IDs
-            candidates = allCards.filter(c => studySelection.includes(c.folderId));
-        } else if (targetFolder === 'all') {
-            candidates = allCards;
-        } else if (targetFolder === 'today') {
-            const now = Date.now();
-            candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
-        } else if (targetFolder === 'flagged') {
-            candidates = allCards.filter(c => c.isFlagged);
+        if (explicitQueueIds && explicitQueueIds.length > 0) {
+            const exactCards = explicitQueueIds.map(id => allCards.find(c => c.id === id)).filter(Boolean);
+            if (exactCards.length === 0) {
+                toast.error("没有找到符合条件的卡片！");
+                return;
+            }
+            // Light shuffle even for explicit queue to avoid feeling repetitive
+            const lightShuffle = exactCards.sort((a, b) => {
+                const scoreDiff = getEffectiveWeaknessScore(b) - getEffectiveWeaknessScore(a);
+                if (Math.abs(scoreDiff) <= 5) return Math.random() - 0.5;
+                return scoreDiff;
+            });
+            setStudyQueue(lightShuffle);
         } else {
-            candidates = allCards.filter(c => c.folderId === targetFolder);
+            let candidates = [];
+            if (isMultiSelect && !overrideFolderId) {
+                // Multi-select mode: filter by included folder IDs
+                candidates = allCards.filter(c => studySelection.includes(c.folderId));
+            } else if (targetFolder === 'all') {
+                candidates = allCards;
+            } else if (targetFolder === 'today') {
+                const now = Date.now();
+                candidates = allCards.filter(c => !c.nextReview || c.nextReview <= now);
+            } else if (targetFolder === 'flagged') {
+                candidates = allCards.filter(c => c.isFlagged);
+            } else {
+                candidates = allCards.filter(c => c.folderId === targetFolder);
+            }
+
+            if (candidates.length === 0) {
+                toast.error("没有找到符合条件的卡片！");
+                return;
+            }
+
+            // ===== Weighted Shuffle by Weakness Score =====
+            // Higher weakness score = higher priority (appears earlier/more often)
+            const sortedByWeakness = [...candidates].sort((a, b) => {
+                const scoreA = getEffectiveWeaknessScore(a);
+                const scoreB = getEffectiveWeaknessScore(b);
+                // Primary: weakness score (high to low)
+                if (scoreB !== scoreA) return scoreB - scoreA;
+                // Secondary: due date (earlier first)
+                return (a.nextReview || 0) - (b.nextReview || 0);
+            });
+
+            // Take top cards: all due cards for FSRS review (with optional limit), or drawCount for manual
+            let selected;
+            if (useAllCards) {
+                const maxCards = settings?.maxReviewCards || 0;
+                selected = maxCards > 0
+                    ? sortedByWeakness.slice(0, maxCards)
+                    : sortedByWeakness;
+            } else {
+                selected = sortedByWeakness.slice(0, drawCount);
+            }
+
+            // Light shuffle within the selected pool (preserves general order but adds variety)
+            const lightShuffle = selected.sort((a, b) => {
+                const scoreDiff = getEffectiveWeaknessScore(b) - getEffectiveWeaknessScore(a);
+                // Only shuffle if scores are close (within 5 points)
+                if (Math.abs(scoreDiff) <= 5) return Math.random() - 0.5;
+                return scoreDiff;
+            });
+
+            setStudyQueue(lightShuffle);
         }
-
-        if (candidates.length === 0) {
-            toast.error("没有找到符合条件的卡片！");
-            return;
-        }
-
-        // ===== Weighted Shuffle by Weakness Score =====
-        // Higher weakness score = higher priority (appears earlier/more often)
-        const sortedByWeakness = [...candidates].sort((a, b) => {
-            const scoreA = getEffectiveWeaknessScore(a);
-            const scoreB = getEffectiveWeaknessScore(b);
-            // Primary: weakness score (high to low)
-            if (scoreB !== scoreA) return scoreB - scoreA;
-            // Secondary: due date (earlier first)
-            return (a.nextReview || 0) - (b.nextReview || 0);
-        });
-
-        // Take top cards: all due cards for FSRS review (with optional limit), or drawCount for manual
-        let selected;
-        if (useAllCards) {
-            const maxCards = settings?.maxReviewCards || 0;
-            selected = maxCards > 0
-                ? sortedByWeakness.slice(0, maxCards)
-                : sortedByWeakness;
-        } else {
-            selected = sortedByWeakness.slice(0, drawCount);
-        }
-
-        // Light shuffle within the selected pool (preserves general order but adds variety)
-        const lightShuffle = selected.sort((a, b) => {
-            const scoreDiff = getEffectiveWeaknessScore(b) - getEffectiveWeaknessScore(a);
-            // Only shuffle if scores are close (within 5 points)
-            if (Math.abs(scoreDiff) <= 5) return Math.random() - 0.5;
-            return scoreDiff;
-        });
-
-        setStudyQueue(lightShuffle);
         setCurrentCardIndex(0);
         setIsFlipped(false);
         setShowGradePanel(false);
@@ -1416,12 +1433,16 @@ const FlashcardView = ({ params }) => {
     );
 
     return (
-        <div className="h-full md:h-[calc(100vh-100px)] animate-fade-in glass-panel rounded-[2rem] shadow-sm overflow-hidden text-phy-text bg-phy-bg/50">
+        <div className={`${isMobile ? 'h-[calc(100dvh-132px)] rounded-2xl' : 'h-full md:h-[calc(100vh-100px)] rounded-[2rem]'} animate-fade-in glass-panel shadow-sm overflow-hidden text-phy-text bg-phy-bg/50`}>
             {mode === 'manage' ? (
                 <SplitPane
                     left={Sidebar}
+                    mobileCollapsible={isMobile}
+                    mobileCollapsedDefault={true}
+                    mobileToggleLabel="卡片筛选"
+                    mobileLeftMaxHeight="34vh"
                     right={
-                        <div className="h-full flex flex-col bg-transparent">
+                        <div className="h-full min-h-0 flex flex-col bg-transparent">
                             <input
                                 ref={importCardsInputRef}
                                 type="file"
@@ -1456,7 +1477,7 @@ const FlashcardView = ({ params }) => {
                                         }
                                     >
                                         <Play size={14} />
-                                        <span className={isMobile ? 'hidden' : 'inline'}>开始复习</span>
+                                        <span>{isMobile ? '复习' : '开始复习'}</span>
                                     </button>
 
                                     {isMobile ? (
@@ -1469,7 +1490,39 @@ const FlashcardView = ({ params }) => {
                                             </button>
                                             {showMoreActions && (
                                                 <div className="absolute top-full mt-2 right-0 bg-phy-glassHeavy border border-phy-border rounded-xl shadow-xl z-[100] min-w-[160px] py-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
-                                                    <button onClick={() => { setIsAddingCard(true); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
+                                                    <div className="px-3 py-2 border-b border-phy-border">
+                                                        <div className="text-[11px] text-phy-muted font-bold mb-1">复习数量</div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            {[5, 10, 20].map((n) => (
+                                                                <button
+                                                                    key={n}
+                                                                    onClick={() => setDrawCount(n)}
+                                                                    className={`px-2 py-1 rounded text-[11px] font-bold border transition-colors ${drawCount === n
+                                                                        ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover'
+                                                                        : 'bg-transparent text-phy-muted border-phy-border hover:text-phy-text hover:bg-phy-glassHover'
+                                                                        }`}
+                                                                >
+                                                                    {n}
+                                                                </button>
+                                                            ))}
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max="500"
+                                                                value={drawCount}
+                                                                onChange={(e) => setDrawCount(parseInt(e.target.value, 10) || 10)}
+                                                                className="w-14 bg-phy-bg border border-phy-border rounded px-1.5 py-1 text-[11px] font-bold text-phy-text outline-none text-center"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            setIsAddingCard(true);
+                                                            setShowMobileAddComposer(true);
+                                                            setShowMoreActions(false);
+                                                        }}
+                                                        className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors"
+                                                    >
                                                         <Plus size={16} /> 添加卡片
                                                     </button>
                                                     <button
@@ -1491,7 +1544,7 @@ const FlashcardView = ({ params }) => {
                                                     <button onClick={() => { setShowStats(!showStats); setShowMoreActions(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-3 hover:bg-phy-accentGlass hover:text-phy-accent transition-colors">
                                                         <BarChart3 size={16} /> {showStats ? '隐藏统计' : '查看统计'}
                                                     </button>
-                                                    <button onClick={() => { 
+                                                    <button onClick={() => {
                                                         if (sortMode === 'default') setSortMode('mastery_asc');
                                                         else if (sortMode === 'mastery_asc') setSortMode('mastery_desc');
                                                         else setSortMode('default');
@@ -1627,28 +1680,38 @@ const FlashcardView = ({ params }) => {
                             )}
 
                             {/* Card Grid */}
-                            <div className="flex-1 overflow-y-auto p-3 md:p-6 bg-phy-bg/30">
+                            <div className={`flex-1 overflow-y-auto ${isMobile ? 'p-2' : 'p-6'} bg-phy-bg/30`}>
                                 {/* Add Input */}
-                                <div className="mb-6 bg-phy-glass border border-phy-border shadow-sm rounded-xl p-4 transition-all focus-within:ring-2 ring-phy-accent border-phy-accent">
-                                    {isAddingCard ? (
-                                        <div className="flex flex-col gap-3">
-                                            <div className="flex gap-3">
-                                                <input value={newFront} onChange={e => setNewFront(e.target.value)} placeholder="正面内容 (Front)" className="flex-1 p-2 bg-phy-bg rounded border-none outline-none font-medium text-phy-text placeholder:text-phy-muted" autoFocus />
-                                                <input value={newBack} onChange={e => setNewBack(e.target.value)} placeholder="背面内容 (Back)" className="flex-1 p-2 bg-phy-bg rounded border-none outline-none text-phy-text placeholder:text-phy-muted" />
+                                {(!isMobile || isAddingCard || showMobileAddComposer) && (
+                                    <div className={`${isMobile ? 'mb-3 p-3' : 'mb-6 p-4'} bg-phy-glass border border-phy-border shadow-sm rounded-xl transition-all focus-within:ring-2 ring-phy-accent border-phy-accent`}>
+                                        {isAddingCard ? (
+                                            <div className="flex flex-col gap-3">
+                                                <div className={`flex ${isMobile ? 'flex-col gap-2' : 'gap-3'}`}>
+                                                    <input value={newFront} onChange={e => setNewFront(e.target.value)} placeholder="正面内容 (Front)" className="flex-1 p-2 bg-phy-bg rounded border-none outline-none font-medium text-phy-text placeholder:text-phy-muted" autoFocus />
+                                                    <input value={newBack} onChange={e => setNewBack(e.target.value)} placeholder="背面内容 (Back)" className="flex-1 p-2 bg-phy-bg rounded border-none outline-none text-phy-text placeholder:text-phy-muted" />
+                                                </div>
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setIsAddingCard(false);
+                                                            setShowMobileAddComposer(false);
+                                                        }}
+                                                        className="px-3 py-1.5 text-xs font-bold text-phy-muted hover:bg-phy-glassHover hover:text-phy-text rounded transition-colors"
+                                                    >
+                                                        取消
+                                                    </button>
+                                                    <button onClick={handleAddCard} className="px-4 py-1.5 text-xs font-bold bg-phy-accent text-white rounded hover:opacity-90 shadow-sm transition-opacity">保存</button>
+                                                </div>
                                             </div>
-                                            <div className="flex justify-end gap-2">
-                                                <button onClick={() => setIsAddingCard(false)} className="px-3 py-1.5 text-xs font-bold text-phy-muted hover:bg-phy-glassHover hover:text-phy-text rounded transition-colors">取消</button>
-                                                <button onClick={handleAddCard} className="px-4 py-1.5 text-xs font-bold bg-phy-accent text-white rounded hover:opacity-90 shadow-sm transition-opacity">保存</button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button onClick={() => setIsAddingCard(true)} className="w-full py-2 text-phy-muted text-sm font-bold border-2 border-dashed border-phy-border rounded-lg hover:border-phy-accent hover:text-phy-accent flex items-center justify-center gap-2 transition-colors">
-                                            <Plus size={16} /> 添加卡片到 '{selectedFolderId === 'all' ? '未分类' : (folders.find(f => f.id === selectedFolderId)?.name || '当前')}'
-                                        </button>
-                                    )}
-                                </div>
+                                        ) : (
+                                            <button onClick={() => setIsAddingCard(true)} className="w-full py-2 text-phy-muted text-sm font-bold border-2 border-dashed border-phy-border rounded-lg hover:border-phy-accent hover:text-phy-accent flex items-center justify-center gap-2 transition-colors">
+                                                <Plus size={16} /> 添加卡片到 '{selectedFolderId === 'all' ? '未分类' : (folders.find(f => f.id === selectedFolderId)?.name || '当前')}'
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${isMobile ? 'gap-2' : 'gap-4'}`}>
                                     {displayCards.map(card => {
                                         const isDue = !card.nextReview || card.nextReview <= Date.now();
                                         const isSelected = selectedCardIds.has(card.id);
@@ -1657,7 +1720,7 @@ const FlashcardView = ({ params }) => {
                                             <div
                                                 key={card.id}
                                                 onClick={() => isMultiSelect && toggleCardSelection(card.id)}
-                                                className={`group glass-panel rounded-xl p-3 md:p-5 shadow-sm border transition-all relative ${isSelected
+                                                className={`group glass-panel rounded-xl ${isMobile ? 'p-2.5' : 'p-5'} shadow-sm border transition-all relative ${isSelected
                                                     ? 'border-phy-accent bg-phy-accentGlass ring-2 ring-phy-accent shadow-md'
                                                     : `border-phy-border hover:border-phy-borderHover hover:shadow-md`
                                                     } ${isMultiSelect ? 'cursor-pointer' : ''}`}
@@ -1677,8 +1740,8 @@ const FlashcardView = ({ params }) => {
                                                         {weaknessInfo.icon}
                                                     </div>
                                                 )}
-                                                <div className="font-bold text-phy-text mb-2 truncate pr-6" title={card.front}>{card.front}</div>
-                                                <div className="text-sm text-phy-muted line-clamp-3 mb-4 h-12 break-words">{card.back}</div>
+                                                <div className={`${isMobile ? 'text-sm line-clamp-2' : ''} font-bold text-phy-text mb-2 pr-6 whitespace-pre-wrap break-words`} title={card.front}>{card.front}</div>
+                                                <div className={`${isMobile ? 'text-xs line-clamp-2 mb-3' : 'text-sm line-clamp-3 mb-4 h-12'} text-phy-muted break-words`}>{card.back}</div>
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex items-center gap-2">
                                                         <div className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${isDue ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
@@ -1720,14 +1783,14 @@ const FlashcardView = ({ params }) => {
                     <div className={`border-b border-phy-border flex justify-between items-center gap-2 bg-phy-glassHeavy backdrop-blur ${isMobile ? 'px-3 py-2' : 'p-4'}`}>
                         <h3 className={`${isMobile ? 'text-base' : 'text-lg'} font-bold text-phy-text flex items-center gap-2 min-w-0`}>
                             <RotateCw size={isMobile ? 18 : 20} className="text-phy-accent shrink-0" />
-                            复习模式 ({studyQueue.length - currentCardIndex} left)
+                            {isMobile ? `复习 (${studyQueue.length - currentCardIndex})` : `复习模式 (${studyQueue.length - currentCardIndex} left)`}
                         </h3>
                         <button
                             onClick={() => setIsSwapped(!isSwapped)}
                             className={`${isMobile ? 'px-2 py-1 text-[11px]' : 'ml-4 px-3 py-1 text-xs'} font-bold border rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${isSwapped ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'bg-transparent text-phy-muted border-phy-border hover:border-phy-borderHover hover:text-phy-text'}`}
                         >
                             <RotateCw size={12} />
-                            {isSwapped ? 'Answer → Question' : 'Question → Answer'}
+                            {isMobile ? (isSwapped ? 'A→Q' : 'Q→A') : (isSwapped ? 'Answer → Question' : 'Question → Answer')}
                         </button>
 
                         {/* Flag Toggle (Top Bar) */}
@@ -1775,12 +1838,12 @@ const FlashcardView = ({ params }) => {
                     </div>
 
                     {/* Flashcard Study Area */}
-                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative ${isMobile ? 'pb-[calc(env(safe-area-inset-bottom,0px)+88px)]' : ''}`}>
+                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative ${isMobile ? (isFlipped && showGradePanel ? 'pb-[calc(env(safe-area-inset-bottom,0px)+88px)]' : 'pb-[calc(env(safe-area-inset-bottom,0px)+8px)]') : ''}`}>
                         {/* Progress Bar */}
                         <div className="absolute top-0 left-0 h-1 bg-phy-accent transition-all duration-300 z-10" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
 
                         {/* Left: Main Card Area */}
-                        <div className={`flex-1 flex flex-col items-center ${isMobile ? 'justify-start' : 'justify-center'} relative perspective-1000 ${isMobile ? 'p-2 pt-2 overflow-hidden' : 'p-8 overflow-y-auto'} ${isMobile && isFlipped && showGradePanel ? 'pb-20' : ''}`}>
+                        <div className={`flex-1 min-h-0 flex flex-col items-center justify-center relative perspective-1000 ${isMobile ? 'p-2 pt-1 overflow-hidden' : 'p-8 overflow-y-auto'} ${isMobile && isFlipped && showGradePanel ? 'pb-20' : ''}`}>
 
                             {/* Toolbar inside Study Area */}
                             {!isMobile && <div className="absolute top-4 right-4 z-20 flex gap-2">
@@ -1805,7 +1868,7 @@ const FlashcardView = ({ params }) => {
                             {!isDrillMode && (
                                 <div
                                     key={currentCard?.id || currentCardIndex}
-                                    className={`relative w-full shadow-xl border border-phy-border flex flex-col items-center justify-center text-center cursor-pointer transform-style-3d ${disableFlipAnimation ? 'transition-none' : 'transition-transform duration-500'} ${isMobile ? 'h-[44vh] min-h-[250px] max-h-[340px] rounded-2xl p-3' : 'aspect-video rounded-3xl p-8'} ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
+                                    className={`relative w-full shadow-xl border border-phy-border flex flex-col items-center justify-center text-center cursor-pointer transform-style-3d ${disableFlipAnimation ? 'transition-none' : 'transition-transform duration-500'} ${isMobile ? 'h-[36vh] min-h-[210px] max-h-[300px] rounded-2xl p-3' : 'aspect-video rounded-3xl p-8'} ${isFlipped ? 'rotate-y-180' : ''} ${getMasteryColor(currentCard)}`}
                                     style={{ maxWidth: isMobile ? '100%' : (showDetailPanel ? '800px' : '900px') }}
                                     onClick={async () => {
                                         if (isAdvancingCard) return;
@@ -1832,7 +1895,7 @@ const FlashcardView = ({ params }) => {
                                     }}
                                 >
                                     {/* Front Face */}
-                                    <div className="backface-hidden w-full h-full flex flex-col items-center justify-center relative text-slate-900">
+                                    <div className="backface-hidden w-full h-full flex flex-col items-center justify-center relative text-slate-950">
                                         {/* Mastery Badge */}
                                         <div className="absolute top-0 right-0 py-1 px-3 bg-white/85 backdrop-blur rounded-full text-[10px] font-bold text-slate-600 uppercase tracking-widest border border-slate-300/70">
                                             Level: {getMasteryLabel(currentCard)}
@@ -1844,8 +1907,8 @@ const FlashcardView = ({ params }) => {
                                             </div>
                                         )}
 
-                                        <div className="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">Question</div>
-                                        <div className={`font-black text-slate-900 break-words w-full leading-tight ${isMobile ? (questionText.length > 40 ? 'text-2xl' : 'text-3xl') : (questionText.length > 50 ? 'text-xl' : 'text-4xl')}`}>
+                                        <div className="text-xs font-bold text-slate-600 uppercase mb-4 tracking-widest">Question</div>
+                                        <div className={`font-black text-slate-950 break-words w-full leading-tight ${isMobile ? (questionText.length > 48 ? 'text-xl' : 'text-2xl') : (questionText.length > 50 ? 'text-xl' : 'text-4xl')}`}>
                                             {questionText}
                                         </div>
                                         <div className={`${isMobile ? 'mt-4' : 'mt-6'} flex items-center gap-4`}>
@@ -1866,7 +1929,7 @@ const FlashcardView = ({ params }) => {
                                     <div className={`absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center ${isMobile ? 'rounded-2xl p-4' : 'rounded-3xl p-8'} bg-phy-accent text-white leading-relaxed overflow-hidden border border-phy-accentHover`}>
                                         <div className={`absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none ${isMobile ? 'rounded-2xl' : 'rounded-3xl'}`} />
                                         <div className="text-xs font-bold text-white/70 uppercase mb-4 tracking-widest z-10">Answer</div>
-                                        <div className={`font-bold break-words w-full z-10 ${isMobile ? (answerText.length > 100 ? 'text-base' : 'text-2xl') : (answerText.length > 100 ? 'text-lg' : 'text-3xl')}`}>
+                                        <div className={`font-bold break-words w-full z-10 ${isMobile ? (answerText.length > 100 ? 'text-base' : 'text-xl') : (answerText.length > 100 ? 'text-lg' : 'text-3xl')}`}>
                                             {answerText}
                                         </div>
                                         <button

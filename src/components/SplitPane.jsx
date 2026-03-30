@@ -6,12 +6,17 @@ const SplitPane = ({
     initialLeftWidth = 350,
     minLeftWidth = 250,
     maxLeftWidth = 600,
+    mobileCollapsible = false,
+    mobileCollapsedDefault = false,
+    mobileToggleLabel = 'Left Panel',
+    mobileLeftMaxHeight = '40vh',
     leftClassName = "bg-slate-900/40 backdrop-blur-md border-r border-phy-border",
     rightClassName = "bg-slate-900/10"
 }) => {
     const [leftWidth, setLeftWidth] = useState(initialLeftWidth);
     const [isDragging, setIsDragging] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [mobileLeftOpen, setMobileLeftOpen] = useState(!mobileCollapsedDefault);
     const containerRef = useRef(null);
 
     // Handle Window Resize
@@ -22,6 +27,14 @@ const SplitPane = ({
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    useEffect(() => {
+        if (!isMobile) {
+            setMobileLeftOpen(true);
+            return;
+        }
+        setMobileLeftOpen(!mobileCollapsedDefault);
+    }, [isMobile, mobileCollapsedDefault]);
 
     const handleMouseDown = (e) => {
         if (isMobile) return; // Disable drag on mobile
@@ -73,10 +86,24 @@ const SplitPane = ({
             ref={containerRef}
             className={`w-full h-full flex ${isMobile ? 'flex-col' : 'flex-row'} overflow-hidden relative`}
         >
+            {isMobile && mobileCollapsible && (
+                <div className="shrink-0 border-b border-phy-border bg-phy-glassHeavy px-3 py-2">
+                    <button
+                        onClick={() => setMobileLeftOpen((v) => !v)}
+                        className="w-full text-xs font-bold border border-phy-border rounded-lg px-3 py-2 text-phy-text bg-phy-glass hover:bg-phy-glassHover transition-colors"
+                    >
+                        {mobileLeftOpen ? `收起${mobileToggleLabel}` : `展开${mobileToggleLabel}`}
+                    </button>
+                </div>
+            )}
             {/* Left Pane */}
             <div
-                style={{ width: isMobile ? '100%' : leftWidth, height: isMobile ? 'auto' : '100%' }}
-                className={`shrink-0 overflow-hidden relative z-10 transition-all duration-75 ${leftClassName} ${isMobile ? 'border-b max-h-[40vh]' : ''}`}
+                style={{
+                    width: isMobile ? '100%' : leftWidth,
+                    height: isMobile ? ((mobileCollapsible && !mobileLeftOpen) ? '0px' : mobileLeftMaxHeight) : '100%',
+                    maxHeight: isMobile ? ((mobileCollapsible && !mobileLeftOpen) ? '0px' : mobileLeftMaxHeight) : undefined
+                }}
+                className={`shrink-0 overflow-hidden relative z-10 transition-all duration-150 ${leftClassName} ${isMobile && (!mobileCollapsible || mobileLeftOpen) ? 'border-b' : ''}`}
             >
                 {left}
             </div>

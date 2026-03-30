@@ -5,7 +5,9 @@ import { Info, AlertTriangle, Lightbulb, Flame } from 'lucide-react';
 
 const SharedMarkdown = ({ content, className = '', rehypePlugins = [], remarkPlugins = [] }) => {
     return (
-        <div className={`prose prose-sm max-w-none prose-slate break-words ${className}`}>
+        <div
+            className={`prose prose-sm max-w-none break-words text-phy-text prose-headings:text-phy-text prose-p:text-phy-text prose-li:text-phy-text prose-ol:text-phy-text prose-ul:text-phy-text prose-strong:text-phy-text prose-code:text-phy-accent prose-a:text-phy-accent ${className}`}
+        >
             <ReactMarkdown
                 remarkPlugins={[remarkGfm, ...remarkPlugins]}
                 rehypePlugins={rehypePlugins}

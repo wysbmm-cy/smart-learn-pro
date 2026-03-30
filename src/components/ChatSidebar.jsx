@@ -546,9 +546,10 @@ const ChatSidebar = () => {
                                     {msg.role === 'user' ? (
                                         msg.content
                                     ) : (
-                                        <div className="prose prose-sm max-w-none prose-slate break-words" style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-                                            <SharedMarkdown content={msg.content} />
-                                        </div>
+                                        <SharedMarkdown
+                                            content={msg.content}
+                                            className="break-words"
+                                        />
                                     )}
                                 </div>
                             </div>

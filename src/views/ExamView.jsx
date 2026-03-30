@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { analyzeImagesForChat, debateReadingEvidence, generateAdversarialReadingDrill, sendChat } from '../services/ai';
+import { analyzeImagesForChat, analyzePassageStructure, debateReadingEvidence, generateAdversarialReadingDrill, sendChat } from '../services/ai';
 import { extractTextFromPDF } from '../services/pdf';
 import { getFolders, saveFolder, saveNote } from '../services/db';
 import {
@@ -34,10 +34,10 @@ const HISTORY_LIMIT = 30;
 const HISTORY_PASSAGE_LIMIT = 30000;
 const HISTORY_QUESTION_TEXT_LIMIT = 12000;
 const MODE_OPTIONS = [
-    { value: 'mixed', label: '混合模式（阅读+段落匹配）' },
+    { value: 'mixed', label: '混合模式（阅读 + 匹配）' },
     { value: 'reading', label: '仅阅读理解（选择题）' },
     { value: 'matching', label: '仅段落匹配（四六级常见）' },
-    { value: 'cet_strict_matching', label: '严格四六级段落匹配（Section B）' }
+    { value: 'cet_strict_matching', label: '大学英语四六级标准匹配 (Section B)' }
 ];
 
 const DEFAULT_SETUP = {
@@ -61,6 +61,11 @@ const getContextSlice = (text = '', start = 0, end = 0) => {
     const head = Math.max(0, safeStart - 35);
     const tail = Math.min(text.length, safeEnd + 35);
     return text.slice(head, tail).replace(/\n+/g, ' ').trim();
+};
+
+const getSelectionElement = (node) => {
+    if (!node) return null;
+    return node.nodeType === 1 ? node : node.parentElement;
 };
 
 const evaluatePaper = (paper, answers) => {
@@ -139,7 +144,7 @@ const buildHistoryRecord = ({ paper, setup, answers, result }) => {
             id: `mcq-${q.id || idx}`,
             type: 'mcq',
             question: `Q${idx + 1}. ${q.question || ''}`,
-            userAnswer: userAnswer || '未作答',
+            userAnswer: userAnswer || '未答',
             correctAnswer: correctAnswer || '未知',
             isCorrect: Boolean(userAnswer && correctAnswer && userAnswer === correctAnswer),
             explanation: q.explanation || '',
@@ -153,7 +158,7 @@ const buildHistoryRecord = ({ paper, setup, answers, result }) => {
             id: `match-${s.id || idx}`,
             type: 'matching',
             question: `M${idx + 1}. ${s.text || ''}`,
-            userAnswer: userAnswer || '未作答',
+            userAnswer: userAnswer || '未答',
             correctAnswer: correctAnswer || '未知',
             isCorrect: Boolean(userAnswer && correctAnswer && userAnswer === correctAnswer),
             explanation: s.explanation || '',
@@ -211,7 +216,11 @@ const ExamView = () => {
     const [selectionDraft, setSelectionDraft] = useState(null);
     const [isMarkingBusy, setIsMarkingBusy] = useState(false);
     const [sentenceAnalysis, setSentenceAnalysis] = useState('');
+    const [manualStructure, setManualStructure] = useState(null); // manual on-demand structure analysis
+    const [isAnalyzingStructure, setIsAnalyzingStructure] = useState(false);
     const articleMainRef = useRef(null);
+    const questionPanelRef = useRef(null);
+    const questionRefs = useRef({});
     const strictSetupMode = isStrictCETMode(setup.mode);
     const strictPaperMode = isStrictCETMode(paper?.mode);
     const strictCETActive = strictSetupMode || strictPaperMode;
@@ -264,6 +273,7 @@ const ExamView = () => {
         if (!source) return [];
 
         const normalizeMarks = (list) => (Array.isArray(list) ? list : [])
+            .filter((m) => String(m?.source || 'article') !== 'question')
             .map((m) => ({
                 ...m,
                 start: Math.max(0, Math.min(source.length, Number(m?.start) || 0)),
@@ -315,7 +325,7 @@ const ExamView = () => {
             setWordMarks(Array.isArray(parsed.wordMarks) ? parsed.wordMarks : []);
             setSentenceMarks(Array.isArray(parsed.sentenceMarks) ? parsed.sentenceMarks : []);
             setSentenceAnalysis(String(parsed.sentenceAnalysis || ''));
-            toast.success('已恢复上次阅读训练进度', { id: 'exam_restore_v2' });
+            toast.success('已恢复之前的考试进度', { id: 'exam_restore_v2' });
         } catch (e) {
             console.error('Failed to restore exam session:', e);
         }
@@ -374,14 +384,14 @@ const ExamView = () => {
         try {
             const dataUrls = await Promise.all(files.map(fileToDataUrl));
             const instruction = targetField === 'questionText'
-                ? '请提取图片中的题目文本，保留题号、选项和段落匹配结构，输出纯文本。'
-                : '请提取图片中的阅读原文内容，尽量保留段落分行，输出纯文本。';
+                ? 'Extract questions from images. Keep question numbers, options, and matching structure. Output plain text.'
+                : 'Extract reading passage text from images. Keep paragraph breaks when possible. Output plain text.';
             const extracted = await analyzeImagesForChat(dataUrls, settings, instruction);
-            if (!extracted?.trim()) throw new Error('图片中未识别到有效文本');
+            if (!extracted?.trim()) throw new Error('No valid text recognized from image');
             setSetup((prev) => ({ ...prev, [targetField]: `${(prev[targetField] || '').trim()}\n\n${extracted.trim()}`.trim() }));
-            toast.success(`已从图片提取文本并追加到${targetField === 'questionText' ? '题目区' : '原文区'}`);
+            toast.success(`Appended OCR text to ${targetField === 'questionText' ? 'question area' : 'passage area'}`);
         } catch (e) {
-            toast.error(`图片识别失败: ${e.message}`);
+            toast.error(`Image recognition failed: ${e.message}`);
         } finally {
             setIsParsingImages(false);
         }
@@ -420,11 +430,11 @@ const ExamView = () => {
     };
 
     const handleGenerate = async () => {
-        if (!setup.passage.trim()) return toast.error('请先输入或上传文章');
+        if (!setup.passage.trim()) return toast.error('Please input or upload a passage first');
         if (setup.sourceType === 'import' && !setup.questionText.trim()) return toast.error('请先导入你的题目内容');
         setIsGenerating(true);
         try {
-            toast.loading('正在生成对抗式阅读训练...', { id: 'exam_build_v2' });
+            toast.loading('正在生成对抗式阅读训练卷...', { id: 'exam_build_v2' });
             const requestQuestionCount = strictSetupMode ? 10 : setup.questionCount;
             const result = await generateAdversarialReadingDrill({
                 sourceType: setup.sourceType,
@@ -458,7 +468,7 @@ const ExamView = () => {
     };
 
     const clearSession = () => {
-        if (!window.confirm('确定清空当前训练并重新开始吗？')) return;
+        if (!window.confirm('Clear current training and start over?')) return;
         localStorage.removeItem(STORAGE_KEY);
         setPaper(null);
         setAnswers({});
@@ -490,11 +500,11 @@ const ExamView = () => {
             try {
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(compact));
                 finalList = compact;
-                toast('历史记录存储空间不足，已自动保存简版');
+                toast('历史记录存储空间已满，已自动保存精简版本。');
             } catch (e2) {
                 finalList = compact.slice(0, 8);
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(finalList));
-                toast('历史记录空间紧张，仅保留最近8条');
+                toast('存储空间不足，仅保留最近的记录。');
             }
         }
         setExamHistory(finalList);
@@ -509,7 +519,7 @@ const ExamView = () => {
     };
 
     const clearAllHistory = () => {
-        if (!window.confirm('确定清空阅读题历史记录吗？')) return;
+        if (!window.confirm('Clear all reading exam history?')) return;
         setExamHistory([]);
         setHistoryId(null);
         localStorage.removeItem(HISTORY_KEY);
@@ -528,7 +538,7 @@ const ExamView = () => {
     const restoreFromHistory = (record, retry = false) => {
         if (!record) return;
         if (!record.paperSnapshot) {
-            toast.error('该历史记录来自旧版本，暂不支持恢复原卷');
+            toast.error('此历史记录来自旧版本，无法完全恢复试卷内容');
             return;
         }
         const restoredPaper = {
@@ -562,14 +572,14 @@ const ExamView = () => {
         setSelectionDraft(null);
         setSentenceAnalysis('');
         setShowHistory(false);
-        toast.success(retry ? '已载入历史试卷，可重新作答' : '已回到历史作答界面');
+        toast.success(retry ? '已加载历史试卷，现在可以重新练习了。' : '已恢复至历史练习查看视图。');
     };
 
     const openDebate = (target) => {
         setDebateTarget(target);
         setDebateMessages([{
             role: 'assistant',
-            content: '我会扮演严格考官。请先说你的答案，并给出你引用的证据句。若证据不足，我会继续反驳你。'
+            content: '我将担任严格的考官。请针对你的答案给出论证理由，并引用原文证据。如果证据不足，我将继续质疑你的推理。'
         }]);
         setDebateInput('');
     };
@@ -580,7 +590,7 @@ const ExamView = () => {
         if (!userContent) return;
 
         const selected = answers[debateTarget.key] || '未作答';
-        const userMessage = `我的作答是 ${selected}。\n我的论证：${userContent}`;
+        const userMessage = `我的作答为：${selected}。\n我的论证理由：${userContent}`;
         const historyForAI = [...debateMessages, { role: 'user', content: userMessage }];
         setDebateMessages(historyForAI);
         setDebateInput('');
@@ -595,7 +605,7 @@ const ExamView = () => {
             }, settings);
             const reply = [
                 res.assistant_reply,
-                res.required_evidence ? `证据要求：${res.required_evidence}` : '',
+                res.required_evidence ? `证据要求为：${res.required_evidence}` : '',
                 res.hint ? `提示：${res.hint}` : ''
             ].filter(Boolean).join('\n');
 
@@ -639,11 +649,61 @@ const ExamView = () => {
                 start,
                 end,
                 text,
-                context: getContextSlice(source, start, end)
+                context: getContextSlice(source, start, end),
+                source: 'article',
+                questionKey: null,
+                questionLabel: null
             });
         } catch (e) {
             console.error('Selection capture failed:', e);
         }
+    };
+
+    const captureQuestionSelection = () => {
+        if (!questionPanelRef.current) return;
+        const selection = window.getSelection?.();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+            return;
+        }
+        const range = selection.getRangeAt(0);
+        if (!questionPanelRef.current.contains(range.commonAncestorContainer)) {
+            return;
+        }
+        const text = normalizeText(selection.toString());
+        if (!text) {
+            return;
+        }
+        const host = getSelectionElement(range.commonAncestorContainer);
+        const questionNode = host?.closest?.('[data-question-key]');
+        const questionKey = questionNode?.getAttribute?.('data-question-key') || null;
+        const questionLabel = questionNode?.getAttribute?.('data-question-label') || null;
+        const panelText = normalizeText(questionNode?.textContent || '');
+        setSelectionDraft({
+            start: null,
+            end: null,
+            text,
+            context: panelText && panelText !== text ? panelText.slice(0, 180) : '',
+            source: 'question',
+            questionKey,
+            questionLabel
+        });
+    };
+
+    const scrollToQuestion = (key) => {
+        if (!key) return;
+        const node = questionRefs.current[key];
+        if (!node) return;
+        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setMobilePane('questions');
+    };
+
+    const jumpToMark = (mark) => {
+        if (!mark) return;
+        if ((mark.source || 'article') === 'question' && mark.questionKey) {
+            scrollToQuestion(mark.questionKey);
+            return;
+        }
+        setMobilePane('article');
     };
 
     const clearSelectionDraft = () => {
@@ -656,25 +716,32 @@ const ExamView = () => {
     };
 
     const addSelectionMark = (type) => {
-        if (!selectionDraft?.text) return toast.error('请先在左侧文章中选中文本');
+        if (!selectionDraft?.text) return toast.error('请先在文中选中文字');
         const mark = {
             id: crypto.randomUUID(),
             text: selectionDraft.text,
             start: selectionDraft.start,
             end: selectionDraft.end,
             context: selectionDraft.context || '',
+            source: selectionDraft.source || 'article',
+            questionKey: selectionDraft.questionKey || null,
+            questionLabel: selectionDraft.questionLabel || null,
             createdAt: Date.now()
         };
         if (type === 'word') {
-            const exists = wordMarks.some((m) => m.start === mark.start && m.end === mark.end);
-            if (exists) return toast('该生词标记已存在');
+            const exists = mark.source === 'question'
+                ? wordMarks.some((m) => m.source === 'question' && m.questionKey === mark.questionKey && normalizeText(m.text).toLowerCase() === normalizeText(mark.text).toLowerCase())
+                : wordMarks.some((m) => (m.source || 'article') === 'article' && m.start === mark.start && m.end === mark.end);
+            if (exists) return toast('该词汇标记已存在');
             setWordMarks((prev) => [mark, ...prev].slice(0, 120));
-            toast.success('已添加生词高亮');
+            toast.success('生词已标记并高亮');
         } else {
-            const exists = sentenceMarks.some((m) => m.start === mark.start && m.end === mark.end);
-            if (exists) return toast('该疑难句标记已存在');
+            const exists = mark.source === 'question'
+                ? sentenceMarks.some((m) => m.source === 'question' && m.questionKey === mark.questionKey && normalizeText(m.text).toLowerCase() === normalizeText(mark.text).toLowerCase())
+                : sentenceMarks.some((m) => (m.source || 'article') === 'article' && m.start === mark.start && m.end === mark.end);
+            if (exists) return toast('该疑难句已在标记列表中');
             setSentenceMarks((prev) => [mark, ...prev].slice(0, 120));
-            toast.success('已添加疑难句下划线');
+            toast.success('疑难句已标记并添加下划线');
         }
         clearSelectionDraft();
     };
@@ -743,29 +810,29 @@ const ExamView = () => {
     };
 
     const analyzeSentenceMarks = async () => {
-        if (!sentenceMarks.length) return toast.error('请先标记疑难句');
+        if (!sentenceMarks.length) return toast.error('请先在文中标记疑难句');
         setIsMarkingBusy(true);
         try {
             const payload = sentenceMarks.slice(0, 10).map((m, idx) => (
-                `${idx + 1}. 句子：${m.text}\n上下文：${m.context || '无'}`
+                `${idx + 1}. Sentence: ${m.text}\nContext: ${m.context || 'None'}`
             )).join('\n\n');
             const prompt = `你是阅读理解教练。请用中文分析以下疑难句：
-1) 每句给出语法拆解（主干/从句/修饰）
+1) 每句给出语法拆解（主句、从句、修饰语）
 2) 解释为什么容易误解
 3) 给出做题时如何快速定位证据
 4) 提供简短改写或翻译
 请按“句子1/句子2...”分段输出。\n\n${payload}`;
             const result = await sendChat([
-                { role: 'system', content: '你是严格但清晰的英语阅读教练，输出简洁、结构化中文。' },
+                { role: 'system', content: 'You are a strict but clear English reading coach. Output concise structured Chinese.' },
                 { role: 'user', content: prompt }
             ], settings, false);
             const content = String(result || '').trim();
             setSentenceAnalysis(content);
             if (content) {
-                addChatMessage('assistant', `【疑难句分析】\n${content}`);
+                addChatMessage('assistant', `【疑难句深度分析】\n${content}`);
                 if (!isChatOpen) toggleChat();
             }
-            toast.success('疑难句分析完成');
+            toast.success('疑难句分析解析完成');
         } catch (e) {
             toast.error(`分析失败: ${e.message}`);
         } finally {
@@ -784,22 +851,22 @@ const ExamView = () => {
         return (
             <div className="mt-3 rounded-xl border border-orange-400/30 bg-orange-500/5 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-bold text-orange-200">证据反驳 · 当前题目 {debateTarget.key}</div>
+                    <div className="text-xs font-bold text-orange-600">证据反驳 · 当前题目 {debateTarget.key}</div>
                     <button
                         onClick={() => {
                             setDebateTarget(null);
                             setDebateMessages([]);
                             setDebateInput('');
                         }}
-                        className="text-[11px] px-2 py-1 rounded border border-orange-300/30 text-orange-200 hover:bg-orange-500/10"
+                        className="text-[11px] px-2 py-1 rounded border border-orange-500/30 text-orange-600 font-medium hover:bg-orange-500/10"
                     >
-                        关闭
+                        关闭对话
                     </button>
                 </div>
                 <div className="max-h-44 overflow-y-auto custom-scrollbar space-y-2 border border-orange-400/20 rounded-lg p-2.5 bg-phy-bg">
                     {debateMessages.map((m, idx) => (
-                        <div key={idx} className={`text-xs rounded-lg px-2.5 py-2 leading-6 whitespace-pre-wrap break-words ${m.role === 'assistant' ? 'bg-orange-500/10 text-orange-100 border border-orange-400/20' : 'bg-indigo-500/10 text-indigo-100 border border-indigo-400/20'}`}>
-                            <span className="text-[10px] opacity-80 mr-2">{m.role === 'assistant' ? 'AI考官' : '我'}</span>
+                        <div key={idx} className={`text-xs rounded-lg px-2.5 py-2 leading-6 whitespace-pre-wrap break-words ${m.role === 'assistant' ? 'bg-orange-500/10 text-orange-700 border border-orange-400/20' : 'bg-indigo-500/10 text-indigo-700 border border-indigo-400/20'}`}>
+                            <span className="text-[10px] font-bold opacity-80 mr-2">{m.role === 'assistant' ? 'AI 考官' : '我'}</span>
                             {m.content}
                         </div>
                     ))}
@@ -808,12 +875,12 @@ const ExamView = () => {
                     rows={3}
                     value={debateInput}
                     onChange={(e) => setDebateInput(e.target.value)}
-                    placeholder="输入你的论证：为什么你的答案更合理，并给出证据句。"
+                    placeholder="输入你的论证：说明为什么你的答案更合理，并引用原文证据句子。"
                     className="w-full bg-phy-bg border border-phy-border rounded-lg p-2.5 text-xs md:text-sm text-phy-text outline-none resize-none"
                 />
                 <div className="flex flex-wrap gap-2">
                     <button
-                        onClick={() => setDebateInput((prev) => prev || '我的答案是 ，我引用的证据句是：“”。')}
+                        onClick={() => setDebateInput((prev) => prev || '我的答案是 __，证据句位于原文："__"。')}
                         className="px-3 py-1.5 rounded-lg text-xs border border-phy-border text-phy-muted hover:text-phy-text"
                     >
                         插入论证模板
@@ -824,7 +891,7 @@ const ExamView = () => {
                         className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-500 hover:bg-orange-400 text-white disabled:opacity-60 flex items-center gap-1.5"
                     >
                         {isDebating ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                        让AI反驳我
+                        发送论证
                     </button>
                 </div>
             </div>
@@ -834,23 +901,23 @@ const ExamView = () => {
     const saveResultToNotes = async () => {
         if (!paper) return;
         const lines = [];
-        lines.push(`# 阅读理解对抗训练：${paper.title || '未命名'}`);
-        lines.push(`- 时间：${new Date().toLocaleString()}`);
-        lines.push(`- 模式：${setup.mode}`);
-        if (submitted) lines.push(`- 成绩：${score.correct}/${score.total}（${score.accuracy}%）`);
-        lines.push('\n## 原文');
+        lines.push(`# Reading Adversarial Training: ${paper.title || 'Untitled'}`);
+        lines.push(`- Time: ${new Date().toLocaleString()}`);
+        lines.push(`- Mode: ${setup.mode}`);
+        if (submitted) lines.push(`- Score: ${score.correct}/${score.total} (${score.accuracy}%)`);
+        lines.push('\n## Passage');
         lines.push(paper.passage || '');
 
         if (paper.questions?.length) {
-            lines.push('\n## 阅读选择题');
+            lines.push('\n## Reading Multiple Choice');
             paper.questions.forEach((q, idx) => {
                 const key = `mcq-${q.id}`;
                 lines.push(`\n### Q${idx + 1}. ${q.question}`);
                 q.options?.forEach((opt, optIdx) => lines.push(`- ${formatOption(optIdx, opt)}`));
-                lines.push(`- 我的答案：${answers[key] || '未作答'}`);
-                lines.push(`- 正确答案：${q.answer}`);
-                if (q.explanation) lines.push(`- 解析：${q.explanation}`);
-                if (q.evidence_sentence) lines.push(`- 证据句：${q.evidence_sentence}`);
+                lines.push(`- 我的答案: ${answers[key] || '未作答'}`);
+                lines.push(`- 正确答案: ${q.answer}`);
+                if (q.explanation) lines.push(`- 解析: ${q.explanation}`);
+                if (q.evidence_sentence) lines.push(`- 证据句: ${q.evidence_sentence}`);
             });
         }
 
@@ -859,43 +926,43 @@ const ExamView = () => {
             paper.matching.statements.forEach((s, idx) => {
                 const key = `match-${s.id}`;
                 lines.push(`\n### M${idx + 1}. ${s.text}`);
-                lines.push(`- 我的答案：${answers[key] || '未作答'}`);
-                lines.push(`- 正确答案：${s.answer}`);
-                if (s.explanation) lines.push(`- 解析：${s.explanation}`);
-                if (s.evidence_sentence) lines.push(`- 证据句：${s.evidence_sentence}`);
+                lines.push(`- 我的答案: ${answers[key] || '未作答'}`);
+                lines.push(`- 正确答案: ${s.answer}`);
+                if (s.explanation) lines.push(`- 解析: ${s.explanation}`);
+                if (s.evidence_sentence) lines.push(`- 证据句: ${s.evidence_sentence}`);
             });
         }
 
         if (debateMessages.length) {
             lines.push('\n## 证据反驳记录');
             debateMessages.forEach((m) => {
-                lines.push(`- ${m.role === 'assistant' ? 'AI考官' : '我'}：${m.content}`);
+                lines.push(`- ${m.role === 'assistant' ? 'AI 考官' : '我'}: ${m.content}`);
             });
         }
         if (wordMarks.length) {
             lines.push('\n## 生词标记');
             wordMarks.forEach((m, idx) => {
-                lines.push(`- ${idx + 1}. ${m.text}${m.context ? `（上下文：${m.context}）` : ''}`);
+                lines.push(`- ${idx + 1}. ${m.text}${m.context ? ` (Context: ${m.context})` : ''}`);
             });
         }
         if (sentenceMarks.length) {
             lines.push('\n## 疑难句标记');
             sentenceMarks.forEach((m, idx) => {
-                lines.push(`- ${idx + 1}. ${m.text}${m.context ? `（上下文：${m.context}）` : ''}`);
+                lines.push(`- ${idx + 1}. ${m.text}${m.context ? ` (Context: ${m.context})` : ''}`);
             });
         }
         if (sentenceAnalysis) {
-            lines.push('\n## 疑难句AI分析');
+            lines.push('\n## AI 疑难句解析');
             lines.push(sentenceAnalysis);
         }
 
         await saveNote({
             id: crypto.randomUUID(),
-            title: `阅读对抗训练 - ${new Date().toLocaleDateString()}`,
+            title: `Reading Adversarial Training - ${new Date().toLocaleDateString()}`,
             content: lines.join('\n'),
             updatedAt: Date.now()
         });
-        toast.success('已保存到笔记本');
+        toast.success('已保存到笔记');
     };
 
     const HistoryModal = showHistory ? (
@@ -904,7 +971,7 @@ const ExamView = () => {
                 <div className="shrink-0 px-4 py-3 border-b border-phy-border flex items-center justify-between gap-3">
                     <div className="min-w-0">
                         <h3 className="text-sm md:text-base font-black text-phy-text flex items-center gap-2">
-                            <History size={16} className="text-indigo-300" />
+                            <History size={16} className="text-indigo-600" />
                             阅读题历史回顾
                         </h3>
                         <p className="text-xs text-phy-muted mt-0.5">记录每次交卷成绩、错题与证据解析</p>
@@ -928,7 +995,7 @@ const ExamView = () => {
                 <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
                     <aside className="border-b md:border-b-0 md:border-r border-phy-border overflow-y-auto custom-scrollbar p-2">
                         {examHistory.length === 0 ? (
-                            <div className="text-xs text-phy-muted p-3">暂无历史记录。先完成一次交卷后会自动记录。</div>
+                            <div className="text-xs text-phy-muted p-3">暂无历史记录。提交第一份试卷后将显示在此处。</div>
                         ) : examHistory.map((r) => (
                             <button
                                 key={r.id}
@@ -938,7 +1005,7 @@ const ExamView = () => {
                                 <div className="text-xs text-phy-muted">{new Date(r.createdAt).toLocaleString()}</div>
                                 <div className="text-sm font-bold text-phy-text line-clamp-2 mt-0.5">{r.title}</div>
                                 <div className="text-xs mt-1 text-phy-muted">
-                                    {(r.result?.correct ?? 0)}/{(r.result?.total ?? 0)} · {(r.result?.accuracy ?? 0)}% · {r.mode}
+                                    {(r.result?.correct ?? 0)}/{(r.result?.total ?? 0)} | {(r.result?.accuracy ?? 0)}% | {r.mode === 'mixed' ? '混合' : r.mode === 'reading' ? '阅读' : r.mode === 'matching' ? '匹配' : '四六级'}模式
                                 </div>
                             </button>
                         ))}
@@ -946,15 +1013,15 @@ const ExamView = () => {
 
                     <section className="overflow-y-auto custom-scrollbar p-4">
                         {!selectedHistory ? (
-                            <div className="text-sm text-phy-muted">请选择一条历史记录。</div>
+                            <div className="text-sm text-phy-muted">请从左侧选择一条历史记录查看详情。</div>
                         ) : (
                             <div className="space-y-4">
                                 <div className="rounded-xl border border-phy-border bg-phy-glass p-4">
                                     <div className="text-xs text-phy-muted">{new Date(selectedHistory.createdAt).toLocaleString()}</div>
                                     <h4 className="text-base font-black text-phy-text mt-1">{selectedHistory.title}</h4>
                                     <div className="text-sm text-phy-muted mt-1">
-                                        得分 {selectedHistory.result.correct}/{selectedHistory.result.total}（{selectedHistory.result.accuracy}%）
-                                        · 模式 {selectedHistory.mode}
+                                        得分 {selectedHistory.result.correct}/{selectedHistory.result.total} ({selectedHistory.result.accuracy}%)
+                                        | 模式 {selectedHistory.mode === 'mixed' ? '混合' : selectedHistory.mode === 'reading' ? '阅读' : selectedHistory.mode === 'matching' ? '匹配' : '四六级标准'}
                                     </div>
                                     <div className="mt-3 flex flex-wrap gap-2">
                                         <button
@@ -969,15 +1036,15 @@ const ExamView = () => {
                                             disabled={!canRestoreSelectedHistory}
                                             className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400/40 text-emerald-100 bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50"
                                         >
-                                            重新练习这套题
+                                            重新练习这套卷
                                         </button>
                                     </div>
                                     {!canRestoreSelectedHistory ? (
-                                        <div className="mt-2 text-[11px] text-amber-300">该条为旧版历史，仅支持错题回顾，无法恢复完整题卷。</div>
+                                        <div className="mt-2 text-[11px] text-amber-300">早期历史记录仅支持查看错题回顾。</div>
                                     ) : null}
                                     {selectedHistory.passagePreview ? (
                                         <details className="mt-3">
-                                            <summary className="cursor-pointer text-xs font-bold text-phy-muted">查看原文片段</summary>
+                                            <summary className="cursor-pointer text-xs font-bold text-phy-muted">显示文章摘要</summary>
                                             <p className="mt-2 text-xs text-phy-text whitespace-pre-wrap break-words leading-6">{selectedHistory.passagePreview}</p>
                                         </details>
                                     ) : null}
@@ -987,14 +1054,14 @@ const ExamView = () => {
                                     <div className="flex items-center justify-between">
                                         <h5 className="text-sm font-bold text-phy-text">错题回顾</h5>
                                         <span className="text-xs text-phy-muted">
-                                            错题 {(selectedHistoryRows.filter((x) => !x.isCorrect).length)} / 总题 {selectedHistoryRows.length}
+                                            错误 {(selectedHistoryRows.filter((x) => !x.isCorrect).length)} / 总计 {selectedHistoryRows.length}
                                         </span>
                                     </div>
                                     <div className="mt-3 space-y-2">
                                         {selectedHistoryRows.length === 0 ? (
-                                            <div className="text-xs text-phy-muted">该记录无题目数据。</div>
+                                            <div className="text-xs text-phy-muted">本记录中没有题目详情。</div>
                                         ) : selectedHistoryRows.filter((x) => !x.isCorrect).length === 0 ? (
-                                            <div className="text-xs text-emerald-300">这次全对，表现很好。</div>
+                                            <div className="text-xs text-emerald-300">太棒了！本次练习全对。</div>
                                         ) : selectedHistoryRows.filter((x) => !x.isCorrect).map((row) => (
                                             <div key={row.id} className="rounded-lg border border-phy-border bg-phy-bg p-3">
                                                 <div className="text-xs text-phy-muted uppercase">{row.type}</div>
@@ -1013,7 +1080,7 @@ const ExamView = () => {
                                         onClick={() => selectedHistory && removeHistoryItem(selectedHistory.id)}
                                         className="px-3 py-1.5 rounded-lg text-xs border border-rose-400/40 text-rose-200 hover:bg-rose-500/10"
                                     >
-                                        删除本条记录
+                                        删除此记录
                                     </button>
                                 </div>
                             </div>
@@ -1031,11 +1098,11 @@ const ExamView = () => {
                 <div className="max-w-5xl mx-auto space-y-4 md:space-y-6">
                     <div className="rounded-2xl border border-phy-border bg-phy-glass p-5 md:p-6">
                         <h2 className="text-xl md:text-2xl font-black text-phy-text flex items-center gap-2">
-                            <ShieldAlert className="text-orange-400" size={24} />
+                            <ShieldAlert className="text-orange-600" size={24} />
                             考试模拟 · 阅读理解对抗模式
                         </h2>
                         <p className="text-sm text-phy-muted mt-2 leading-relaxed">
-                            AI 不只出题，还会反驳你的答案，逼你用原文证据来证明。支持导入文章自动出题，也支持你导入现成题目（阅读选择/四六级段落匹配）。
+                            AI 不只出题，还会反驳你的答案，逼你用原文证据来证明。支持导入文章自动出题，也支持你导入现成题目（阅读选择/四六级段落匹配）等。
                         </p>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <button
@@ -1043,21 +1110,21 @@ const ExamView = () => {
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 ${canvasMode === 'classic' ? 'bg-indigo-600 text-white border-indigo-500' : 'border-phy-border text-phy-text hover:bg-phy-bg'}`}
                             >
                                 <Minimize2 size={13} />
-                                原版布局
+                                精简布局
                             </button>
                             <button
                                 onClick={() => setCanvasMode('expanded')}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 ${canvasMode === 'expanded' ? 'bg-indigo-600 text-white border-indigo-500' : 'border-phy-border text-phy-text hover:bg-phy-bg'}`}
                             >
                                 <Maximize2 size={13} />
-                                填充拉大版
+                                宽屏布局
                             </button>
                             <button
                                 onClick={() => setShowHistory(true)}
                                 className="px-3 py-1.5 rounded-lg text-xs font-bold border border-phy-border text-phy-text hover:bg-phy-bg inline-flex items-center gap-1.5"
                             >
                                 <History size={14} />
-                                历史回顾（{examHistory.length}）
+                                历史回顾 ({examHistory.length}条)
                             </button>
                         </div>
                     </div>
@@ -1074,7 +1141,7 @@ const ExamView = () => {
                                 onClick={() => setSetup((prev) => ({ ...prev, sourceType: 'import' }))}
                                 className={`px-4 py-2 rounded-lg text-sm font-bold ${setup.sourceType === 'import' ? 'bg-indigo-600 text-white' : 'bg-phy-glass border border-phy-border text-phy-muted'}`}
                             >
-                                导入自定义题目
+                                导入自定义题型
                             </button>
                         </div>
 
@@ -1101,11 +1168,11 @@ const ExamView = () => {
                                 onChange={(e) => setSetup((prev) => ({ ...prev, questionCount: Math.max(3, Math.min(10, Number(e.target.value) || 6)) }))}
                                 disabled={strictSetupMode}
                                 className="bg-phy-bg border border-phy-border rounded-xl px-3 py-2 text-sm text-phy-text outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                                placeholder="题目数"
+                                placeholder="题目数量 (Question count)"
                             />
                         </div>
                         {strictSetupMode ? (
-                            <div className="mt-2 text-xs text-amber-300">严格模式固定为 CET Section B：10 题段落匹配，题号 36-45，段落标签 A-L。</div>
+                            <div className="mt-2 text-xs text-amber-300">严格模式：标准四六级段落匹配（10道题，36-45题，标签 A-L）。</div>
                         ) : null}
 
                         <div className="mt-4">
@@ -1122,13 +1189,13 @@ const ExamView = () => {
                                     }
                                 }}
                                 rows={10}
-                                placeholder="粘贴阅读文章原文（可为四六级真题段落）"
+                                placeholder="在此粘贴文章原文 (四六级/雅思/托福等)..."
                                 className="w-full mt-2 bg-phy-bg border border-phy-border rounded-xl p-3 text-sm text-phy-text resize-y outline-none"
                             />
                             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-phy-muted">
                                 <label className="inline-flex items-center gap-2 cursor-pointer">
                                     <Upload size={14} />
-                                    上传 PDF/TXT 到原文
+                                    本地上传 PDF/TXT 提取文本
                                     <input type="file" accept=".pdf,.txt" className="hidden" onChange={handleUploadPassage} />
                                 </label>
                                 <label className="inline-flex items-center gap-2 cursor-pointer">
@@ -1145,7 +1212,7 @@ const ExamView = () => {
 
                         {setup.sourceType === 'import' && (
                             <div className="mt-4">
-                                <label className="text-sm font-bold text-phy-text">自定义题目（支持粘贴原始试题文本）</label>
+                                <label className="text-sm font-bold text-phy-text">自定义题目 (直接粘贴卷面内容)</label>
                                 <textarea
                                     value={setup.questionText}
                                     onChange={(e) => setSetup((prev) => ({ ...prev, questionText: e.target.value }))}
@@ -1158,7 +1225,7 @@ const ExamView = () => {
                                         }
                                     }}
                                     rows={10}
-                                    placeholder="粘贴你的题目内容：可为阅读选择题、段落匹配题、或两者混合。"
+                                    placeholder="在此粘贴题目内容 (选择/匹配/混合)..."
                                     className="w-full mt-2 bg-phy-bg border border-phy-border rounded-xl p-3 text-sm text-phy-text resize-y outline-none"
                                 />
                                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-phy-muted">
@@ -1169,16 +1236,16 @@ const ExamView = () => {
                                     </label>
                                     <label className="inline-flex items-center gap-2 cursor-pointer">
                                         <Upload size={14} />
-                                        上传图片识别到题目区
+                                        上传图片识别到题目区域
                                         <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
                                             await parseImagesToField(e.target.files, 'questionText');
                                             e.target.value = '';
                                         }} />
                                     </label>
-                                    <span className="opacity-70">支持直接粘贴截图</span>
+                                    <span className="opacity-70">支持直接粘贴截图识别</span>
                                 </div>
                                 <details className="mt-3 text-xs text-phy-muted bg-phy-glass rounded-lg border border-phy-border p-3">
-                                    <summary className="cursor-pointer font-semibold">可选：推荐导入格式示例</summary>
+                                    <summary className="cursor-pointer font-semibold">（可选）推荐导入格式</summary>
                                     <pre className="mt-2 whitespace-pre-wrap break-all text-[11px]">{`[Reading]\nQ1. ...\nA. ...\nB. ...\nC. ...\nD. ...\n\n[Matching]\nA. paragraph text...\nB. paragraph text...\n...\nStatement 1: ...\nStatement 2: ...`}</pre>
                                 </details>
                             </div>
@@ -1203,10 +1270,10 @@ const ExamView = () => {
             {HistoryModal}
             <div className="shrink-0 border-b border-phy-border bg-phy-glass px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                    <div className="text-xs text-phy-muted uppercase tracking-wide">Exam Arena</div>
+                    <div className="text-xs text-phy-muted uppercase tracking-wide">阅读解析对抗竞技场</div>
                     <h2 className="font-black text-phy-text truncate">{paper.title || '阅读对抗训练'}</h2>
                     <div className="text-xs text-phy-muted mt-1">
-                        已作答 {answeredCount}/{totalCount} {submitted ? `· 正确率 ${score.accuracy}%` : ''}
+                        已答 {answeredCount}/{totalCount} {submitted ? `| 准确率：${score.accuracy}%` : ''}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1214,18 +1281,18 @@ const ExamView = () => {
                         <button
                             onClick={() => setCanvasMode('classic')}
                             className={`px-2.5 py-2 text-[11px] font-bold border-r border-phy-border flex items-center gap-1.5 ${canvasMode === 'classic' ? 'bg-indigo-600 text-white' : 'text-phy-muted hover:text-phy-text hover:bg-phy-glass'}`}
-                            title="原版布局"
+                            title="精简布局"
                         >
                             <Minimize2 size={12} />
-                            原版
+                            精简布局
                         </button>
                         <button
                             onClick={() => setCanvasMode('expanded')}
                             className={`px-2.5 py-2 text-[11px] font-bold flex items-center gap-1.5 ${canvasMode === 'expanded' ? 'bg-indigo-600 text-white' : 'text-phy-muted hover:text-phy-text hover:bg-phy-glass'}`}
-                            title="填充拉大版"
+                            title="宽屏显示"
                         >
                             <Maximize2 size={12} />
-                            拉大
+                            宽屏布局
                         </button>
                     </div>
                     <button
@@ -1233,7 +1300,7 @@ const ExamView = () => {
                         className="px-3 py-2 rounded-lg text-xs md:text-sm font-bold border border-phy-border text-phy-text hover:bg-phy-bg flex items-center gap-1.5"
                     >
                         <History size={14} />
-                        历史回顾（{examHistory.length}）
+                        历史回顾 ({examHistory.length}条)
                     </button>
                     <button
                         onClick={saveResultToNotes}
@@ -1281,7 +1348,7 @@ const ExamView = () => {
                     <section className={`rounded-2xl border border-phy-border bg-phy-glass overflow-hidden min-h-0 ${mobilePane === 'article' ? 'block' : 'hidden'} xl:flex xl:flex-col`}>
                         <div className="px-4 py-3 border-b border-phy-border bg-phy-bg flex items-center gap-2">
                             <FileText size={16} className="text-indigo-400" />
-                            <h3 className="font-bold text-phy-text text-sm flex-1">原文与段落</h3>
+                            <h3 className="font-bold text-phy-text text-sm flex-1">文章原文与分段 (Passage)</h3>
                             <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => setArticleFontLevel((v) => Math.max(0, v - 1))}
@@ -1303,27 +1370,32 @@ const ExamView = () => {
                             <div className="rounded-xl border border-phy-border bg-phy-glass p-3 space-y-3">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-bold text-phy-text inline-flex items-center gap-1.5">
-                                        <BookMarked size={14} className="text-amber-300" />
-                                        阅读标记
+                                        <BookMarked size={14} className="text-amber-600" />
+                                        阅读标记 (Reading Marks)
                                     </span>
-                                    <span className="text-[11px] text-phy-muted">选中文章文本后可标记生词或疑难句</span>
+                                    <span className="text-[11px] text-phy-muted">在原文或题目区选中文字即可标记生词或疑难句。</span>
                                 </div>
 
                                 {selectionDraft ? (
                                     <div className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-2.5">
-                                        <div className="text-[11px] text-indigo-200 mb-1">当前选中</div>
+                                        <div className="text-[11px] text-indigo-200 mb-1">当前选择内容</div>
+                                        <div className="text-[10px] text-phy-muted mb-1">
+                                            {(selectionDraft.source || 'article') === 'question'
+                                                ? `题目区域 ${selectionDraft.questionLabel || ''}`
+                                                : '文章原文区域'}
+                                        </div>
                                         <div className="text-xs text-phy-text leading-6 break-words">{selectionDraft.text}</div>
                                         <div className="mt-2 flex flex-wrap gap-2">
                                             <button
                                                 onClick={() => addSelectionMark('word')}
-                                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-amber-400/40 text-amber-100 bg-amber-500/15 hover:bg-amber-500/25 inline-flex items-center gap-1.5"
+                                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-amber-500/40 text-amber-700 bg-amber-500/15 hover:bg-amber-500/25 inline-flex items-center gap-1.5 shadow-sm"
                                             >
                                                 <Highlighter size={13} />
                                                 标记为生词
                                             </button>
                                             <button
                                                 onClick={() => addSelectionMark('sentence')}
-                                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-sky-400/40 text-sky-100 bg-sky-500/15 hover:bg-sky-500/25 inline-flex items-center gap-1.5"
+                                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-sky-500/40 text-sky-700 bg-sky-500/15 hover:bg-sky-500/25 inline-flex items-center gap-1.5 shadow-sm"
                                             >
                                                 <Underline size={13} />
                                                 标记为疑难句
@@ -1332,53 +1404,63 @@ const ExamView = () => {
                                                 onClick={clearSelectionDraft}
                                                 className="px-2.5 py-1.5 rounded-lg text-xs border border-phy-border text-phy-muted hover:text-phy-text"
                                             >
-                                                取消选中
+                                                取消选择
                                             </button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="text-[11px] text-phy-muted">提示：拖动鼠标选中左侧原文中的文字后，会出现标记按钮。</div>
+                                    <div className="text-[11px] text-phy-muted">提示：在左侧原文或右侧题目区选中文字，然后点击标记按钮。</div>
                                 )}
 
                                 <div className="flex flex-wrap gap-2">
                                     <button
                                         onClick={pushWordMarksToFlashcards}
                                         disabled={isMarkingBusy || wordMarks.length === 0}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400/30 text-emerald-200 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
                                     >
                                         {isMarkingBusy ? <Loader2 size={13} className="animate-spin" /> : <BookMarked size={13} />}
-                                        生词加入闪卡（{wordMarks.length}）
+                                        同步生词到闪卡库 ({wordMarks.length}个)
                                     </button>
                                     <button
                                         onClick={analyzeSentenceMarks}
                                         disabled={isMarkingBusy || sentenceMarks.length === 0}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-400/30 text-orange-200 bg-orange-500/10 hover:bg-orange-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-500/30 text-orange-600 bg-orange-500/10 hover:bg-orange-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
                                     >
                                         {isMarkingBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                                        AI分析疑难句（{sentenceMarks.length}）
+                                        智能分析疑难句 ({sentenceMarks.length}句)
                                     </button>
                                     <button
                                         onClick={clearAllMarks}
                                         disabled={!wordMarks.length && !sentenceMarks.length && !sentenceAnalysis}
-                                        className="px-3 py-1.5 rounded-lg text-xs border border-rose-400/30 text-rose-200 hover:bg-rose-500/10 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        className="px-3 py-1.5 rounded-lg text-xs border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 disabled:opacity-50 inline-flex items-center gap-1.5"
                                     >
                                         <Trash2 size={13} />
-                                        清空标记
+                                        清除所有标记
                                     </button>
                                 </div>
 
                                 {(wordMarks.length > 0 || sentenceMarks.length > 0) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5">
-                                            <div className="text-[11px] font-bold text-amber-200 mb-2">生词（高亮）</div>
+                                        <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
+                                            <div className="text-[11px] font-bold text-amber-600 mb-2">已标记生词 (高亮显示)</div>
                                             <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
                                                 {wordMarks.map((m) => (
                                                     <div key={m.id} className="flex items-start gap-2 text-xs">
-                                                        <span className="flex-1 text-phy-text break-words">{m.text}</span>
+                                                        <button
+                                                            onClick={() => jumpToMark(m)}
+                                                            className="flex-1 text-left"
+                                                        >
+                                                            <div className="text-[10px] text-phy-muted">
+                                                                {(m.source || 'article') === 'question'
+                                                                    ? `题目 ${m.questionLabel || ''}`
+                                                                    : '文章原文'}
+                                                            </div>
+                                                            <div className="text-phy-text break-words">{m.text}</div>
+                                                        </button>
                                                         <button
                                                             onClick={() => removeWordMark(m.id)}
                                                             className="text-phy-muted hover:text-rose-300"
-                                                            title="删除"
+                                                            title="移除生词标记"
                                                         >
                                                             <Trash2 size={12} />
                                                         </button>
@@ -1386,16 +1468,26 @@ const ExamView = () => {
                                                 ))}
                                             </div>
                                         </div>
-                                        <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5">
-                                            <div className="text-[11px] font-bold text-sky-200 mb-2">疑难句（下划线）</div>
+                                        <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
+                                            <div className="text-[11px] font-bold text-sky-600 mb-2">已标记疑难句 (下划线)</div>
                                             <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
                                                 {sentenceMarks.map((m) => (
                                                     <div key={m.id} className="flex items-start gap-2 text-xs">
-                                                        <span className="flex-1 text-phy-text break-words">{m.text}</span>
+                                                        <button
+                                                            onClick={() => jumpToMark(m)}
+                                                            className="flex-1 text-left"
+                                                        >
+                                                            <div className="text-[10px] text-phy-muted">
+                                                                {(m.source || 'article') === 'question'
+                                                                    ? `题目 ${m.questionLabel || ''}`
+                                                                    : '文章原文'}
+                                                            </div>
+                                                            <div className="text-phy-text break-words">{m.text}</div>
+                                                        </button>
                                                         <button
                                                             onClick={() => removeSentenceMark(m.id)}
                                                             className="text-phy-muted hover:text-rose-300"
-                                                            title="删除"
+                                                            title="移除疑难句标记"
                                                         >
                                                             <Trash2 size={12} />
                                                         </button>
@@ -1407,53 +1499,162 @@ const ExamView = () => {
                                 )}
 
                                 {sentenceAnalysis ? (
-                                    <div className="rounded-lg border border-orange-400/30 bg-orange-500/10 p-3">
-                                        <div className="text-xs font-bold text-orange-200 mb-1.5">AI 疑难句分析</div>
+                                    <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 shadow-sm">
+                                        <div className="text-xs font-bold text-orange-600 mb-1.5">AI 疑难句深度解析</div>
                                         <div className="text-xs text-phy-text whitespace-pre-wrap break-words leading-6">{sentenceAnalysis}</div>
                                     </div>
                                 ) : null}
                             </div>
                             {strictCETActive ? (
-                                <div className="rounded-xl border border-indigo-400/35 bg-indigo-500/10 p-3">
-                                    <div className="text-xs font-bold text-indigo-200 mb-1">Section B · 严格模式说明</div>
+                                <div className="rounded-xl border border-indigo-500/35 bg-indigo-500/10 p-3 shadow-sm">
+                                    <div className="text-xs font-bold text-indigo-600 mb-1">大学英语四六级 Section B 匹配 (严格模式)</div>
                                     <div className="text-[11px] text-phy-text leading-6">
-                                        阅读段落 A-L，完成 36-45 题；每题选择对应段落，段落可重复使用。
+                                        段落标签范围 A-L，对应题目 36-45。同一标签可多次使用。
                                     </div>
                                 </div>
                             ) : null}
 
-                            {paper.passage?.trim() ? (
-                                <div className="rounded-xl border border-phy-border bg-phy-bg p-3">
-                                    <div className="text-[11px] text-indigo-300 font-bold mb-1">全文</div>
-                                    <div
-                                        ref={articleMainRef}
-                                        tabIndex={0}
-                                        onMouseUp={captureSelection}
-                                        onKeyUp={captureSelection}
-                                        className={`${articleTextClass} text-phy-text whitespace-pre-wrap break-words outline-none`}
-                                    >
-                                        {annotatedPassageSegments.length ? annotatedPassageSegments.map((seg, idx) => (
-                                            <span
-                                                key={`${seg.start}-${seg.end}-${idx}`}
-                                                className={[
-                                                    seg.isWord ? 'bg-amber-400/25 rounded-[2px] px-[1px]' : '',
-                                                    seg.isSentence ? 'underline decoration-sky-400/80 decoration-2 underline-offset-[3px]' : ''
-                                                ].join(' ').trim()}
+                            {paper.passage?.trim() ? (() => {
+                                // Structure gutter color map (left-side thin bars only, no text color change)
+                                const GUTTER_COLOR = {
+                                    background: 'bg-slate-400',
+                                    claim: 'bg-indigo-400',
+                                    argument: 'bg-amber-400',
+                                    evidence: 'bg-emerald-400',
+                                    example: 'bg-teal-400',
+                                    counterargument: 'bg-rose-400',
+                                    transition: 'bg-purple-400',
+                                    conclusion: 'bg-sky-400',
+                                    other: 'bg-phy-muted',
+                                };
+                                const GUTTER_LABEL = {
+                                    background: '背景', claim: '观点', argument: '论证',
+                                    evidence: '证据', example: '例子', counterargument: '反驳',
+                                    transition: '过渡', conclusion: '结论', other: '其他',
+                                };
+
+                                // For each paragraph, find which segment it belongs to
+                                const getSegForPara = (idx1) =>
+                                    manualStructure?.segments?.find(s => idx1 >= s.startParagraph && idx1 <= s.endParagraph) || null;
+
+                                const handleAnalyzeStructure = async () => {
+                                    if (isAnalyzingStructure) return;
+                                    setIsAnalyzingStructure(true);
+                                    try {
+                                        const result = await analyzePassageStructure(paper.passage, settings);
+                                        setManualStructure(result);
+                                    } catch (e) {
+                                        toast.error(`架构分析失败: ${e.message}`);
+                                    } finally {
+                                        setIsAnalyzingStructure(false);
+                                    }
+                                };
+
+                                return (
+                                    <div className="rounded-xl border border-phy-border bg-phy-bg p-3 shadow-sm">
+                                        {/* Header row with manual trigger */}
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="text-[11px] text-indigo-600 font-bold">文章原文内容 (Passage)</div>
+                                            <div className="flex items-center gap-2">
+                                                {manualStructure && (
+                                                    <div className="text-[10px] text-phy-muted max-w-[180px] truncate hidden md:block" title={manualStructure.overview}>
+                                                        {manualStructure.overview}
+                                                    </div>
+                                                )}
+                                                {manualStructure ? (
+                                                    <button
+                                                        onClick={() => setManualStructure(null)}
+                                                        className="text-[10px] text-phy-muted hover:text-rose-600 px-1.5 py-0.5 rounded border border-phy-border font-medium"
+                                                    >
+                                                        隐藏架构
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={handleAnalyzeStructure}
+                                                        disabled={isAnalyzingStructure}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-indigo-500/40 text-[10px] text-indigo-600 font-bold hover:bg-indigo-500/10 disabled:opacity-50"
+                                                    >
+                                                        {isAnalyzingStructure ? <Loader2 size={10} className="animate-spin" /> : '◈'}
+                                                        {isAnalyzingStructure ? '分析中…' : '分析文章结构'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Article body: left gutter + text */}
+                                        <div className="flex gap-2">
+                                            {/* LEFT GUTTER: thin colored bars per paragraph, only when structure is ready */}
+                                            {manualStructure?.segments?.length > 0 ? (
+                                                <div className="flex flex-col gap-1 shrink-0 w-4 pt-0.5">
+                                                    {articleParagraphs.map((para, idx) => {
+                                                        const seg = getSegForPara(idx + 1);
+                                                        const color = seg ? (GUTTER_COLOR[seg.type] || 'bg-phy-muted') : 'bg-phy-border/40';
+                                                        const label = seg ? (seg.label || GUTTER_LABEL[seg.type] || '') : '';
+                                                        return (
+                                                            <div
+                                                                key={idx}
+                                                                className={`rounded-full w-1 mx-auto opacity-75 ${color}`}
+                                                                style={{ flex: Math.max(1, para.length), minHeight: 12 }}
+                                                                title={label ? `第${idx + 1}段 · ${label}` : `第${idx + 1}段`}
+                                                            />
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                /* Placeholder gutter to keep layout stable */
+                                                <div className="w-4 shrink-0" />
+                                            )}
+
+                                            {/* Article text — untouched */}
+                                            <div
+                                                ref={articleMainRef}
+                                                tabIndex={0}
+                                                onMouseUp={captureSelection}
+                                                onKeyUp={captureSelection}
+                                                className={`flex-1 min-w-0 ${articleTextClass} text-phy-text whitespace-pre-wrap break-words outline-none`}
                                             >
-                                                {seg.text}
-                                            </span>
-                                        )) : paper.passage}
+                                                {annotatedPassageSegments.length ? annotatedPassageSegments.map((seg, idx) => (
+                                                    <span
+                                                        key={`${seg.start}-${seg.end}-${idx}`}
+                                                        className={[
+                                                            seg.isWord ? 'bg-amber-400/25 rounded-[2px] px-[1px]' : '',
+                                                            seg.isSentence ? 'underline decoration-sky-400/80 decoration-2 underline-offset-[3px]' : ''
+                                                        ].join(' ').trim()}
+                                                    >
+                                                        {seg.text}
+                                                    </span>
+                                                )) : paper.passage}
+                                            </div>
+                                        </div>
+
+                                        {/* Structure legend shown below the text when active */}
+                                        {manualStructure?.segments?.length > 0 && (
+                                            <div className="mt-3 flex flex-wrap gap-1.5 border-t border-phy-border pt-2">
+                                                {manualStructure.segments.map((seg) => (
+                                                    <span
+                                                        key={seg.id}
+                                                        className="inline-flex items-center gap-1 text-[10px] text-phy-muted"
+                                                        title={seg.summary}
+                                                    >
+                                                        <span className={`w-2 h-2 rounded-full shrink-0 ${GUTTER_COLOR[seg.type] || 'bg-phy-muted'}`} />
+                                                        <span className="font-semibold">{seg.label || GUTTER_LABEL[seg.type]}</span>
+                                                        <span className="opacity-60">§{seg.startParagraph}{seg.startParagraph !== seg.endParagraph ? `–${seg.endParagraph}` : ''}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            ) : null}
+                                );
+                            })() : null}
+
 
                             {articleParagraphs.length > 1 ? (
                                 <details className="rounded-xl border border-phy-border bg-phy-glass p-3">
-                                    <summary className="cursor-pointer text-xs font-bold text-phy-muted">展开分段阅读</summary>
+                                    <summary className="cursor-pointer text-xs font-bold text-phy-muted">展开分段详细视图 (Paragraph View)</summary>
                                     <div className="mt-3 space-y-2">
                                         {articleParagraphs.map((text, idx) => (
-                                            <div key={`article-${idx}`} className="rounded-lg border border-phy-border bg-phy-bg p-2.5">
-                                                <div className="text-[11px] text-indigo-300 font-bold mb-1">正文段 {idx + 1}</div>
+                                            <div key={`p-${idx}`} className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
+                                                <div className="text-[11px] text-indigo-600 font-bold mb-1">第 {idx + 1} 段 (Paragraph)</div>
                                                 <p className={`${articleTextClass} text-phy-text whitespace-pre-wrap break-words`}>{text}</p>
                                             </div>
                                         ))}
@@ -1463,11 +1664,11 @@ const ExamView = () => {
 
                             {paper.matching?.paragraphs?.length ? (
                                 <details className="rounded-xl border border-phy-border bg-phy-glass p-3">
-                                    <summary className="cursor-pointer text-xs font-bold text-phy-muted">展开段落匹配标签（A/B/C...）</summary>
+                                    <summary className="cursor-pointer text-xs font-bold text-phy-muted">展开段落匹配标签 (Matching Labels A-L)</summary>
                                     <div className="mt-3 space-y-2">
                                         {paper.matching.paragraphs.map((p, idx) => (
-                                            <div key={`match-${idx}`} className="rounded-lg border border-phy-border bg-phy-bg p-2.5">
-                                                <div className="text-[11px] text-indigo-300 font-bold mb-1">段落 {p.label}</div>
+                                            <div key={`match-${idx}`} className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
+                                                <div className="text-[11px] text-indigo-600 font-bold mb-1">段落标签 {p.label} (Label)</div>
                                                 <p className={`${articleTextClass} text-phy-text whitespace-pre-wrap break-words`}>{p.text}</p>
                                             </div>
                                         ))}
@@ -1475,19 +1676,34 @@ const ExamView = () => {
                                 </details>
                             ) : null}
 
-                            {!paper.passage?.trim() && <div className="text-sm text-phy-muted">未检测到原文内容。</div>}
+                            {!paper.passage?.trim() && <div className="text-sm text-phy-muted">未检测到文章有效内容。</div>}
                         </div>
                     </section>
 
-                    <section className={`space-y-4 min-h-0 overflow-y-auto custom-scrollbar pr-1 ${mobilePane === 'questions' ? 'block' : 'hidden'} xl:block`}>
+                    <section
+                        ref={questionPanelRef}
+                        onMouseUp={captureQuestionSelection}
+                        className={`space-y-4 min-h-0 overflow-y-auto custom-scrollbar pr-1 ${mobilePane === 'questions' ? 'block' : 'hidden'} xl:block`}
+                    >
                         {!strictCETActive && (paper.questions || []).map((q, qIdx) => {
                             const key = `mcq-${q.id}`;
                             const selected = answers[key] || '';
                             const isRight = submitted && toAnswer(selected) === toAnswer(q.answer);
+
                             return (
-                                <article key={key} className="rounded-2xl border border-phy-border bg-phy-glass p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <h4 className="font-bold text-phy-text text-sm leading-6">Q{qIdx + 1}. {q.question}</h4>
+                                <article
+                                    key={key}
+                                    ref={(el) => {
+                                        if (el) questionRefs.current[key] = el;
+                                    }}
+                                    data-question-key={key}
+                                    data-question-label={`Q${qIdx + 1}`}
+                                    className="rounded-2xl border border-phy-border bg-phy-glass p-4"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex-1 text-sm font-bold text-phy-text break-words">
+                                            {qIdx + 1}. {q.text}
+                                        </div>
                                         {submitted ? (isRight ? <CheckCircle2 size={18} className="text-emerald-400 shrink-0" /> : <AlertCircle size={18} className="text-rose-400 shrink-0" />) : null}
                                     </div>
                                     <div className="mt-3 space-y-2">
@@ -1514,15 +1730,15 @@ const ExamView = () => {
                                         })}
                                     </div>
                                     {submitted && (
-                                        <div className="mt-3 rounded-lg border border-phy-border bg-phy-bg p-3 text-xs space-y-1">
-                                            <div className="text-phy-text">正确答案：<span className="font-bold">{q.answer}</span> · 你的答案：<span className="font-bold">{selected || '未作答'}</span></div>
+                                        <div className="mt-3 rounded-lg border border-phy-border bg-phy-bg p-3 text-xs space-y-1 shadow-sm">
+                                            <div className="text-phy-text">正确答案：<span className="font-bold">{q.answer}</span> | 你的答案：<span className="font-bold text-indigo-600">{selected || '未作答'}</span></div>
                                             {q.explanation ? <div className="text-phy-muted">解析：{q.explanation}</div> : null}
-                                            {q.evidence_sentence ? <div className="text-indigo-300">证据句：{q.evidence_sentence}</div> : null}
+                                            {q.evidence_sentence ? <div className="text-indigo-600 font-medium">证据句：{q.evidence_sentence}</div> : null}
                                         </div>
                                     )}
                                     <button
                                         onClick={() => openDebate({ ...q, key, type: 'mcq' })}
-                                        className="mt-3 px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-400/30 text-orange-200 bg-orange-500/10 hover:bg-orange-500/20 flex items-center gap-1.5"
+                                        className="mt-3 px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-500/30 text-orange-600 bg-orange-500/10 hover:bg-orange-500/20 flex items-center gap-1.5 shadow-sm"
                                     >
                                         <MessageSquare size={14} />
                                         进入证据反驳
@@ -1535,7 +1751,7 @@ const ExamView = () => {
                         {(paper.matching?.statements || []).length > 0 && (
                             <article className="rounded-2xl border border-phy-border bg-phy-glass p-4">
                                 <h4 className="font-bold text-phy-text text-sm mb-3">
-                                    {strictCETActive ? '段落匹配（严格 CET Section B）' : '段落匹配（CET 常见）'}
+                                    {strictCETActive ? '段落匹配 (标准四六级 Section B 模式)' : '段落匹配 (通用模式)'}
                                 </h4>
                                 <div className="space-y-3">
                                     {paper.matching.statements.map((s, idx) => {
@@ -1544,7 +1760,16 @@ const ExamView = () => {
                                         const isRight = submitted && toAnswer(selected) === toAnswer(s.answer);
                                         const statementNo = strictCETActive ? (Number(s.id) || (36 + idx)) : (idx + 1);
                                         return (
-                                            <div key={key} className={`rounded-xl border p-3 ${submitted && isRight ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-phy-border bg-phy-glass'}`}>
+                                            <div
+                                                key={key}
+                                                ref={(el) => {
+                                                    if (el) questionRefs.current[key] = el;
+                                                    else delete questionRefs.current[key];
+                                                }}
+                                                data-question-key={key}
+                                                data-question-label={`M${statementNo}`}
+                                                className={`rounded-xl border p-3 ${submitted && isRight ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-phy-border bg-phy-glass'}`}
+                                            >
                                                 <div className="text-sm text-phy-text leading-6">{statementNo}. {s.text}</div>
                                                 <div className="mt-2 flex items-center gap-2">
                                                     <label className="text-xs text-phy-muted">选择段落</label>
@@ -1558,7 +1783,7 @@ const ExamView = () => {
                                                         {(strictCETActive ? matchingOptions : paragraphPool).map((p) => <option key={p.label} value={p.label}>{p.label}</option>)}
                                                     </select>
                                                     {submitted ? (
-                                                        <span className={`text-xs font-bold ${isRight ? 'text-emerald-400' : 'text-rose-300'}`}>
+                                                        <span className={`text-xs font-bold ${isRight ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                             正确答案：{s.answer}
                                                         </span>
                                                     ) : null}
@@ -1571,10 +1796,10 @@ const ExamView = () => {
                                                 )}
                                                 <button
                                                     onClick={() => openDebate({ ...s, key, type: 'matching', question: s.text })}
-                                                    className="mt-2 px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-400/30 text-orange-200 bg-orange-500/10 hover:bg-orange-500/20 flex items-center gap-1.5"
+                                                    className="mt-2 px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-500/30 text-orange-600 bg-orange-500/10 hover:bg-orange-500/20 flex items-center gap-1.5 shadow-sm"
                                                 >
                                                     <MessageSquare size={14} />
-                                                    就这题和AI对抗
+                                                    进入证据反驳
                                                 </button>
                                                 {renderDebatePanel(key)}
                                             </div>

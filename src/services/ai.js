@@ -434,8 +434,26 @@ const splitParagraphs = (text = "") => {
 const toParagraphLabel = (index) => String.fromCharCode(65 + index);
 
 const chunkTextIntoParagraphs = (text = "", targetCount = 12) => {
-  const clean = String(text || "").replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
-  if (!clean) return [];
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+
+  // ✅ Fix: If the text already has natural paragraph breaks, use them first.
+  // Only fall back to character-length chunking when there are too few paragraphs.
+  const existingParagraphs = raw.split(/\n{1,}/).map((x) => x.trim()).filter(Boolean);
+  if (existingParagraphs.length >= Math.max(2, Math.floor(targetCount * 0.6))) {
+    // Sufficient natural paragraphs — merge short ones if way too many, then return.
+    if (existingParagraphs.length <= targetCount + 4) return existingParagraphs.slice(0, targetCount + 4);
+    // Too many tiny paragraphs — merge into targetCount buckets but keep newline logic.
+    const buckets = [];
+    const bSize = Math.ceil(existingParagraphs.length / targetCount);
+    for (let i = 0; i < existingParagraphs.length; i += bSize) {
+      buckets.push(existingParagraphs.slice(i, i + bSize).join(' '));
+    }
+    return buckets.filter(Boolean);
+  }
+
+  // Fallback: character-length splitting (for single-block text with no newlines)
+  const clean = raw.replace(/\n+/g, " ").replace(/\s+/g, " ");
   if (targetCount <= 1) return [clean];
 
   const segments = [];
@@ -461,6 +479,162 @@ const chunkTextIntoParagraphs = (text = "", targetCount = 12) => {
   }
 
   return segments.filter(Boolean);
+};
+
+const STRUCTURE_TYPES = [
+  "background",
+  "claim",
+  "argument",
+  "evidence",
+  "example",
+  "counterargument",
+  "transition",
+  "conclusion",
+  "other"
+];
+
+const normalizeStructureType = (value = "") => {
+  const key = String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (STRUCTURE_TYPES.includes(key)) return key;
+
+  if (/background|intro|context|背景|引入|开头/.test(key)) return "background";
+  if (/claim|thesis|main_point|core|观点|主张|立场/.test(key)) return "claim";
+  if (/argument|reason|point|论证|理由|分论点/.test(key)) return "argument";
+  if (/evidence|data|proof|证据|数据|事实/.test(key)) return "evidence";
+  if (/example|case|实例|例子/.test(key)) return "example";
+  if (/counter|rebuttal|concession|refute|反驳|让步/.test(key)) return "counterargument";
+  if (/transition|bridge|过渡|衔接/.test(key)) return "transition";
+  if (/conclusion|ending|summary|结论|总结|收束/.test(key)) return "conclusion";
+  return "other";
+};
+
+const buildHeuristicStructure = (passage = "") => {
+  const paragraphs = splitParagraphs(passage);
+  const total = paragraphs.length;
+  if (!total) {
+    return {
+      overview: "",
+      segments: []
+    };
+  }
+
+  if (total === 1) {
+    return {
+      overview: "文章较短，建议按“核心观点 + 证据句”方式阅读。",
+      segments: [
+        {
+          id: "seg-1",
+          type: "claim",
+          label: "核心观点",
+          startParagraph: 1,
+          endParagraph: 1,
+          summary: "单段文本，观点与论证集中在同一段。"
+        }
+      ]
+    };
+  }
+
+  const segments = [];
+  const introEnd = Math.max(1, Math.min(total - 1, Math.round(total * 0.2)));
+  const outroStart = Math.max(introEnd + 1, total);
+  const bodyStart = introEnd + 1;
+  const bodyEnd = total - 1;
+
+  segments.push({
+    id: `seg-${segments.length + 1}`,
+    type: "background",
+    label: "背景引入",
+    startParagraph: 1,
+    endParagraph: introEnd,
+    summary: "介绍问题背景、主题或讨论范围。"
+  });
+
+  if (bodyStart <= bodyEnd) {
+    const bodyCount = bodyEnd - bodyStart + 1;
+    if (bodyCount >= 4) {
+      const split = bodyStart + Math.floor(bodyCount / 2) - 1;
+      segments.push({
+        id: `seg-${segments.length + 1}`,
+        type: "argument",
+        label: "观点论证（一）",
+        startParagraph: bodyStart,
+        endParagraph: split,
+        summary: "展开第一组论证逻辑。"
+      });
+      segments.push({
+        id: `seg-${segments.length + 1}`,
+        type: "argument",
+        label: "观点论证（二）",
+        startParagraph: split + 1,
+        endParagraph: bodyEnd,
+        summary: "展开第二组论证或补充说明。"
+      });
+    } else {
+      segments.push({
+        id: `seg-${segments.length + 1}`,
+        type: "argument",
+        label: "核心论证",
+        startParagraph: bodyStart,
+        endParagraph: bodyEnd,
+        summary: "围绕核心观点给出主要论据。"
+      });
+    }
+  }
+
+  segments.push({
+    id: `seg-${segments.length + 1}`,
+    type: "conclusion",
+    label: "结论收束",
+    startParagraph: outroStart,
+    endParagraph: total,
+    summary: "总结立场并给出结论或行动建议。"
+  });
+
+  return {
+    overview: "已按段落结构自动分块（启发式），可点击卡片快速定位到对应段落区间。",
+    segments
+  };
+};
+
+const normalizePassageStructure = (raw = {}, passage = "") => {
+  const paragraphs = splitParagraphs(passage);
+  const paragraphCount = paragraphs.length;
+  if (!paragraphCount) {
+    return {
+      overview: "",
+      segments: []
+    };
+  }
+
+  const sourceSegments = Array.isArray(raw?.segments)
+    ? raw.segments
+    : Array.isArray(raw?.structure_segments)
+      ? raw.structure_segments
+      : [];
+
+  const normalized = sourceSegments.map((item, idx) => {
+    const start = Math.max(1, Math.min(paragraphCount, Number(item?.start_paragraph ?? item?.startParagraph ?? item?.start ?? 1) || 1));
+    const endRaw = Number(item?.end_paragraph ?? item?.endParagraph ?? item?.end ?? start) || start;
+    const end = Math.max(start, Math.min(paragraphCount, endRaw));
+    return {
+      id: String(item?.id || `seg-${idx + 1}`),
+      type: normalizeStructureType(item?.type || item?.category || item?.tag || item?.label),
+      label: String(item?.label || item?.title || "").trim(),
+      startParagraph: start,
+      endParagraph: end,
+      summary: String(item?.summary || item?.description || item?.reason || "").trim()
+    };
+  }).filter((seg) => seg.endParagraph >= seg.startParagraph);
+
+  if (!normalized.length) {
+    return buildHeuristicStructure(passage);
+  }
+
+  normalized.sort((a, b) => a.startParagraph - b.startParagraph || a.endParagraph - b.endParagraph);
+  const overview = String(raw?.overview || raw?.summary || raw?.comment || "").trim()
+    || "已按文章语义自动分块，可点击任意分区快速定位。";
+
+  return { overview, segments: normalized };
 };
 
 const normalizeReadingDrill = (raw = {}, fallbackPassage = "", fallbackMode = "mixed") => {
@@ -537,7 +711,8 @@ const normalizeReadingDrill = (raw = {}, fallbackPassage = "", fallbackMode = "m
     matching: {
       paragraphs,
       statements
-    }
+    },
+    structureAnalysis: null // analyzed on-demand by user, not auto-generated
   };
 };
 
@@ -564,7 +739,8 @@ Hard constraints:
 3. For paragraph matching, provide paragraph labels and statement-to-paragraph mapping with evidence sentence.
 4. Questions must test inference, logic, author attitude, detail, and structure (not pure vocabulary).
 5. Return strict JSON only.
-${strictCET ? `6. STRICT CET-6 Section B mode:
+6. CRITICAL: In the "passage" field, you MUST preserve ALL original paragraph breaks using \\n\\n between paragraphs. Do NOT merge paragraphs into a single block of text.
+${strictCET ? `7. STRICT CET-6 Section B mode:
 - mode must be "cet_strict_matching".
 - questions must be [] (no MCQ in this mode).
 - matching.paragraphs should be 10-12 paragraphs labeled sequentially A-L.
@@ -576,7 +752,7 @@ Output schema:
 {
   "title": "string",
   "mode": "reading|matching|mixed|cet_strict_matching",
-  "passage": "string",
+  "passage": "string (MUST use \\n\\n between paragraphs, never merge them)",
   "questions": [
     {
       "id": 1,
@@ -630,6 +806,57 @@ Please generate exam-grade reading drill with evidence anchors.
   const parsed = extractJSON(jsonStr);
   if (!parsed) throw new Error("AI returned invalid adversarial drill format");
   return normalizeReadingDrill(parsed, passage, mode);
+};
+
+export const analyzePassageStructure = async (passage, settings, options = {}) => {
+  const safePassage = String(passage || "").trim().slice(0, 14000);
+  if (!safePassage) {
+    return { overview: "", segments: [] };
+  }
+
+  // Fallback for internal testing/no-key mode.
+  if (!settings?.apiKey) {
+    return buildHeuristicStructure(safePassage);
+  }
+
+  const systemPrompt = `
+Role: Reading structure analyst for CET/IELTS/TOEFL preparation.
+Task: Segment the passage into rhetorical zones and paragraph ranges.
+
+Rules:
+1. Work strictly from passage content; do not invent information.
+2. Segment by paragraph index (1-based).
+3. Segments should be concise and practical for exam reading.
+4. Keep 3-8 segments max.
+5. Return JSON only.
+
+Schema:
+{
+  "overview": "string",
+  "segments": [
+    {
+      "type": "background|claim|argument|evidence|example|counterargument|transition|conclusion|other",
+      "label": "string",
+      "start_paragraph": 1,
+      "end_paragraph": 2,
+      "summary": "string"
+    }
+  ]
+}
+`;
+
+  try {
+    const jsonStr = await fetchFromAI([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: safePassage }
+    ], settings, true, 2, options);
+    const parsed = extractJSON(jsonStr);
+    if (!parsed) return buildHeuristicStructure(safePassage);
+    return normalizePassageStructure(parsed, safePassage);
+  } catch (e) {
+    console.warn("analyzePassageStructure fallback to heuristic:", e);
+    return buildHeuristicStructure(safePassage);
+  }
 };
 
 export const debateReadingEvidence = async (payload, settings, options = {}) => {
