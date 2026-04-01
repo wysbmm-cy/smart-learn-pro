@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, saveChatSession, getChatSessions, deleteChatSession, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 import { FSRS, Rating, createEmptyCard, State, generatorParameters } from 'ts-fsrs';
 
@@ -345,114 +345,8 @@ export const AppProvider = ({ children }) => {
         setAudioState(prev => ({ ...prev, isPlaying: playing }));
     };
 
-    // --- Chat State (New in v5: Multi-Session Persistence) ---
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [currentSessionId, setCurrentSessionId] = useState(null);
-    const [chatSessions, setChatSessions] = useState([]);
-
-    // Default welcome message
-    const DEFAULT_MSG = { role: 'assistant', content: 'Hello! I am your AI English tutor. Ask me anything about grammar, vocabulary, or learning methods.' };
-
-    const [chatMessages, setChatMessages] = useState([DEFAULT_MSG]);
-
     // Flashcard Navigation State (Shared)
     const [flashcardStartupState, setFlashcardStartupState] = useState(null); // { mode: 'study', folder: 'today' }
-
-    // Load sessions on mount
-    useEffect(() => {
-        const loadSessions = async () => {
-            const sessions = await getChatSessions();
-            setChatSessions(sessions);
-
-            // Auto-load latest session if exists? Or start new?
-            // Let's start clean, but having list available is good.
-        };
-        loadSessions();
-    }, []);
-
-    // Helper: Save current session to DB
-    const saveCurrentSessionToDB = async (messages, id) => {
-        if (!id) return; // Don't save if no ID (ephemeral start)
-        // Title logic: First user message or "New Chat"
-        const firstUserMsg = messages.find(m => m.role === 'user');
-        const title = firstUserMsg ? firstUserMsg.content.slice(0, 30) : "New Chat";
-
-        const session = {
-            id,
-            title,
-            messages
-        };
-        await saveChatSession(session);
-        // Update local list
-        setChatSessions(prev => {
-            const existing = prev.findIndex(s => s.id === id);
-            if (existing !== -1) {
-                const newSessions = [...prev];
-                newSessions[existing] = { ...session, updatedAt: Date.now() }; // Update timestamp implicitly by sort in DB, but here manual
-                return newSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-            } else {
-                return [session, ...prev];
-            }
-        });
-    };
-
-    const createNewChatSession = () => {
-        const newId = Date.now().toString();
-        setCurrentSessionId(newId);
-        setChatMessages([DEFAULT_MSG]);
-        // We don't save to DB until first message? Or save immediately.
-        // Let's save on first message to avoid empty spam. 
-        // But for UI "Active" state, let's just set ID.
-    };
-
-    const loadChatSession = (session) => {
-        setCurrentSessionId(session.id);
-        setChatMessages(session.messages || []);
-    };
-
-    const removeChatSession = async (id) => {
-        await deleteChatSession(id);
-        setChatSessions(prev => prev.filter(s => s.id !== id));
-        if (currentSessionId === id) {
-            // Reset to empty
-            setCurrentSessionId(null);
-            setChatMessages([DEFAULT_MSG]);
-        }
-    };
-
-    const toggleChat = () => setIsChatOpen(prev => !prev);
-
-
-    const addChatMessage = (role, content) => {
-        setChatMessages(prev => {
-            const newMsgs = [...prev, { role, content }];
-
-            // Auto-init session ID if null
-            let sessionId = currentSessionId;
-            if (!sessionId) {
-                sessionId = Date.now().toString();
-                setCurrentSessionId(sessionId);
-            }
-
-            // Debounce save? Or save immediately for safety.
-            saveCurrentSessionToDB(newMsgs, sessionId);
-            return newMsgs;
-        });
-    };
-
-    const updateLastChatMessage = (content) => {
-        setChatMessages(prev => {
-            const newMsgs = [...prev];
-            if (newMsgs.length > 0) {
-                newMsgs[newMsgs.length - 1].content = content;
-            }
-            // Also save to DB
-            if (currentSessionId) {
-                saveCurrentSessionToDB(newMsgs, currentSessionId);
-            }
-            return newMsgs;
-        });
-    };
 
     // Save Settings on Change
     useEffect(() => {
@@ -604,15 +498,6 @@ export const AppProvider = ({ children }) => {
         await deleteFlashcard(id);
     };
 
-
-
-    // Missing function: loadChatSessions
-    const loadChatSessions = async () => {
-        const sessions = await getChatSessions();
-        setChatSessions(sessions);
-        return sessions;
-    };
-
     const value = {
         settings,
         updateSetting,
@@ -630,18 +515,8 @@ export const AppProvider = ({ children }) => {
         setIsAnalyzing,
         progressMsg,
         setProgressMsg,
-        // Chat
-        isChatOpen,
-        toggleChat,
-        chatMessages,
-        addChatMessage,
-        updateLastChatMessage,
-        currentSessionId, // Add this
-        chatSessions,     // Add this
         // Navigation Signals
         flashcardStartupState, setFlashcardStartupState,
-        // Chat Sessions
-        loadChatSessions, createNewChatSession, removeChatSession, loadChatSession,
         logActivity,
         // DB Methods
         saveToHistory,

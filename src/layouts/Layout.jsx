@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useChat } from '../context/ChatContext';
 import ChatSidebar from '../components/ChatSidebar';
 import PomodoroTimer from '../components/PomodoroTimer';
 import GlobalPlayer from '../components/GlobalPlayer';
@@ -38,11 +39,13 @@ const MobileTab = ({ icon: Icon, label, active, onClick }) => (
 );
 
 const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, onOpenSplit, secondaryContent }) => {
-    const { toggleChat, isChatOpen, settings } = useApp();
+    const { settings } = useApp();
+    const { toggleChat, isChatOpen } = useChat();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [showPomodoro, setShowPomodoro] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
+    const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth < 768);
     const [examCanvasMode, setExamCanvasMode] = useState(() => localStorage.getItem('exam_canvas_mode') || 'classic');
 
     useEffect(() => {
@@ -54,6 +57,12 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         };
         window.addEventListener('exam-canvas-mode-change', handleExamCanvasModeChange);
         return () => window.removeEventListener('exam-canvas-mode-change', handleExamCanvasModeChange);
+    }, []);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobileViewport(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     const isExamExpanded = currentView === 'exam' && examCanvasMode === 'expanded';
@@ -109,7 +118,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         >
             {/* Zen Background */}
             <div className="absolute inset-0 z-0 transition-colors duration-500">
-                {settings.backgroundImage && (
+                {!isMobileViewport && settings.backgroundImage && (
                     <img
                         src={settings.backgroundImage}
                         className="w-full h-full object-cover transition-opacity duration-700 opacity-40 mix-blend-overlay"
@@ -118,7 +127,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                     />
                 )}
                 <div
-                    className="absolute inset-0 backdrop-blur-[20px] bg-phy-bg/20"
+                    className={`absolute inset-0 ${isMobileViewport ? 'bg-phy-bg/35' : 'backdrop-blur-[20px] bg-phy-bg/20'}`}
                     style={{ opacity: 1 - (settings.glassOpacity ?? 0.7) }}
                 />
             </div>
@@ -280,9 +289,11 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
             )}
 
             {/* AI Chat Sidebar */}
-            <div className="fixed inset-y-0 right-0 z-50 md:static md:z-0 md:h-full shrink-0">
-                <ChatSidebar />
-            </div>
+            {(!isMobileViewport || isChatOpen) && (
+                <div className="fixed inset-y-0 right-0 z-50 md:static md:z-0 md:h-full shrink-0">
+                    <ChatSidebar />
+                </div>
+            )}
 
             {/* Mobile Bottom Tab Bar */}
             <div

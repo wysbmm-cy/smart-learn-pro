@@ -1,6 +1,7 @@
-
+﻿
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useChat } from '../context/ChatContext';
 import { analyzeImagesForChat, analyzePassageStructure, debateReadingEvidence, generateAdversarialReadingDrill, sendChat } from '../services/ai';
 import { extractTextFromPDF } from '../services/pdf';
 import { getFolders, saveFolder, saveNote } from '../services/db';
@@ -30,14 +31,16 @@ import toast from 'react-hot-toast';
 
 const STORAGE_KEY = 'exam_adversarial_session_v2';
 const HISTORY_KEY = 'exam_adversarial_history_v1';
+const MOBILE_HEADER_MODE_KEY = 'exam_mobile_header_mode';
+const MOBILE_MARKS_COLLAPSED_KEY = 'exam_mobile_marks_collapsed';
 const HISTORY_LIMIT = 30;
 const HISTORY_PASSAGE_LIMIT = 30000;
 const HISTORY_QUESTION_TEXT_LIMIT = 12000;
 const MODE_OPTIONS = [
-    { value: 'mixed', label: '混合模式（阅读 + 匹配）' },
+    { value: 'mixed', label: '混合模式（阅读 + 段落匹配）' },
     { value: 'reading', label: '仅阅读理解（选择题）' },
     { value: 'matching', label: '仅段落匹配（四六级常见）' },
-    { value: 'cet_strict_matching', label: '大学英语四六级标准匹配 (Section B)' }
+    { value: 'cet_strict_matching', label: '四六级严格段落匹配（Section B）' }
 ];
 
 const DEFAULT_SETUP = {
@@ -107,7 +110,7 @@ const toSafePaperSnapshot = (paper = {}) => {
     const source = paper || {};
     const safeQuestions = Array.isArray(source.questions) ? source.questions.map((q, idx) => ({
         id: q?.id ?? idx,
-        question: String(q?.question || ''),
+        question: String(q?.question || q?.text || q?.stem || ''),
         options: Array.isArray(q?.options) ? q.options.map((x) => String(x || '')) : [],
         answer: String(q?.answer || ''),
         explanation: String(q?.explanation || ''),
@@ -120,7 +123,7 @@ const toSafePaperSnapshot = (paper = {}) => {
         })) : [],
         statements: Array.isArray(source.matching?.statements) ? source.matching.statements.map((s, idx) => ({
             id: s?.id ?? idx,
-            text: String(s?.text || ''),
+            text: String(s?.text || s?.statement || s?.question || s?.stem || ''),
             answer: String(s?.answer || ''),
             explanation: String(s?.explanation || ''),
             evidence_sentence: String(s?.evidence_sentence || '')
@@ -143,7 +146,7 @@ const buildHistoryRecord = ({ paper, setup, answers, result }) => {
         rows.push({
             id: `mcq-${q.id || idx}`,
             type: 'mcq',
-            question: `Q${idx + 1}. ${q.question || ''}`,
+            question: `Q${idx + 1}. ${q.question || q.text || q.stem || ''}`,
             userAnswer: userAnswer || '未答',
             correctAnswer: correctAnswer || '未知',
             isCorrect: Boolean(userAnswer && correctAnswer && userAnswer === correctAnswer),
@@ -157,7 +160,7 @@ const buildHistoryRecord = ({ paper, setup, answers, result }) => {
         rows.push({
             id: `match-${s.id || idx}`,
             type: 'matching',
-            question: `M${idx + 1}. ${s.text || ''}`,
+            question: `M${idx + 1}. ${s.text || s.question || s.statement || s.stem || ''}`,
             userAnswer: userAnswer || '未答',
             correctAnswer: correctAnswer || '未知',
             isCorrect: Boolean(userAnswer && correctAnswer && userAnswer === correctAnswer),
@@ -191,7 +194,8 @@ const buildHistoryRecord = ({ paper, setup, answers, result }) => {
 };
 
 const ExamView = () => {
-    const { settings, addFlashcard, loadUserFlashcards, addChatMessage, toggleChat, isChatOpen } = useApp();
+    const { settings, addFlashcard, loadUserFlashcards } = useApp();
+    const { addChatMessage, toggleChat, isChatOpen } = useChat();
     const [canvasMode, setCanvasMode] = useState(() => localStorage.getItem('exam_canvas_mode') || 'classic');
     const [setup, setSetup] = useState(DEFAULT_SETUP);
     const [paper, setPaper] = useState(null);
@@ -207,7 +211,15 @@ const ExamView = () => {
     const [debateInput, setDebateInput] = useState('');
     const [isDebating, setIsDebating] = useState(false);
     const [articleFontLevel, setArticleFontLevel] = useState(1); // 0 small, 1 default, 2 large
-    const [mobilePane, setMobilePane] = useState('questions'); // questions | article
+    const [mobilePane, setMobilePane] = useState('article'); // questions | article
+    const [mobileHeaderMode, setMobileHeaderMode] = useState(() => (
+        localStorage.getItem(MOBILE_HEADER_MODE_KEY) === 'classic' ? 'classic' : 'compact'
+    ));
+    const [mobileMarksCollapsed, setMobileMarksCollapsed] = useState(() => {
+        const saved = localStorage.getItem(MOBILE_MARKS_COLLAPSED_KEY);
+        if (saved === null) return true;
+        return saved === 'true';
+    });
     const [examHistory, setExamHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
     const [historyId, setHistoryId] = useState(null);
@@ -230,6 +242,15 @@ const ExamView = () => {
         localStorage.setItem('exam_canvas_mode', mode);
         window.dispatchEvent(new CustomEvent('exam-canvas-mode-change', { detail: { mode } }));
     }, [canvasMode]);
+
+    useEffect(() => {
+        const mode = mobileHeaderMode === 'classic' ? 'classic' : 'compact';
+        localStorage.setItem(MOBILE_HEADER_MODE_KEY, mode);
+    }, [mobileHeaderMode]);
+
+    useEffect(() => {
+        localStorage.setItem(MOBILE_MARKS_COLLAPSED_KEY, mobileMarksCollapsed ? 'true' : 'false');
+    }, [mobileMarksCollapsed]);
 
     const paragraphPool = useMemo(() => {
         if (!paper) return [];
@@ -255,6 +276,12 @@ const ExamView = () => {
         if (!paper) return 0;
         return (paper.questions?.length || 0) + (paper.matching?.statements?.length || 0);
     }, [paper]);
+    const unansweredCount = useMemo(() => Math.max(0, totalCount - answeredCount), [answeredCount, totalCount]);
+    const mobileSubmitLabel = useMemo(() => (
+        unansweredCount > 0
+            ? `提交并评分（${answeredCount}/${totalCount}，未答${unansweredCount}）`
+            : `提交并评分（${answeredCount}/${totalCount}）`
+    ), [answeredCount, totalCount, unansweredCount]);
     const selectedHistory = useMemo(() => {
         if (!historyId) return examHistory[0] || null;
         return examHistory.find((x) => x.id === historyId) || examHistory[0] || null;
@@ -322,6 +349,7 @@ const ExamView = () => {
             setAnswers(parsed.answers || {});
             setSubmitted(Boolean(parsed.submitted));
             setScore(parsed.score || { total: 0, correct: 0, accuracy: 0 });
+            setMobilePane('article');
             setWordMarks(Array.isArray(parsed.wordMarks) ? parsed.wordMarks : []);
             setSentenceMarks(Array.isArray(parsed.sentenceMarks) ? parsed.sentenceMarks : []);
             setSentenceAnalysis(String(parsed.sentenceAnalysis || ''));
@@ -454,7 +482,7 @@ const ExamView = () => {
             setDebateTarget(null);
             setDebateMessages([]);
             setDebateInput('');
-            setMobilePane('questions');
+            setMobilePane('article');
             setWordMarks([]);
             setSentenceMarks([]);
             setSelectionDraft(null);
@@ -477,7 +505,7 @@ const ExamView = () => {
         setDebateTarget(null);
         setDebateMessages([]);
         setDebateInput('');
-        setMobilePane('questions');
+        setMobilePane('article');
         setWordMarks([]);
         setSentenceMarks([]);
         setSelectionDraft(null);
@@ -532,13 +560,13 @@ const ExamView = () => {
         setScore(result);
         const record = buildHistoryRecord({ paper, setup, answers, result });
         persistHistory([record, ...examHistory]);
-        toast.success(`已交卷：${result.correct}/${result.total}，正确率 ${result.accuracy}%`);
+        toast.success(`已提交：${result.correct}/${result.total}，准确率 ${result.accuracy}%`);
     };
 
     const restoreFromHistory = (record, retry = false) => {
         if (!record) return;
         if (!record.paperSnapshot) {
-            toast.error('此历史记录来自旧版本，无法完全恢复试卷内容');
+            toast.error('该历史记录来自旧版本，无法完整恢复试卷内容。');
             return;
         }
         const restoredPaper = {
@@ -566,20 +594,20 @@ const ExamView = () => {
         setDebateTarget(null);
         setDebateMessages([]);
         setDebateInput('');
-        setMobilePane('questions');
+        setMobilePane('article');
         setWordMarks([]);
         setSentenceMarks([]);
         setSelectionDraft(null);
         setSentenceAnalysis('');
         setShowHistory(false);
-        toast.success(retry ? '已加载历史试卷，现在可以重新练习了。' : '已恢复至历史练习查看视图。');
+        toast.success(retry ? '已加载历史试卷，现在可以重新练习了。' : '已恢复到历史练习查看视图。');
     };
 
     const openDebate = (target) => {
         setDebateTarget(target);
         setDebateMessages([{
             role: 'assistant',
-            content: '我将担任严格的考官。请针对你的答案给出论证理由，并引用原文证据。如果证据不足，我将继续质疑你的推理。'
+            content: '我将担任严格考官。请针对你的答案给出论证理由，并引用原文证据。如果证据不足，我会继续追问你的推理。'
         }]);
         setDebateInput('');
     };
@@ -590,7 +618,7 @@ const ExamView = () => {
         if (!userContent) return;
 
         const selected = answers[debateTarget.key] || '未作答';
-        const userMessage = `我的作答为：${selected}。\n我的论证理由：${userContent}`;
+        const userMessage = `我的作答为：${selected}\n我的论证理由：${userContent}`;
         const historyForAI = [...debateMessages, { role: 'user', content: userMessage }];
         setDebateMessages(historyForAI);
         setDebateInput('');
@@ -732,7 +760,7 @@ const ExamView = () => {
             const exists = mark.source === 'question'
                 ? wordMarks.some((m) => m.source === 'question' && m.questionKey === mark.questionKey && normalizeText(m.text).toLowerCase() === normalizeText(mark.text).toLowerCase())
                 : wordMarks.some((m) => (m.source || 'article') === 'article' && m.start === mark.start && m.end === mark.end);
-            if (exists) return toast('该词汇标记已存在');
+            if (exists) return toast('该生词标记已存在');
             setWordMarks((prev) => [mark, ...prev].slice(0, 120));
             toast.success('生词已标记并高亮');
         } else {
@@ -790,7 +818,7 @@ const ExamView = () => {
                 await addFlashcard({
                     id: crypto.randomUUID(),
                     front: word,
-                    back: `来源：阅读理解标记\n建议：回顾原文上下文后再强化记忆`,
+                    back: '来源：阅读理解标记\n建议：回顾原文上下文后再强化记忆',
                     folderId: targetFolder.id,
                     tags: ['reading-mark'],
                     createdAt: Date.now(),
@@ -832,7 +860,7 @@ const ExamView = () => {
                 addChatMessage('assistant', `【疑难句深度分析】\n${content}`);
                 if (!isChatOpen) toggleChat();
             }
-            toast.success('疑难句分析解析完成');
+            toast.success('疑难句分析完成');
         } catch (e) {
             toast.error(`分析失败: ${e.message}`);
         } finally {
@@ -880,7 +908,7 @@ const ExamView = () => {
                 />
                 <div className="flex flex-wrap gap-2">
                     <button
-                        onClick={() => setDebateInput((prev) => prev || '我的答案是 __，证据句位于原文："__"。')}
+                        onClick={() => setDebateInput((prev) => prev || '我的答案是 __，证据句位于原文：“__”。')}
                         className="px-3 py-1.5 rounded-lg text-xs border border-phy-border text-phy-muted hover:text-phy-text"
                     >
                         插入论证模板
@@ -995,7 +1023,7 @@ const ExamView = () => {
                 <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
                     <aside className="border-b md:border-b-0 md:border-r border-phy-border overflow-y-auto custom-scrollbar p-2">
                         {examHistory.length === 0 ? (
-                            <div className="text-xs text-phy-muted p-3">暂无历史记录。提交第一份试卷后将显示在此处。</div>
+                            <div className="text-xs text-phy-muted p-3">暂无历史记录。提交第一份试卷后会显示在这里。</div>
                         ) : examHistory.map((r) => (
                             <button
                                 key={r.id}
@@ -1054,7 +1082,7 @@ const ExamView = () => {
                                     <div className="flex items-center justify-between">
                                         <h5 className="text-sm font-bold text-phy-text">错题回顾</h5>
                                         <span className="text-xs text-phy-muted">
-                                            错误 {(selectedHistoryRows.filter((x) => !x.isCorrect).length)} / 总计 {selectedHistoryRows.length}
+                                            错误 {selectedHistoryRows.filter((x) => !x.isCorrect).length} / 总计 {selectedHistoryRows.length}
                                         </span>
                                     </div>
                                     <div className="mt-3 space-y-2">
@@ -1102,7 +1130,7 @@ const ExamView = () => {
                             考试模拟 · 阅读理解对抗模式
                         </h2>
                         <p className="text-sm text-phy-muted mt-2 leading-relaxed">
-                            AI 不只出题，还会反驳你的答案，逼你用原文证据来证明。支持导入文章自动出题，也支持你导入现成题目（阅读选择/四六级段落匹配）等。
+                            AI 不只出题，还会反驳你的答案，逼你用原文证据来证明。支持导入文章自动出题，也支持导入现成题目（阅读选择/段落匹配）。
                         </p>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <button
@@ -1110,14 +1138,14 @@ const ExamView = () => {
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 ${canvasMode === 'classic' ? 'bg-indigo-600 text-white border-indigo-500' : 'border-phy-border text-phy-text hover:bg-phy-bg'}`}
                             >
                                 <Minimize2 size={13} />
-                                精简布局
+                                经典布局
                             </button>
                             <button
                                 onClick={() => setCanvasMode('expanded')}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border inline-flex items-center gap-1.5 ${canvasMode === 'expanded' ? 'bg-indigo-600 text-white border-indigo-500' : 'border-phy-border text-phy-text hover:bg-phy-bg'}`}
                             >
                                 <Maximize2 size={13} />
-                                宽屏布局
+                                填充拉大版
                             </button>
                             <button
                                 onClick={() => setShowHistory(true)}
@@ -1141,7 +1169,7 @@ const ExamView = () => {
                                 onClick={() => setSetup((prev) => ({ ...prev, sourceType: 'import' }))}
                                 className={`px-4 py-2 rounded-lg text-sm font-bold ${setup.sourceType === 'import' ? 'bg-indigo-600 text-white' : 'bg-phy-glass border border-phy-border text-phy-muted'}`}
                             >
-                                导入自定义题型
+                                导入自定义题目
                             </button>
                         </div>
 
@@ -1172,7 +1200,7 @@ const ExamView = () => {
                             />
                         </div>
                         {strictSetupMode ? (
-                            <div className="mt-2 text-xs text-amber-300">严格模式：标准四六级段落匹配（10道题，36-45题，标签 A-L）。</div>
+                            <div className="mt-2 text-xs text-amber-300">严格模式：标准四六级段落匹配，10 题（36-45），标签 A-L。</div>
                         ) : null}
 
                         <div className="mt-4">
@@ -1189,7 +1217,7 @@ const ExamView = () => {
                                     }
                                 }}
                                 rows={10}
-                                placeholder="在此粘贴文章原文 (四六级/雅思/托福等)..."
+                                placeholder="在此粘贴文章原文（四六级/雅思/托福等）..."
                                 className="w-full mt-2 bg-phy-bg border border-phy-border rounded-xl p-3 text-sm text-phy-text resize-y outline-none"
                             />
                             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-phy-muted">
@@ -1200,7 +1228,7 @@ const ExamView = () => {
                                 </label>
                                 <label className="inline-flex items-center gap-2 cursor-pointer">
                                     <Upload size={14} />
-                                    上传图片识别到原文
+                                    上传图片识别到原文区
                                     <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
                                         await parseImagesToField(e.target.files, 'passage');
                                         e.target.value = '';
@@ -1212,7 +1240,7 @@ const ExamView = () => {
 
                         {setup.sourceType === 'import' && (
                             <div className="mt-4">
-                                <label className="text-sm font-bold text-phy-text">自定义题目 (直接粘贴卷面内容)</label>
+                                <label className="text-sm font-bold text-phy-text">自定义题目（粘贴卷面内容）</label>
                                 <textarea
                                     value={setup.questionText}
                                     onChange={(e) => setSetup((prev) => ({ ...prev, questionText: e.target.value }))}
@@ -1225,18 +1253,18 @@ const ExamView = () => {
                                         }
                                     }}
                                     rows={10}
-                                    placeholder="在此粘贴题目内容 (选择/匹配/混合)..."
+                                    placeholder="在此粘贴题目内容（选择/匹配/混合）..."
                                     className="w-full mt-2 bg-phy-bg border border-phy-border rounded-xl p-3 text-sm text-phy-text resize-y outline-none"
                                 />
                                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-phy-muted">
                                     <label className="inline-flex items-center gap-2 cursor-pointer">
                                         <Upload size={14} />
-                                        上传题目文件到题库输入框
+                                        上传题目文件到题目区
                                         <input type="file" accept=".pdf,.txt,.md,.json" className="hidden" onChange={handleUploadQuestions} />
                                     </label>
                                     <label className="inline-flex items-center gap-2 cursor-pointer">
                                         <Upload size={14} />
-                                        上传图片识别到题目区域
+                                        上传图片识别到题目区
                                         <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
                                             await parseImagesToField(e.target.files, 'questionText');
                                             e.target.value = '';
@@ -1268,12 +1296,12 @@ const ExamView = () => {
     return (
         <div className="h-full flex flex-col overflow-hidden">
             {HistoryModal}
-            <div className="shrink-0 border-b border-phy-border bg-phy-glass px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="hidden md:flex shrink-0 border-b border-phy-border bg-phy-glass px-4 md:px-6 py-3 flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                    <div className="text-xs text-phy-muted uppercase tracking-wide">阅读解析对抗竞技场</div>
+                    <div className="text-xs text-phy-muted uppercase tracking-wide">阅读解析对抗训练</div>
                     <h2 className="font-black text-phy-text truncate">{paper.title || '阅读对抗训练'}</h2>
                     <div className="text-xs text-phy-muted mt-1">
-                        已答 {answeredCount}/{totalCount} {submitted ? `| 准确率：${score.accuracy}%` : ''}
+                        已答 {answeredCount}/{totalCount} {submitted ? `| 准确率 ${score.accuracy}%` : ''}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1281,18 +1309,18 @@ const ExamView = () => {
                         <button
                             onClick={() => setCanvasMode('classic')}
                             className={`px-2.5 py-2 text-[11px] font-bold border-r border-phy-border flex items-center gap-1.5 ${canvasMode === 'classic' ? 'bg-indigo-600 text-white' : 'text-phy-muted hover:text-phy-text hover:bg-phy-glass'}`}
-                            title="精简布局"
+                            title="经典布局"
                         >
                             <Minimize2 size={12} />
-                            精简布局
+                            经典布局
                         </button>
                         <button
                             onClick={() => setCanvasMode('expanded')}
                             className={`px-2.5 py-2 text-[11px] font-bold flex items-center gap-1.5 ${canvasMode === 'expanded' ? 'bg-indigo-600 text-white' : 'text-phy-muted hover:text-phy-text hover:bg-phy-glass'}`}
-                            title="宽屏显示"
+                            title="填充拉大版"
                         >
                             <Maximize2 size={12} />
-                            宽屏布局
+                            填充拉大版
                         </button>
                     </div>
                     <button
@@ -1314,7 +1342,7 @@ const ExamView = () => {
                         className="px-3 py-2 rounded-lg text-xs md:text-sm font-bold bg-phy-glass border border-phy-border text-phy-muted hover:text-phy-text flex items-center gap-1.5"
                     >
                         <RotateCcw size={14} />
-                        重开训练
+                        重新训练
                     </button>
                     <button
                         onClick={submitPaper}
@@ -1326,17 +1354,111 @@ const ExamView = () => {
                 </div>
             </div>
 
-            <div className="xl:hidden shrink-0 px-3 pt-3">
+            <div className="md:hidden shrink-0 border-b border-phy-border bg-phy-glass px-3 py-2">
+                <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] text-phy-muted uppercase tracking-wide">阅读对抗训练</div>
+                        <h2 className="text-base font-black text-phy-text leading-6 truncate">{paper.title || '阅读对抗训练'}</h2>
+                        <div className="text-xs text-phy-muted mt-1">
+                            已答 {answeredCount}/{totalCount} {submitted ? `| 准确率 ${score.accuracy}%` : ''}
+                        </div>
+                    </div>
+                    <button
+                        onClick={submitPaper}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black inline-flex items-center gap-1.5"
+                        title="提交并评分"
+                    >
+                        <Target size={13} />
+                        提交
+                    </button>
+                </div>
+
+                {mobileHeaderMode === 'compact' ? (
+                    <div className="mt-2 flex items-center gap-2">
+                        <button
+                            onClick={() => setMobileHeaderMode('classic')}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-bg"
+                        >
+                            原版头部
+                        </button>
+                        <details className="relative ml-auto">
+                            <summary className="list-none px-3 py-1.5 rounded-lg text-xs font-bold border border-phy-border text-phy-text bg-phy-bg cursor-pointer">
+                                更多
+                            </summary>
+                            <div className="absolute right-0 mt-2 min-w-[170px] rounded-xl border border-phy-border bg-phy-bg p-2 space-y-1 z-20 shadow-xl">
+                                <button
+                                    onClick={() => setShowHistory(true)}
+                                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-phy-text hover:bg-phy-glass inline-flex items-center gap-1.5"
+                                >
+                                    <History size={13} />
+                                    历史回顾 ({examHistory.length})
+                                </button>
+                                <button
+                                    onClick={saveResultToNotes}
+                                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-phy-text hover:bg-phy-glass inline-flex items-center gap-1.5"
+                                >
+                                    <Save size={13} />
+                                    保存到笔记
+                                </button>
+                                <button
+                                    onClick={clearSession}
+                                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-phy-muted hover:text-phy-text hover:bg-phy-glass inline-flex items-center gap-1.5"
+                                >
+                                    <RotateCcw size={13} />
+                                    重新训练
+                                </button>
+                            </div>
+                        </details>
+                    </div>
+                ) : (
+                    <div className="mt-2 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => setShowHistory(true)}
+                                className="px-2.5 py-2 rounded-lg text-xs font-bold border border-phy-border text-phy-text hover:bg-phy-bg inline-flex items-center justify-center gap-1.5"
+                            >
+                                <History size={13} />
+                                历史回顾
+                            </button>
+                            <button
+                                onClick={saveResultToNotes}
+                                className="px-2.5 py-2 rounded-lg text-xs font-bold border border-phy-border text-phy-text hover:bg-phy-bg inline-flex items-center justify-center gap-1.5"
+                            >
+                                <Save size={13} />
+                                保存到笔记
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={clearSession}
+                                className="px-2.5 py-2 rounded-lg text-xs font-bold border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-bg inline-flex items-center justify-center gap-1.5"
+                            >
+                                <RotateCcw size={13} />
+                                重新训练
+                            </button>
+                            <button
+                                onClick={() => setMobileHeaderMode('compact')}
+                                className="px-2.5 py-2 rounded-lg text-xs font-bold border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10 inline-flex items-center justify-center gap-1.5"
+                            >
+                                <Minimize2 size={13} />
+                                切换紧凑
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="md:hidden shrink-0 px-3 py-2 border-b border-phy-border bg-phy-bg/95 backdrop-blur-sm">
                 <div className="inline-flex w-full rounded-xl border border-phy-border bg-phy-glass p-1">
                     <button
                         onClick={() => setMobilePane('questions')}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${mobilePane === 'questions' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                        className={`flex-1 py-1.5 rounded-lg text-sm font-bold transition ${mobilePane === 'questions' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
                     >
                         做题区
                     </button>
                     <button
                         onClick={() => setMobilePane('article')}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${mobilePane === 'article' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                        className={`flex-1 py-1.5 rounded-lg text-sm font-bold transition ${mobilePane === 'article' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
                     >
                         原文区
                     </button>
@@ -1345,7 +1467,7 @@ const ExamView = () => {
 
             <div className="flex-1 min-h-0 p-3 md:p-5">
                 <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)] gap-4 h-full min-h-0">
-                    <section className={`rounded-2xl border border-phy-border bg-phy-glass overflow-hidden min-h-0 ${mobilePane === 'article' ? 'block' : 'hidden'} xl:flex xl:flex-col`}>
+                    <section className={`rounded-2xl border border-phy-border bg-phy-glass overflow-hidden min-h-0 ${mobilePane === 'article' ? 'flex flex-col' : 'hidden'} xl:flex xl:flex-col`}>
                         <div className="px-4 py-3 border-b border-phy-border bg-phy-bg flex items-center gap-2">
                             <FileText size={16} className="text-indigo-400" />
                             <h3 className="font-bold text-phy-text text-sm flex-1">文章原文与分段 (Passage)</h3>
@@ -1373,143 +1495,157 @@ const ExamView = () => {
                                         <BookMarked size={14} className="text-amber-600" />
                                         阅读标记 (Reading Marks)
                                     </span>
-                                    <span className="text-[11px] text-phy-muted">在原文或题目区选中文字即可标记生词或疑难句。</span>
-                                </div>
-
-                                {selectionDraft ? (
-                                    <div className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-2.5">
-                                        <div className="text-[11px] text-indigo-200 mb-1">当前选择内容</div>
-                                        <div className="text-[10px] text-phy-muted mb-1">
-                                            {(selectionDraft.source || 'article') === 'question'
-                                                ? `题目区域 ${selectionDraft.questionLabel || ''}`
-                                                : '文章原文区域'}
-                                        </div>
-                                        <div className="text-xs text-phy-text leading-6 break-words">{selectionDraft.text}</div>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => addSelectionMark('word')}
-                                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-amber-500/40 text-amber-700 bg-amber-500/15 hover:bg-amber-500/25 inline-flex items-center gap-1.5 shadow-sm"
-                                            >
-                                                <Highlighter size={13} />
-                                                标记为生词
-                                            </button>
-                                            <button
-                                                onClick={() => addSelectionMark('sentence')}
-                                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-sky-500/40 text-sky-700 bg-sky-500/15 hover:bg-sky-500/25 inline-flex items-center gap-1.5 shadow-sm"
-                                            >
-                                                <Underline size={13} />
-                                                标记为疑难句
-                                            </button>
-                                            <button
-                                                onClick={clearSelectionDraft}
-                                                className="px-2.5 py-1.5 rounded-lg text-xs border border-phy-border text-phy-muted hover:text-phy-text"
-                                            >
-                                                取消选择
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-[11px] text-phy-muted">提示：在左侧原文或右侧题目区选中文字，然后点击标记按钮。</div>
-                                )}
-
-                                <div className="flex flex-wrap gap-2">
+                                    <span className="text-[11px] text-phy-muted hidden md:inline">
+                                        在原文或题目区选中文字即可标记生词或疑难句。
+                                    </span>
                                     <button
-                                        onClick={pushWordMarksToFlashcards}
-                                        disabled={isMarkingBusy || wordMarks.length === 0}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        onClick={() => setMobileMarksCollapsed((v) => !v)}
+                                        className="md:hidden ml-auto px-2 py-1 rounded-lg border border-phy-border text-[11px] font-semibold text-phy-muted hover:text-phy-text"
                                     >
-                                        {isMarkingBusy ? <Loader2 size={13} className="animate-spin" /> : <BookMarked size={13} />}
-                                        同步生词到闪卡库 ({wordMarks.length}个)
-                                    </button>
-                                    <button
-                                        onClick={analyzeSentenceMarks}
-                                        disabled={isMarkingBusy || sentenceMarks.length === 0}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-500/30 text-orange-600 bg-orange-500/10 hover:bg-orange-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
-                                    >
-                                        {isMarkingBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                                        智能分析疑难句 ({sentenceMarks.length}句)
-                                    </button>
-                                    <button
-                                        onClick={clearAllMarks}
-                                        disabled={!wordMarks.length && !sentenceMarks.length && !sentenceAnalysis}
-                                        className="px-3 py-1.5 rounded-lg text-xs border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 disabled:opacity-50 inline-flex items-center gap-1.5"
-                                    >
-                                        <Trash2 size={13} />
-                                        清除所有标记
+                                        {mobileMarksCollapsed ? `展开标记（${wordMarks.length}/${sentenceMarks.length}）` : '收起标记'}
                                     </button>
                                 </div>
 
-                                {(wordMarks.length > 0 || sentenceMarks.length > 0) && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
-                                            <div className="text-[11px] font-bold text-amber-600 mb-2">已标记生词 (高亮显示)</div>
-                                            <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
-                                                {wordMarks.map((m) => (
-                                                    <div key={m.id} className="flex items-start gap-2 text-xs">
-                                                        <button
-                                                            onClick={() => jumpToMark(m)}
-                                                            className="flex-1 text-left"
-                                                        >
-                                                            <div className="text-[10px] text-phy-muted">
-                                                                {(m.source || 'article') === 'question'
-                                                                    ? `题目 ${m.questionLabel || ''}`
-                                                                    : '文章原文'}
-                                                            </div>
-                                                            <div className="text-phy-text break-words">{m.text}</div>
-                                                        </button>
-                                                        <button
-                                                            onClick={() => removeWordMark(m.id)}
-                                                            className="text-phy-muted hover:text-rose-300"
-                                                            title="移除生词标记"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
-                                            <div className="text-[11px] font-bold text-sky-600 mb-2">已标记疑难句 (下划线)</div>
-                                            <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
-                                                {sentenceMarks.map((m) => (
-                                                    <div key={m.id} className="flex items-start gap-2 text-xs">
-                                                        <button
-                                                            onClick={() => jumpToMark(m)}
-                                                            className="flex-1 text-left"
-                                                        >
-                                                            <div className="text-[10px] text-phy-muted">
-                                                                {(m.source || 'article') === 'question'
-                                                                    ? `题目 ${m.questionLabel || ''}`
-                                                                    : '文章原文'}
-                                                            </div>
-                                                            <div className="text-phy-text break-words">{m.text}</div>
-                                                        </button>
-                                                        <button
-                                                            onClick={() => removeSentenceMark(m.id)}
-                                                            className="text-phy-muted hover:text-rose-300"
-                                                            title="移除疑难句标记"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+                                <div className="md:hidden text-[11px] text-phy-muted">
+                                    生词 {wordMarks.length} 个 · 疑难句 {sentenceMarks.length} 句
+                                </div>
 
-                                {sentenceAnalysis ? (
-                                    <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 shadow-sm">
-                                        <div className="text-xs font-bold text-orange-600 mb-1.5">AI 疑难句深度解析</div>
-                                        <div className="text-xs text-phy-text whitespace-pre-wrap break-words leading-6">{sentenceAnalysis}</div>
+                                <div className={mobileMarksCollapsed ? 'hidden md:block space-y-3' : 'space-y-3'}>
+                                    {selectionDraft ? (
+                                        <div className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-2.5">
+                                            <div className="text-[11px] text-indigo-200 mb-1">当前选中内容</div>
+                                            <div className="text-[10px] text-phy-muted mb-1">
+                                                {((selectionDraft.source || 'article') === 'question' && `题目区域 ${selectionDraft.questionLabel || ''}`) || '文章原文区域'}
+                                            </div>
+                                            <div className="text-xs text-phy-text leading-6 break-words">{selectionDraft.text}</div>
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                <button
+                                                    onClick={() => addSelectionMark('word')}
+                                                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-amber-500/40 text-amber-700 bg-amber-500/15 hover:bg-amber-500/25 inline-flex items-center gap-1.5 shadow-sm"
+                                                >
+                                                    <Highlighter size={13} />
+                                                    标记为生词
+                                                </button>
+                                                <button
+                                                    onClick={() => addSelectionMark('sentence')}
+                                                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-sky-500/40 text-sky-700 bg-sky-500/15 hover:bg-sky-500/25 inline-flex items-center gap-1.5 shadow-sm"
+                                                >
+                                                    <Underline size={13} />
+                                                    标记为疑难句
+                                                </button>
+                                                <button
+                                                    onClick={clearSelectionDraft}
+                                                    className="px-2.5 py-1.5 rounded-lg text-xs border border-phy-border text-phy-muted hover:text-phy-text"
+                                                >
+                                                    取消选择
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-[11px] text-phy-muted">
+                                            提示：在左侧原文或右侧题目区选中文字，然后点击标记按钮。
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            onClick={pushWordMarksToFlashcards}
+                                            disabled={isMarkingBusy || wordMarks.length === 0}
+                                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/30 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        >
+                                            {isMarkingBusy ? <Loader2 size={13} className="animate-spin" /> : <BookMarked size={13} />}
+                                            同步生词到闪卡库 ({wordMarks.length}个)
+                                        </button>
+                                        <button
+                                            onClick={analyzeSentenceMarks}
+                                            disabled={isMarkingBusy || sentenceMarks.length === 0}
+                                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-orange-500/30 text-orange-600 bg-orange-500/10 hover:bg-orange-500/20 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        >
+                                            {isMarkingBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                                            智能分析疑难句 ({sentenceMarks.length}句)
+                                        </button>
+                                        <button
+                                            onClick={clearAllMarks}
+                                            disabled={!wordMarks.length && !sentenceMarks.length && !sentenceAnalysis}
+                                            className="px-3 py-1.5 rounded-lg text-xs border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 disabled:opacity-50 inline-flex items-center gap-1.5"
+                                        >
+                                            <Trash2 size={13} />
+                                            清除所有标记
+                                        </button>
                                     </div>
-                                ) : null}
+
+                                    {(wordMarks.length > 0 || sentenceMarks.length > 0) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
+                                                <div className="text-[11px] font-bold text-amber-600 mb-2">已标记生词（高亮）</div>
+                                                <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
+                                                    {wordMarks.map((m) => (
+                                                        <div key={m.id} className="flex items-start gap-2 text-xs">
+                                                            <button
+                                                                onClick={() => jumpToMark(m)}
+                                                                className="flex-1 text-left"
+                                                            >
+                                                                <div className="text-[10px] text-phy-muted">
+                                                                    {(m.source || 'article') === 'question'
+                                                                        ? `题目 ${m.questionLabel || ''}`
+                                                                        : '文章原文'}
+                                                                </div>
+                                                                <div className="text-phy-text break-words">{m.text}</div>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => removeWordMark(m.id)}
+                                                                className="text-phy-muted hover:text-rose-300"
+                                                                title="移除生词标记"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
+                                                <div className="text-[11px] font-bold text-sky-600 mb-2">已标记疑难句（下划线）</div>
+                                                <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-1">
+                                                    {sentenceMarks.map((m) => (
+                                                        <div key={m.id} className="flex items-start gap-2 text-xs">
+                                                            <button
+                                                                onClick={() => jumpToMark(m)}
+                                                                className="flex-1 text-left"
+                                                            >
+                                                                <div className="text-[10px] text-phy-muted">
+                                                                    {(m.source || 'article') === 'question'
+                                                                        ? `题目 ${m.questionLabel || ''}`
+                                                                        : '文章原文'}
+                                                                </div>
+                                                                <div className="text-phy-text break-words">{m.text}</div>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => removeSentenceMark(m.id)}
+                                                                className="text-phy-muted hover:text-rose-300"
+                                                                title="移除疑难句标记"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {sentenceAnalysis ? (
+                                        <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 shadow-sm">
+                                            <div className="text-xs font-bold text-orange-600 mb-1.5">AI 疑难句深度分析</div>
+                                            <div className="text-xs text-phy-text whitespace-pre-wrap break-words leading-6">{sentenceAnalysis}</div>
+                                        </div>
+                                    ) : null}
+                                </div>
                             </div>
                             {strictCETActive ? (
                                 <div className="rounded-xl border border-indigo-500/35 bg-indigo-500/10 p-3 shadow-sm">
-                                    <div className="text-xs font-bold text-indigo-600 mb-1">大学英语四六级 Section B 匹配 (严格模式)</div>
+                                    <div className="text-xs font-bold text-indigo-600 mb-1">四六级 Section B 段落匹配（严格模式）</div>
                                     <div className="text-[11px] text-phy-text leading-6">
-                                        段落标签范围 A-L，对应题目 36-45。同一标签可多次使用。
+                                        段落标签范围 A-L，对应题号 36-45。同一标签可多次使用。
                                     </div>
                                 </div>
                             ) : null}
@@ -1544,7 +1680,7 @@ const ExamView = () => {
                                         const result = await analyzePassageStructure(paper.passage, settings);
                                         setManualStructure(result);
                                     } catch (e) {
-                                        toast.error(`架构分析失败: ${e.message}`);
+                                        toast.error(`结构分析失败: ${e.message}`);
                                     } finally {
                                         setIsAnalyzingStructure(false);
                                     }
@@ -1566,7 +1702,7 @@ const ExamView = () => {
                                                         onClick={() => setManualStructure(null)}
                                                         className="text-[10px] text-phy-muted hover:text-rose-600 px-1.5 py-0.5 rounded border border-phy-border font-medium"
                                                     >
-                                                        隐藏架构
+                                                        隐藏结构
                                                     </button>
                                                 ) : (
                                                     <button
@@ -1574,8 +1710,8 @@ const ExamView = () => {
                                                         disabled={isAnalyzingStructure}
                                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-indigo-500/40 text-[10px] text-indigo-600 font-bold hover:bg-indigo-500/10 disabled:opacity-50"
                                                     >
-                                                        {isAnalyzingStructure ? <Loader2 size={10} className="animate-spin" /> : '◈'}
-                                                        {isAnalyzingStructure ? '分析中…' : '分析文章结构'}
+                                                        {isAnalyzingStructure ? <Loader2 size={10} className="animate-spin" /> : '✧'}
+                                                        {isAnalyzingStructure ? '分析中...' : '分析文章结构'}
                                                     </button>
                                                 )}
                                             </div>
@@ -1605,7 +1741,7 @@ const ExamView = () => {
                                                 <div className="w-4 shrink-0" />
                                             )}
 
-                                            {/* Article text — untouched */}
+                                            {/* Article text 閳?untouched */}
                                             <div
                                                 ref={articleMainRef}
                                                 tabIndex={0}
@@ -1638,7 +1774,9 @@ const ExamView = () => {
                                                     >
                                                         <span className={`w-2 h-2 rounded-full shrink-0 ${GUTTER_COLOR[seg.type] || 'bg-phy-muted'}`} />
                                                         <span className="font-semibold">{seg.label || GUTTER_LABEL[seg.type]}</span>
-                                                        <span className="opacity-60">§{seg.startParagraph}{seg.startParagraph !== seg.endParagraph ? `–${seg.endParagraph}` : ''}</span>
+                                                        <span className="opacity-60">
+                                                            第{seg.startParagraph}{seg.startParagraph !== seg.endParagraph ? `-${seg.endParagraph}` : ''}段
+                                                        </span>
                                                     </span>
                                                 ))}
                                             </div>
@@ -1650,7 +1788,7 @@ const ExamView = () => {
 
                             {articleParagraphs.length > 1 ? (
                                 <details className="rounded-xl border border-phy-border bg-phy-glass p-3">
-                                    <summary className="cursor-pointer text-xs font-bold text-phy-muted">展开分段详细视图 (Paragraph View)</summary>
+                                    <summary className="cursor-pointer text-xs font-bold text-phy-muted">展开分段详情视图 (Paragraph View)</summary>
                                     <div className="mt-3 space-y-2">
                                         {articleParagraphs.map((text, idx) => (
                                             <div key={`p-${idx}`} className="rounded-lg border border-phy-border bg-phy-bg p-2.5 shadow-sm">
@@ -1702,7 +1840,7 @@ const ExamView = () => {
                                 >
                                     <div className="flex items-start gap-3">
                                         <div className="flex-1 text-sm font-bold text-phy-text break-words">
-                                            {qIdx + 1}. {q.text}
+                                            {qIdx + 1}. {q.question || q.text}
                                         </div>
                                         {submitted ? (isRight ? <CheckCircle2 size={18} className="text-emerald-400 shrink-0" /> : <AlertCircle size={18} className="text-rose-400 shrink-0" />) : null}
                                     </div>
@@ -1731,7 +1869,10 @@ const ExamView = () => {
                                     </div>
                                     {submitted && (
                                         <div className="mt-3 rounded-lg border border-phy-border bg-phy-bg p-3 text-xs space-y-1 shadow-sm">
-                                            <div className="text-phy-text">正确答案：<span className="font-bold">{q.answer}</span> | 你的答案：<span className="font-bold text-indigo-600">{selected || '未作答'}</span></div>
+                                            <div className="text-phy-text">
+                                                正确答案：<span className="font-bold">{q.answer}</span> | 你的答案：
+                                                <span className="font-bold text-indigo-600">{selected || '未作答'}</span>
+                                            </div>
                                             {q.explanation ? <div className="text-phy-muted">解析：{q.explanation}</div> : null}
                                             {q.evidence_sentence ? <div className="text-indigo-600 font-medium">证据句：{q.evidence_sentence}</div> : null}
                                         </div>
@@ -1751,7 +1892,7 @@ const ExamView = () => {
                         {(paper.matching?.statements || []).length > 0 && (
                             <article className="rounded-2xl border border-phy-border bg-phy-glass p-4">
                                 <h4 className="font-bold text-phy-text text-sm mb-3">
-                                    {strictCETActive ? '段落匹配 (标准四六级 Section B 模式)' : '段落匹配 (通用模式)'}
+                                    {strictCETActive ? '段落匹配（标准四/六级 Section B）' : '段落匹配（通用模式）'}
                                 </h4>
                                 <div className="space-y-3">
                                     {paper.matching.statements.map((s, idx) => {
@@ -1770,7 +1911,7 @@ const ExamView = () => {
                                                 data-question-label={`M${statementNo}`}
                                                 className={`rounded-xl border p-3 ${submitted && isRight ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-phy-border bg-phy-glass'}`}
                                             >
-                                                <div className="text-sm text-phy-text leading-6">{statementNo}. {s.text}</div>
+                                                <div className="text-sm text-phy-text leading-6">{statementNo}. {s.text || s.question || s.statement}</div>
                                                 <div className="mt-2 flex items-center gap-2">
                                                     <label className="text-xs text-phy-muted">选择段落</label>
                                                     <select
@@ -1811,7 +1952,7 @@ const ExamView = () => {
                     </section>
                 </div>
             </div>
-        </div>
+            </div>
     );
 };
 

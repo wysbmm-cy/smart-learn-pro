@@ -1,6 +1,7 @@
 import React, { useState, Suspense, lazy, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AppProvider, useApp } from './context/AppContext';
+import { ChatProvider } from './context/ChatContext';
 import Layout from './layouts/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import SkeletonLoader from './components/SkeletonLoader';
@@ -141,19 +142,21 @@ function AppContent() {
 export default function App() {
     return (
         <AppProvider>
-            <Toaster
-                position="top-center"
-                toastOptions={{
-                    style: {
-                        background: '#1e293b',
-                        color: '#fff',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                    },
-                }}
-            />
-            <ErrorBoundary>
-                <AppContent />
-            </ErrorBoundary>
+            <ChatProvider>
+                <Toaster
+                    position="top-center"
+                    toastOptions={{
+                        style: {
+                            background: '#1e293b',
+                            color: '#fff',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                        },
+                    }}
+                />
+                <ErrorBoundary>
+                    <AppContent />
+                </ErrorBoundary>
+            </ChatProvider>
         </AppProvider>
     );
 }

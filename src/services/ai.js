@@ -2660,30 +2660,30 @@ export const generateStoryComic = async (highlights, settings, customStyles = []
   };
 
   // === STEP 3: Use AI to Generate Story Scene ===
-  const storyPrompt = `你是一个创意漫画编剧。请根据以下学习内容，创作一个有趣的漫画场景描述。
+  const storyPrompt = `你是一个资深漫画编剧与分镜师。你的任务是将这些碎片化的学习内容“缝合”进一个完整、精巧且具有叙事感的漫画场景脚本中。
 
 今日学习标记：
 ${highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')}
 
 格式要求：${formatInstructions[format]}
 
-规则：
-1. 围绕这些学习内容本身来创作故事，不要加入龙、怪物、魔法等奇幻元素
-2. 主角是"我"——一个正在学习这些内容的普通人（学生/上班族）
-3. 场景可以是：教室、图书馆、咖啡馆、书房、地铁上看书等现代生活场景
-4. 把学习内容拟人化或具象化，让它们成为场景的一部分（比如单词变成可爱的小精灵、语法规则变成路标、知识点变成建筑物等）
-5. 保持温馨、有趣、贴近生活的基调
+编剧指南：
+1. **深度缝合（Suture）**：不要简单地罗列单词。请寻找它们之间的内在逻辑，将其转化为故事中的关键道具（如：信件内容）、环境背景（如：墙上的海报）、或是主角解决问题的“秘籍”。
+2. **叙事瞬间**：主角是“我”（一名沉浸式学习者）。给主角一个具体的瞬间：也许是深夜书房的顿悟，或是雨后咖啡店里的一次脑内冒险。
+3. **视觉隐喻**：将抽象的概念转化为强烈的视觉符号。如果标记了“焦虑”，让阴影变得浓稠；如果标记了“突破”，让窗外洒进一道丁达尔效应的光芒。
+4. **镜头语言**：在描述场景（scene）时，请使用专业术语（如：Medium shot, Extreme close-up on hands, Atmospheric neon lighting）。
+5. **叙事基调**：保持现代都市/魔幻现实主义的基调，既贴近生活又充满文学张力。
 
 用JSON格式返回：
 {
-  "scene": "场景描述（英文，100词以内，描述画面构图、人物动作、周围元素等）",
-  "storyTitle": "故事标题（中文，简短有趣）"
+  "scene": "详细的英文分镜描述（包含构图、光影、人物动作及如何自然地缝合学习元素，150词以内）",
+  "storyTitle": "富有文学感或电影感的中文标题"
 }`;
 
   let storyResult;
   try {
     const storyJson = await fetchFromAI([
-      { role: "system", content: "你是一个创意漫画编剧，擅长把学习内容变成温馨有趣的漫画故事。主角是学习者本人。只输出JSON。" },
+      { role: "system", content: "你是一个专业的漫画叙事大师，擅长将零散信息缝合成逻辑自洽且视觉惊艳的漫画脚本。只输出JSON格式。" },
       { role: "user", content: storyPrompt }
     ], settings, true);
     storyResult = JSON.parse(storyJson);

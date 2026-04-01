@@ -2,6 +2,7 @@
 import SharedMarkdown from './SharedMarkdown';
 import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, History, Plus, Trash2, MessageSquare, Zap, MessageCircle, Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, BookOpen, ImagePlus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useChat } from '../context/ChatContext';
 import { analyzeImagesForChat, streamChatMessage, streamAgentChat } from '../services/ai';
 import ChatQuizWidget from './ChatQuizWidget';
 import ChatFlashcardWidget from './ChatFlashcardWidget';
@@ -52,10 +53,14 @@ const VIEW_INFO = {
 
 const ChatSidebar = () => {
     const {
-        isChatOpen, toggleChat, chatMessages, addChatMessage, updateLastChatMessage, settings,
-        loadUserNotes, loadFiles, currentArticle, currentSessionId, chatSessions, createNewChatSession, loadChatSession, removeChatSession,
+        settings,
+        loadUserNotes, loadFiles, currentArticle,
         navigateRef, updateFlashcardProgress
     } = useApp();
+    const {
+        isChatOpen, toggleChat, chatMessages, addChatMessage, updateLastChatMessage,
+        currentSessionId, chatSessions, createNewChatSession, loadChatSession, removeChatSession, flushChatSession
+    } = useChat();
     const [input, setInput] = useState(() => localStorage.getItem('draft_chat_input') || '');
     const [isSending, setIsSending] = useState(false);
     const [imageAttachments, setImageAttachments] = useState([]);
@@ -85,18 +90,69 @@ const ChatSidebar = () => {
     const [suggestions, setSuggestions] = useState([]);
     const [cursorPosition, setCursorPosition] = useState(0);
 
-    const messagesEndRef = useRef(null);
+    const STREAM_FLUSH_MS = 100;
+    const messagesContainerRef = useRef(null);
     const inputRef = useRef(null);
     const imageInputRef = useRef(null);
+    const streamTimerRef = useRef(null);
+    const pendingStreamTextRef = useRef('');
+    const autoScrollEnabledRef = useRef(true);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = (behavior = 'auto') => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+        container.scrollTo({ top: container.scrollHeight, behavior });
+    };
+
+    const updateAutoScrollState = () => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+        const distance = container.scrollHeight - (container.scrollTop + container.clientHeight);
+        autoScrollEnabledRef.current = distance < 120;
+    };
+
+    const scheduleStreamCommit = (fullText) => {
+        pendingStreamTextRef.current = fullText;
+        if (streamTimerRef.current) return;
+        streamTimerRef.current = setTimeout(() => {
+            streamTimerRef.current = null;
+            updateLastChatMessage(pendingStreamTextRef.current, { persist: false });
+            if (autoScrollEnabledRef.current) {
+                scrollToBottom('auto');
+            }
+        }, STREAM_FLUSH_MS);
+    };
+
+    const flushStreamCommit = async (fullText, forceImmediate = false) => {
+        if (streamTimerRef.current) {
+            clearTimeout(streamTimerRef.current);
+            streamTimerRef.current = null;
+        }
+        pendingStreamTextRef.current = fullText;
+        updateLastChatMessage(fullText, { persist: true, immediate: true });
+        if (autoScrollEnabledRef.current) {
+            scrollToBottom('auto');
+        }
+        if (forceImmediate) {
+            await flushChatSession();
+        }
     };
 
     // Auto-scroll on new messages
     useEffect(() => {
-        if (viewMode === 'chat') scrollToBottom();
-    }, [chatMessages, isChatOpen, viewMode, toolCalls, pendingActions]);
+        if (viewMode === 'chat' && autoScrollEnabledRef.current) {
+            scrollToBottom('auto');
+        }
+    }, [chatMessages.length, isChatOpen, viewMode, toolCalls, pendingActions]);
+
+    useEffect(() => {
+        return () => {
+            if (streamTimerRef.current) {
+                clearTimeout(streamTimerRef.current);
+                streamTimerRef.current = null;
+            }
+        };
+    }, []);
 
     // Handle navigation from action buttons
     const handleNavigate = (target) => {
@@ -270,8 +326,7 @@ const ChatSidebar = () => {
 
                 await streamAgentChat(history, settings, (delta) => {
                     fullResponse += delta;
-                    updateLastChatMessage(fullResponse);
-                    scrollToBottom();
+                    scheduleStreamCommit(fullResponse);
                 }, (toolInfo) => {
                     setToolCalls(prev => {
                         const existing = prev.findIndex(t => t.name === toolInfo.name && t.status === 'calling');
@@ -293,7 +348,9 @@ const ChatSidebar = () => {
                     const fallbackMsg = collectedActions.length > 0
                         ? 'Done. I completed the requested action.'
                         : 'Done. What should I help with next?'
-                    updateLastChatMessage(fallbackMsg);
+                    await flushStreamCommit(fallbackMsg, true);
+                } else {
+                    await flushStreamCommit(fullResponse, true);
                 }
 
                 if (collectedActions.length > 0) {
@@ -303,19 +360,21 @@ const ChatSidebar = () => {
                 let fullResponse = "";
                 await streamChatMessage(history, settings, (delta) => {
                     fullResponse += delta;
-                    updateLastChatMessage(fullResponse);
-                    scrollToBottom();
+                    scheduleStreamCommit(fullResponse);
                 });
 
                 // Normal chat fallback
                 if (!fullResponse.trim()) {
-                    updateLastChatMessage('AI returned an empty response. Please try again.');
+                    await flushStreamCommit('AI returned an empty response. Please try again.', true);
+                } else {
+                    await flushStreamCommit(fullResponse, true);
                 }
             }
 
         } catch (error) {
-            updateLastChatMessage(`Error: ${error.message}`);
+            await flushStreamCommit(`Error: ${error.message}`, true);
         } finally {
+            await flushChatSession();
             setIsSending(false);
         }
     };
@@ -498,7 +557,11 @@ const ChatSidebar = () => {
             ) : (
                 // --- Chat View ---
                 <>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                    <div
+                        ref={messagesContainerRef}
+                        onScroll={updateAutoScrollState}
+                        className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar"
+                    >
                         {/* Welcome / New Chat Hint */}
                         {chatMessages.length <= 1 && (
                             <div className="text-center py-8 opacity-60">
@@ -671,7 +734,6 @@ const ChatSidebar = () => {
                                 <Loader2 size={16} className="animate-spin text-phy-accent mt-2" />
                             </div>
                         )}
-                        <div ref={messagesEndRef} />
                     </div>
 
                     {/* Input Area */}

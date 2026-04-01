@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import BilibiliPlayer from '../components/video/BilibiliPlayer';
 import { useApp } from '../context/AppContext';
+import { useChat } from '../context/ChatContext';
 import { Sparkles, PlayCircle, FileText, Mic, Square, Loader2, History, Clock, Trash2, X } from 'lucide-react';
 import { transcribeAudio } from '../services/ai';
 import { saveVideoHistory, getVideoHistory, deleteVideoHistory } from '../services/db';
@@ -11,9 +12,9 @@ const VideoView = () => {
     const {
         settings,
         setCurrentArticle,
-        toggleChat,
         saveToNotes
     } = useApp();
+    const { toggleChat } = useChat();
 
     const [url, setUrl] = useState('');
     const [inputUrl, setInputUrl] = useState('');

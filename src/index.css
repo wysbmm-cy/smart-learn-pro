@@ -197,3 +197,25 @@ input, textarea, select {
 .fab:active {
   transform: scale(0.94);
 }
+
+/* Mobile performance profile: reduce expensive blur/shadow layers */
+@media (max-width: 767px) {
+  .glass-panel,
+  .glass-sidebar,
+  .glass-modal {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg,
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-3xl {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
