@@ -11,7 +11,6 @@ const viewFactories = {
     Dashboard: () => import('./views/Dashboard'),
     ReviewCenterView: () => import('./views/ReviewCenterView'),
     ImportView: () => import('./views/ImportView'),
-    StudyView: () => import('./views/StudyView'),
     HistoryView: () => import('./views/HistoryView'),
     LibraryView: () => import('./views/LibraryView'),
     NotesView: () => import('./views/NotesView'),
@@ -21,6 +20,7 @@ const viewFactories = {
     CoachView: () => import('./views/CoachView'),
     VideoView: () => import('./views/VideoView'),
     WriterView: () => import('./views/WriterView'),
+    TranslationChallengeView: () => import('./views/TranslationChallengeView'),
     ExamView: () => import('./views/ExamView'),
     KnowledgeGraphView: () => import('./views/KnowledgeGraphView'),
 };
@@ -34,7 +34,6 @@ export const preloadAllViews = () => {
 const Dashboard = lazy(viewFactories.Dashboard);
 const ReviewCenterView = lazy(viewFactories.ReviewCenterView);
 const ImportView = lazy(viewFactories.ImportView);
-const StudyView = lazy(viewFactories.StudyView);
 const HistoryView = lazy(viewFactories.HistoryView);
 const LibraryView = lazy(viewFactories.LibraryView);
 const NotesView = lazy(viewFactories.NotesView);
@@ -44,6 +43,7 @@ const PlanView = lazy(viewFactories.PlanView);
 const CoachView = lazy(viewFactories.CoachView);
 const VideoView = lazy(viewFactories.VideoView);
 const WriterView = lazy(viewFactories.WriterView);
+const TranslationChallengeView = lazy(viewFactories.TranslationChallengeView);
 const ExamView = lazy(viewFactories.ExamView);
 const KnowledgeGraphView = lazy(viewFactories.KnowledgeGraphView);
 
@@ -84,9 +84,7 @@ function AppContent() {
             case 'review':
                 return <ReviewCenterView onNavigate={setCurrentView} />;
             case 'import':
-                return <ImportView onAnalyzeSuccess={() => setCurrentView('study')} />;
-            case 'study':
-                return <StudyView onNavigate={setCurrentView} />;
+                return <ImportView onNavigate={handleNavigate} params={viewParams} />;
             case 'history':
                 return <HistoryView onNavigate={setCurrentView} />;
             case 'library':
@@ -105,8 +103,10 @@ function AppContent() {
                 return <VideoView />;
             case 'writer':
                 return <WriterView params={viewParams} />;
+            case 'translation':
+                return <TranslationChallengeView />;
             case 'exam':
-                return <ExamView onNavigate={setCurrentView} />;
+                return <ExamView onNavigate={setCurrentView} params={viewParams} />;
             case 'knowledge':
                 return <KnowledgeGraphView />;
             default:

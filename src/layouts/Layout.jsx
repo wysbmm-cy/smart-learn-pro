@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
 import ChatSidebar from '../components/ChatSidebar';
@@ -8,7 +8,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Columns, Maximize2, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target
+    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages
 } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
@@ -42,6 +42,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const { settings } = useApp();
     const { toggleChat, isChatOpen } = useChat();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [isWriterMaterialPanelOpen, setIsWriterMaterialPanelOpen] = useState(false);
     const [showPomodoro, setShowPomodoro] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
@@ -65,15 +66,40 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    useEffect(() => {
+        const handleWriterMaterialPanelChange = (event) => {
+            setIsWriterMaterialPanelOpen(Boolean(event?.detail?.open));
+        };
+        window.addEventListener('writer-material-panel-change', handleWriterMaterialPanelChange);
+        return () => window.removeEventListener('writer-material-panel-change', handleWriterMaterialPanelChange);
+    }, []);
+
+    useEffect(() => {
+        if (currentView !== 'writer') {
+            setIsWriterMaterialPanelOpen(false);
+        }
+    }, [currentView]);
+
     const isExamExpanded = currentView === 'exam' && examCanvasMode === 'expanded';
-    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam';
+    const shouldAutoHideSidebar = !isMobileViewport && currentView === 'writer' && isChatOpen && isWriterMaterialPanelOpen;
+    const isSidebarVisible = isSidebarOpen && !shouldAutoHideSidebar;
+    const writerCanvasClass = 'max-w-[1700px] mx-auto h-full';
+    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam' || currentView === 'writer' || currentView === 'translation';
     const contentContainerClass = currentView === 'notes'
         ? 'h-full w-full max-w-none mx-0 p-0'
         : currentView === 'exam'
             ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
+            : currentView === 'writer'
+                ? writerCanvasClass
+            : currentView === 'translation'
+                ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
             : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto pt-4 md:pt-6 pb-24 md:pb-8`;
     const splitPaneContainerClass = currentView === 'exam'
         ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
+        : currentView === 'writer'
+            ? writerCanvasClass
+        : currentView === 'translation'
+            ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
         : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full pt-6`;
 
     const handleContextMenu = (e, itemId) => {
@@ -89,13 +115,12 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         { id: 'import', icon: Upload, label: '导入' },
         { id: 'video', icon: PlayCircle, label: '视频学习' },
         { id: 'writer', icon: PenTool, label: 'AI 写作' },
-        { id: 'exam', icon: FileQuestion, label: '考试模拟' },
-        { id: 'study', icon: BookOpen, label: '词汇与阅读' },
+        { id: 'translation', icon: Languages, label: '翻译挑战' },
+        { id: 'exam', icon: FileQuestion, label: '阅读与考试' },
         { id: 'flashcards', icon: Layers, label: '闪卡复习' },
         { id: 'review', icon: Target, label: '记忆曲线复习' },
         { id: 'knowledge', icon: Share2, label: '知识图谱' },
         { id: 'library', icon: FolderOpen, label: '文件库' },
-        { id: 'history', icon: Clock, label: '历史' },
         { id: 'coach', icon: Mic, label: '口语教练' },
         { id: 'plan', icon: Activity, label: '学习计划' },
     ];
@@ -168,7 +193,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
             <aside className={`
                 fixed md:relative z-50 h-full
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-                ${isSidebarOpen ? 'w-[80vw] max-w-[300px] md:w-64' : 'md:w-0 -translate-x-full'}
+                ${isSidebarVisible ? 'w-[80vw] max-w-[300px] md:w-64' : 'md:w-0 -translate-x-full'}
                 flex flex-col shrink-0 transition-all duration-300 border-r border-phy-border glass-sidebar overflow-hidden
             `}>
                 <div className="h-16 flex items-center justify-between px-5 shrink-0">
@@ -230,13 +255,6 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             <Menu size={20} />
                         </button>
                         <h2 className="text-lg font-bold text-phy-text tracking-wide">{currentPageLabel}</h2>
-                        <button
-                            onClick={() => setIsSplit(!isSplit)}
-                            className={`p-2 rounded-lg transition-all border ${isSplit ? 'bg-phy-accentGlass border-phy-borderHover text-phy-accent' : 'border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHover'}`}
-                            title="切换分屏模式"
-                        >
-                            {isSplit ? <Columns size={18} /> : <Maximize2 size={18} />}
-                        </button>
                     </div>
                     <div className="flex items-center gap-3">
                         <button
@@ -250,7 +268,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         <button
                             onClick={toggleChat}
                             className={`p-2 rounded-lg transition-all border ${isChatOpen ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHover'}`}
-                            title="AI 助手"
+                            title="AI 鍔╂墜"
                         >
                             <Brain size={18} />
                         </button>
@@ -283,21 +301,40 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
             {/* Pomodoro */}
             {showPomodoro && (
-                <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-50 animate-slide-up">
+                <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[45] animate-slide-up">
                     <PomodoroTimer onClose={() => setShowPomodoro(false)} />
                 </div>
             )}
 
-            {/* AI Chat Sidebar */}
+
+
+            {/* AI Chat Interface */}
             {(!isMobileViewport || isChatOpen) && (
-                <div className="fixed inset-y-0 right-0 z-50 md:static md:z-0 md:h-full shrink-0">
-                    <ChatSidebar />
-                </div>
+                !isMobileViewport ? (
+                    <div className="static z-0 h-full shrink-0">
+                        <ChatSidebar />
+                    </div>
+                ) : (
+                    <div className={`fixed inset-0 z-[60] md:hidden transition-opacity duration-300 ${isChatOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={toggleChat} />
+                        <div 
+                            className={`absolute bottom-0 left-0 right-0 bg-phy-glassHeavy backdrop-blur-2xl rounded-t-[28px] border-t border-phy-border shadow-[0_-10px_40px_rgba(0,0,0,0.15)] transition-transform duration-300 ease-out flex flex-col`}
+                            style={{ height: '80vh', transform: isChatOpen ? 'translateY(0)' : 'translateY(100%)' }}
+                        >
+                            <div className="flex justify-center pt-3 pb-2 shrink-0 cursor-pointer w-full" onClick={toggleChat}>
+                                <div className="w-12 h-1.5 bg-phy-muted/40 rounded-full" />
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <ChatSidebar isMobileSheet={true} />
+                            </div>
+                        </div>
+                    </div>
+                )
             )}
 
             {/* Mobile Bottom Tab Bar */}
             <div
-                className="md:hidden fixed bottom-0 left-0 right-0 z-[45] bg-phy-glassHeavy backdrop-blur-xl border-t border-phy-border flex items-stretch"
+                className="md:hidden fixed bottom-0 left-0 right-0 z-[40] bg-phy-glassHeavy backdrop-blur-xl border-t border-phy-border flex items-stretch"
                 style={{
                     height: 'calc(60px + env(safe-area-inset-bottom, 0px))',
                     paddingBottom: 'env(safe-area-inset-bottom, 0px)',
@@ -314,7 +351,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 ))}
                 <MobileTab
                     icon={Menu}
-                    label="菜单"
+                    label="鑿滃崟"
                     active={false}
                     onClick={() => setIsMobileMenuOpen(true)}
                 />
@@ -324,6 +361,4 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 };
 
 export default Layout;
-
-
 

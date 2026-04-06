@@ -1,0 +1,9 @@
+{
+  "appId": "com.smartlearnpro.app",
+  "appName": "SmartLearn Pro",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "http"
+  }
+}
