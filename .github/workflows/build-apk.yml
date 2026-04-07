@@ -20,6 +20,8 @@ jobs:
         cache: 'npm'
         
     - name: Install dependencies
+      env:
+        ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       run: npm ci
       
     - name: Build web app
@@ -33,12 +35,6 @@ jobs:
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-      
-    - name: Install Capacitor Android platform
-      run: |
-        npm install @capacitor/android
-        npx cap add android
-      continue-on-error: true
       
     - name: Sync Capacitor
       run: npx cap sync
