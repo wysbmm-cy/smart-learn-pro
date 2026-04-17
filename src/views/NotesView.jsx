@@ -263,7 +263,7 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Content Area */}
-                <div className="flex-1 overflow-y-auto px-4 py-4 overscroll-contain">
+                <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 overscroll-contain">
                     {viewMode === 'edit' ? (
                         <textarea
                             value={note?.content}
@@ -354,7 +354,7 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Card List */}
-                <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-10 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-32 custom-scrollbar">
                     {filteredNotes.map(renderNoteCard)}
                     {filteredNotes.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-20 text-phy-muted gap-4 opacity-50">
@@ -374,49 +374,49 @@ const NotesView = ({ params }) => {
 
                 {/* Mobile Tag Selection Overlay */}
                 {showTagsMobile && (
-                    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowTagsMobile(false)}>
-                        <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl p-6 animate-in slide-in-from-bottom flex flex-col gap-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowTagsMobile(false)}>
+                        <div className="w-full max-w-lg bg-phy-glassHeavy backdrop-blur-3xl rounded-t-[2.5rem] p-6 pb-12 animate-in slide-in-from-bottom flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.3)] border-t border-phy-border/30" onClick={e => e.stopPropagation()}>
                             <div className="w-12 h-1.5 bg-phy-muted/30 rounded-full mx-auto mb-2" />
-                            <h3 className="text-sm font-bold text-phy-muted uppercase tracking-widest px-2">分类</h3>
-                            <div className="grid grid-cols-1 gap-1 overflow-y-auto max-h-[50vh] custom-scrollbar">
+                            <h3 className="text-xs font-bold text-phy-muted uppercase tracking-widest px-2 opacity-60">分类筛选</h3>
+                            <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[50vh] custom-scrollbar pr-1">
                                 <button 
                                     onClick={() => { setActiveTag('All'); setShowTagsMobile(false); }}
-                                    className={`flex items-center justify-between p-4 rounded-2xl transition-colors ${activeTag === 'All' ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glass'}`}
+                                    className={`flex items-center justify-between p-4 rounded-2xl transition-all active:scale-95 ${activeTag === 'All' ? 'bg-phy-accentGlass text-phy-accent border border-phy-accent/20 shadow-inner' : 'hover:bg-phy-glass border border-transparent'}`}
                                 >
                                     <div className="flex flex-row gap-3 items-center">
-                                       <LayoutGrid size={18} />
+                                       <LayoutGrid size={20} />
                                        <span className="font-bold">全部笔记</span>
                                     </div>
-                                    {activeTag === 'All' && <Check size={20} />}
+                                    {activeTag === 'All' && <Check size={20} className="text-phy-accent" />}
                                 </button>
 
-                                {topicTags.length > 0 && <div className="text-[10px] font-bold text-phy-muted px-2 mt-2 mb-1">THEMES</div>}
+                                {topicTags.length > 0 && <div className="text-[10px] font-bold text-phy-muted px-2 mt-4 mb-2 tracking-widest opacity-40">THEMES / TOPICS</div>}
                                 {topicTags.map(f => (
                                     <button 
                                         key={f}
                                         onClick={() => { setActiveTag(f); setShowTagsMobile(false); }}
-                                        className={`flex items-center justify-between p-4 rounded-2xl transition-colors ${activeTag === f ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glass'}`}
+                                        className={`flex items-center justify-between p-4 rounded-2xl transition-all active:scale-95 ${activeTag === f ? 'bg-phy-accentGlass text-phy-accent border border-phy-accent/20 shadow-inner' : 'hover:bg-phy-glass border border-transparent'}`}
                                     >
                                         <div className="flex flex-row gap-3 items-center">
-                                            <Tag size={18} />
+                                            <Tag size={20} />
                                             <span className="font-bold">{f}</span>
                                         </div>
-                                        {activeTag === f && <Check size={20} />}
+                                        {activeTag === f && <Check size={20} className="text-phy-accent" />}
                                     </button>
                                 ))}
 
-                                {recentDateTags.length > 0 && <div className="text-[10px] font-bold text-phy-muted px-2 mt-2 mb-1">DATES</div>}
+                                {recentDateTags.length > 0 && <div className="text-[10px] font-bold text-phy-muted px-2 mt-4 mb-2 tracking-widest opacity-40">TEMPORAL</div>}
                                 {recentDateTags.map(f => (
                                     <button 
                                         key={f}
                                         onClick={() => { setActiveTag(f); setShowTagsMobile(false); }}
-                                        className={`flex items-center justify-between p-4 rounded-2xl transition-colors ${activeTag === f ? 'bg-emerald-500/10 text-emerald-500' : 'hover:bg-phy-glass'}`}
+                                        className={`flex items-center justify-between p-4 rounded-2xl transition-all active:scale-95 ${activeTag === f ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shadow-inner' : 'hover:bg-phy-glass border border-transparent'}`}
                                     >
                                         <div className="flex flex-row gap-3 items-center">
-                                            <CalendarDays size={18} />
+                                            <CalendarDays size={20} />
                                             <span className="font-bold">{f}</span>
                                         </div>
-                                        {activeTag === f && <Check size={20} />}
+                                        {activeTag === f && <Check size={20} className="text-emerald-500" />}
                                     </button>
                                 ))}
                             </div>

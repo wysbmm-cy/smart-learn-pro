@@ -3,6 +3,25 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.smartlearnpro.app"
     compileSdk = rootProject.ext.compileSdkVersion
+
+    // Load signing properties from local.properties
+    def signingProps = new Properties()
+    def propFile = rootProject.file('local.properties')
+    if (propFile.exists()) {
+        signingProps.load(new FileInputStream(propFile))
+    }
+
+    signingConfigs {
+        release {
+            if (signingProps.containsKey('signing.storeFile')) {
+                storeFile file(signingProps['signing.storeFile'])
+                storePassword signingProps['signing.storePassword']
+                keyAlias signingProps['signing.keyAlias']
+                keyPassword signingProps['signing.keyPassword']
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.smartlearnpro.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -20,6 +39,10 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Apply signing configuration to release build
+            if (signingProps.containsKey('signing.storeFile')) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
 import ChatSidebar from '../components/ChatSidebar';
@@ -8,7 +8,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages
+    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones
 } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
@@ -114,6 +114,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         { id: 'notes', icon: NotebookPen, label: '我的笔记' },
         { id: 'import', icon: Upload, label: '导入' },
         { id: 'video', icon: PlayCircle, label: '视频学习' },
+        { id: 'listening', icon: Headphones, label: '听力实验室' },
         { id: 'writer', icon: PenTool, label: 'AI 写作' },
         { id: 'translation', icon: Languages, label: '翻译挑战' },
         { id: 'exam', icon: FileQuestion, label: '阅读与考试' },
@@ -122,12 +123,12 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         { id: 'knowledge', icon: Share2, label: '知识图谱' },
         { id: 'library', icon: FolderOpen, label: '文件库' },
         { id: 'coach', icon: Mic, label: '口语教练' },
-        { id: 'plan', icon: Activity, label: '学习计划' },
+
     ];
 
     const mobileBottomTabs = [
         { id: 'dashboard', icon: Home, label: '首页' },
-        { id: 'study', icon: BookOpen, label: '阅读' },
+        { id: 'exam', icon: BookOpen, label: '阅读与考试' },
         { id: 'flashcards', icon: Layers, label: '复习' },
         { id: 'review', icon: Target, label: '记忆曲线' },
         { id: 'writer', icon: PenTool, label: '写作' },
@@ -268,7 +269,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                         <button
                             onClick={toggleChat}
                             className={`p-2 rounded-lg transition-all border ${isChatOpen ? 'bg-phy-accentGlass text-phy-accent border-phy-borderHover' : 'border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHover'}`}
-                            title="AI 鍔╂墜"
+                            title="AI 助手"
                         >
                             <Brain size={18} />
                         </button>
@@ -351,7 +352,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 ))}
                 <MobileTab
                     icon={Menu}
-                    label="鑿滃崟"
+                    label="菜单"
                     active={false}
                     onClick={() => setIsMobileMenuOpen(true)}
                 />
@@ -361,4 +362,3 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 };
 
 export default Layout;
-

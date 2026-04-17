@@ -55,9 +55,13 @@ const ImportView = ({ onNavigate, params = {} }) => {
 
     const fileInputRef = useRef(null);
     const mediaInputRef = useRef(null);
+    const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
 
     useEffect(() => {
         loadFolderList();
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     const loadFolderList = async () => {
@@ -297,8 +301,8 @@ const ImportView = ({ onNavigate, params = {} }) => {
     };
 
     return (
-        <div className="space-y-6 animate-fade-in h-[calc(100vh-100px)] flex flex-col">
-            <div className="bg-phy-glass rounded-[2rem] shadow-xl shadow-slate-200/50 border border-phy-border flex-1 flex flex-col p-8 md:p-10 relative overflow-hidden">
+        <div className={`space-y-4 md:space-y-6 animate-fade-in ${isMobile ? 'h-[calc(100vh-80px)]' : 'h-[calc(100vh-100px)]'} flex flex-col`}>
+            <div className={`bg-phy-glass rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-phy-border flex-1 flex flex-col ${isMobile ? 'p-4 pb-20' : 'p-8 md:p-10'} relative overflow-hidden`}>
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -388,45 +392,65 @@ const ImportView = ({ onNavigate, params = {} }) => {
                         </div>
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar border rounded-xl bg-phy-bg">
-                            <div className="grid grid-cols-[56px_1.1fr_1fr_1.6fr_40px] px-4 py-2 text-[11px] font-bold text-phy-muted uppercase tracking-wide border-b border-phy-border">
-                                <div>#</div>
-                                <div>单词</div>
-                                <div>读音</div>
-                                <div>释义</div>
-                                <div />
-                            </div>
-                            {vocabList.map((item, idx) => (
-                                <div key={idx} className="grid grid-cols-[56px_1.1fr_1fr_1.6fr_40px] gap-2 px-4 py-3 border-b border-phy-border last:border-b-0">
-                                    <div className="w-8 h-8 rounded-full bg-phy-glass flex items-center justify-center text-xs font-bold text-phy-muted mt-1">
-                                        {idx + 1}
-                                    </div>
-                                    <input
-                                        value={item.word}
-                                        onChange={(e) => updateVocabRow(idx, 'word', e.target.value)}
-                                        className="px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-sm text-phy-text outline-none focus:border-phy-accent"
-                                        placeholder="单词"
-                                    />
-                                    <input
-                                        value={item.phonetic}
-                                        onChange={(e) => updateVocabRow(idx, 'phonetic', e.target.value)}
-                                        className="px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-sm text-phy-text outline-none focus:border-phy-accent"
-                                        placeholder="音标/读音"
-                                    />
-                                    <textarea
-                                        value={item.meaning}
-                                        onChange={(e) => updateVocabRow(idx, 'meaning', e.target.value)}
-                                        className="px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-sm text-phy-text outline-none focus:border-phy-accent resize-y min-h-[40px] max-h-32"
-                                        placeholder="中文释义"
-                                    />
-                                    <button
-                                        onClick={() => removeVocabRow(idx)}
-                                        className="text-phy-muted hover:text-red-500 p-1 self-start mt-1"
-                                        title="remove"
-                                    >
-                                        <AlertCircle size={16} />
-                                    </button>
+                            {!isMobile && (
+                                <div className="grid grid-cols-[56px_1.1fr_1fr_1.6fr_40px] px-4 py-2 text-[11px] font-bold text-phy-muted uppercase tracking-wide border-b border-phy-border">
+                                    <div>#</div>
+                                    <div>单词</div>
+                                    <div>读音</div>
+                                    <div>释义</div>
+                                    <div />
                                 </div>
-                            ))}
+                            )}
+                            <div className={isMobile ? 'space-y-3 p-2' : ''}>
+                                {vocabList.map((item, idx) => (
+                                    <div 
+                                        key={idx} 
+                                        className={isMobile 
+                                            ? "bg-phy-glass border border-phy-border rounded-xl p-3 flex flex-col gap-3 relative animate-in slide-in-from-bottom-2"
+                                            : "grid grid-cols-[56px_1.1fr_1fr_1.6fr_40px] gap-2 px-4 py-3 border-b border-phy-border last:border-b-0"
+                                        }
+                                    >
+                                        {!isMobile && (
+                                            <div className="w-8 h-8 rounded-full bg-phy-glass flex items-center justify-center text-xs font-bold text-phy-muted mt-1">
+                                                {idx + 1}
+                                            </div>
+                                        )}
+                                        
+                                        <div className={isMobile ? "flex items-center gap-2" : "contents"}>
+                                            {isMobile && <span className="text-[10px] font-bold text-phy-accent bg-phy-accentGlass px-2 py-0.5 rounded-full">{idx + 1}</span>}
+                                            <input
+                                                value={item.word}
+                                                onChange={(e) => updateVocabRow(idx, 'word', e.target.value)}
+                                                className={`px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-sm font-bold text-phy-text outline-none focus:border-phy-accent ${isMobile ? 'flex-1' : ''}`}
+                                                placeholder="单词"
+                                            />
+                                        </div>
+
+                                        <input
+                                            value={item.phonetic}
+                                            onChange={(e) => updateVocabRow(idx, 'phonetic', e.target.value)}
+                                            className="px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-xs text-phy-text outline-none focus:border-phy-accent"
+                                            placeholder="音标/读音"
+                                        />
+                                        <textarea
+                                            value={item.meaning}
+                                            onChange={(e) => updateVocabRow(idx, 'meaning', e.target.value)}
+                                            className="px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-sm text-phy-text outline-none focus:border-phy-accent resize-none min-h-[60px]"
+                                            placeholder="中文释义"
+                                        />
+                                        <button
+                                            onClick={() => removeVocabRow(idx)}
+                                            className={isMobile 
+                                                ? "absolute top-2 right-2 p-2 text-rose-500 bg-rose-500/10 rounded-full" 
+                                                : "text-phy-muted hover:text-red-500 p-1 self-start mt-1"
+                                            }
+                                            title="remove"
+                                        >
+                                            <AlertCircle size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -438,8 +462,8 @@ const ImportView = ({ onNavigate, params = {} }) => {
                             onChange={(e) => setInputText(e.target.value)}
                         />
 
-                        <div className="flex justify-between items-center bg-phy-bg/50 p-4 rounded-2xl border border-phy-border">
-                            <div className="flex gap-4">
+                        <div className={`flex ${isMobile ? 'flex-col gap-4' : 'justify-between items-center'} bg-phy-bg/50 p-4 rounded-2xl border border-phy-border`}>
+                            <div className={`flex ${isMobile ? 'justify-around' : 'gap-4'}`}>
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     className="text-phy-muted hover:text-blue-500 flex items-center gap-2 text-sm font-bold transition-all px-3 py-2 rounded-xl hover:bg-blue-500/10"
@@ -456,36 +480,38 @@ const ImportView = ({ onNavigate, params = {} }) => {
                                 </button>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className={`flex ${isMobile ? 'flex-col' : 'items-center'} gap-3`}>
                                 {isAnalyzing && (
-                                    <div className="text-blue-500 text-sm flex items-center gap-2 px-3">
+                                    <div className="text-blue-500 text-sm flex items-center justify-center gap-2 px-3">
                                         <Loader2 size={16} className="animate-spin" />
                                         {progressMsg || '正在处理...'}
                                     </div>
                                 )}
                                 
                                 {mode === 'article' ? (
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={handleSaveToNotes}
-                                            disabled={isAnalyzing}
-                                            className="px-5 py-2.5 rounded-xl border border-phy-border hover:bg-phy-glass transition-all flex items-center gap-2 text-phy-muted hover:text-phy-text font-bold text-sm"
-                                        >
-                                            <Save size={18} />
-                                            📥 存入笔记
-                                        </button>
-                                        <button
-                                            onClick={handleJustReading}
-                                            disabled={isAnalyzing}
-                                            className="px-5 py-2.5 rounded-xl border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-all flex items-center gap-2 font-bold text-sm"
-                                        >
-                                            <BookMarked size={18} />
-                                            📖 纯粹阅读
-                                        </button>
+                                    <div className={`flex ${isMobile ? 'flex-col' : 'gap-3'}`}>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleSaveToNotes}
+                                                disabled={isAnalyzing}
+                                                className="flex-1 px-4 py-3 rounded-xl border border-phy-border hover:bg-phy-glass transition-all flex items-center justify-center gap-2 text-phy-muted hover:text-phy-text font-bold text-xs"
+                                            >
+                                                <Save size={16} />
+                                                存入笔记
+                                            </button>
+                                            <button
+                                                onClick={handleJustReading}
+                                                disabled={isAnalyzing}
+                                                className="flex-1 px-4 py-3 rounded-xl border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-all flex items-center justify-center gap-2 font-bold text-xs"
+                                            >
+                                                <BookMarked size={16} />
+                                                纯粹阅读
+                                            </button>
+                                        </div>
                                         <button
                                             onClick={handleStartPractice}
                                             disabled={isAnalyzing}
-                                            className="px-8 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center gap-2 text-sm"
+                                            className="w-full px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 text-sm"
                                         >
                                             <Sparkles size={18} />
                                             🚀 开始刷题
@@ -495,7 +521,7 @@ const ImportView = ({ onNavigate, params = {} }) => {
                                     <button
                                         onClick={handleAction}
                                         disabled={isAnalyzing}
-                                        className="px-10 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-900/20 transition-all flex items-center gap-2"
+                                        className="w-full px-10 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-900/20 transition-all flex items-center justify-center gap-2"
                                     >
                                         {isAnalyzing ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
                                         提取词汇

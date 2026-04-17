@@ -727,8 +727,8 @@ const TranslationChallengeView = () => {
             : 'text-rose-200 border-rose-400/30 bg-rose-500/10';
 
     return (
-        <div className="h-full min-h-0 overflow-hidden p-4 md:p-6">
-            <div className="h-full min-h-0 grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+        <div className="h-full min-h-0 overflow-y-auto md:overflow-hidden p-3 md:p-6">
+            <div className="min-h-full md:h-full md:min-h-0 md:grid md:grid-rows-[auto_minmax(0,1fr)] flex flex-col gap-4 pb-20 md:pb-0">
                 <section className="glass-panel rounded-2xl border border-phy-border p-4 md:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
@@ -791,8 +791,8 @@ const TranslationChallengeView = () => {
                     </div>
                 </section>
 
-                <div className="min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(360px,1fr)] gap-4">
-                    <section className="min-h-0 flex flex-col gap-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(360px,1fr)] gap-4 md:min-h-0">
+                    <section className="flex flex-col gap-4 md:min-h-0">
                         {challenge && currentTask ? (
                             <>
                                 <div className="sticky top-0 z-20 glass-panel rounded-2xl border border-phy-border p-3">
@@ -812,7 +812,7 @@ const TranslationChallengeView = () => {
                                     </div>
                                 </div>
 
-                                <div className="min-h-0 overflow-y-auto custom-scrollbar pr-1 space-y-4">
+                                <div className="space-y-4 md:min-h-0 md:overflow-y-auto custom-scrollbar md:pr-1">
                                     <div className="glass-panel rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
                                         <div className="text-xs text-amber-200/80">题干（中文）</div>
                                         <div className="mt-2 text-sm text-amber-100 whitespace-pre-wrap leading-relaxed">{currentTask.chinese}</div>
@@ -912,7 +912,7 @@ const TranslationChallengeView = () => {
                         )}
                     </section>
 
-                    <aside className="min-h-0 glass-panel rounded-2xl border border-phy-border p-4 flex flex-col">
+                    <aside className="glass-panel rounded-2xl border border-phy-border p-4 flex flex-col max-h-[42vh] md:max-h-none md:min-h-0">
                         <div className="flex items-center justify-between gap-2">
                             <h3 className="text-sm font-black text-phy-text flex items-center gap-2"><History size={14} />历史快回放 ({filteredLogs.length}/{logs.length})</h3>
                             <button onClick={() => setShowFilters((v) => !v)} className="px-2 py-1 rounded-lg border border-phy-border bg-phy-glass text-xs text-phy-text inline-flex items-center gap-1" title="Alt + H"><Filter size={12} />筛选</button>

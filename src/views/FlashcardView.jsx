@@ -1442,7 +1442,7 @@ const FlashcardView = ({ params }) => {
                     mobileToggleLabel="卡片筛选"
                     mobileLeftMaxHeight="34vh"
                     right={
-                        <div className="h-full min-h-0 flex flex-col bg-transparent">
+                        <div className={`h-full min-h-0 flex flex-col bg-transparent ${isMobile ? 'overflow-y-auto' : ''}`}>
                             <input
                                 ref={importCardsInputRef}
                                 type="file"
@@ -1510,7 +1510,18 @@ const FlashcardView = ({ params }) => {
                                                                 min="1"
                                                                 max="500"
                                                                 value={drawCount}
-                                                                onChange={(e) => setDrawCount(parseInt(e.target.value, 10) || 10)}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    if (val === '') {
+                                                                        setDrawCount('');
+                                                                    } else {
+                                                                        const num = parseInt(val, 10);
+                                                                        setDrawCount(isNaN(num) ? '' : num);
+                                                                    }
+                                                                }}
+                                                                onBlur={() => {
+                                                                    if (drawCount === '' || (typeof drawCount === 'number' && drawCount < 1)) setDrawCount(10);
+                                                                }}
                                                                 className="w-14 bg-phy-bg border border-phy-border rounded px-1.5 py-1 text-[11px] font-bold text-phy-text outline-none text-center"
                                                             />
                                                         </div>
@@ -1567,7 +1578,18 @@ const FlashcardView = ({ params }) => {
                                                     min="1"
                                                     max="500"
                                                     value={drawCount}
-                                                    onChange={(e) => setDrawCount(parseInt(e.target.value) || 10)}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val === '') {
+                                                            setDrawCount('');
+                                                        } else {
+                                                            const num = parseInt(val, 10);
+                                                            setDrawCount(isNaN(num) ? '' : num);
+                                                        }
+                                                    }}
+                                                    onBlur={() => {
+                                                        if (drawCount === '' || (typeof drawCount === 'number' && drawCount < 1)) setDrawCount(10);
+                                                    }}
                                                     className="w-10 md:w-12 bg-transparent text-xs md:text-sm font-bold text-phy-text outline-none text-center"
                                                 />
                                             </div>
@@ -1602,7 +1624,7 @@ const FlashcardView = ({ params }) => {
 
                             {/* Batch Action Toolbar */}
                             {isMultiSelect && selectedCardIds.size > 0 && (
-                                <div className="px-4 py-3 bg-phy-accentGlass border-b border-phy-border Hover flex items-center justify-between animate-in slide-in-from-top-2">
+                                <div className="px-4 py-3 bg-phy-accentGlass border-b border-phy-border flex items-center justify-between animate-in slide-in-from-top-2">
                                     <div className="flex items-center gap-3">
                                         <button
                                             onClick={handleSelectAll}
@@ -1680,7 +1702,7 @@ const FlashcardView = ({ params }) => {
                             )}
 
                             {/* Card Grid */}
-                            <div className={`flex-1 overflow-y-auto ${isMobile ? 'p-2' : 'p-6'} bg-phy-bg/30`}>
+                            <div className={`flex-1 ${isMobile ? 'h-auto' : 'overflow-y-auto'} ${isMobile ? 'p-2' : 'p-6'} bg-phy-bg/30`}>
                                 {/* Add Input */}
                                 {(!isMobile || isAddingCard || showMobileAddComposer) && (
                                     <div className={`${isMobile ? 'mb-3 p-3' : 'mb-6 p-4'} bg-phy-glass border border-phy-border shadow-sm rounded-xl transition-all focus-within:ring-2 ring-phy-accent border-phy-accent`}>
@@ -1846,15 +1868,15 @@ const FlashcardView = ({ params }) => {
                         <div className={`flex-1 min-h-0 flex flex-col items-center justify-center relative perspective-1000 ${isMobile ? 'p-2 pt-1 overflow-hidden' : 'p-8 overflow-y-auto'} ${isMobile && isFlipped && showGradePanel ? 'pb-20' : ''}`}>
 
                             {/* Toolbar inside Study Area */}
-                            {!isMobile && <div className="absolute top-4 right-4 z-20 flex gap-2">
+                            <div className={`absolute top-4 right-4 z-20 flex gap-2 ${isMobile ? 'opacity-40 hover:opacity-100 transition-opacity' : ''}`}>
                                 <button
                                     onClick={() => setShowDetailPanel(!showDetailPanel)}
                                     className={`p-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all ${showDetailPanel ? 'bg-phy-accent text-white shadow-md' : 'bg-phy-glass text-phy-muted border border-phy-border hover:text-phy-accent hover:border-phy-borderHover shadow-sm'}`}
                                 >
                                     {showDetailPanel ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-                                    {showDetailPanel ? '收起详情' : '深度笔记'}
+                                    {(!isMobile || showDetailPanel) && (showDetailPanel ? '收起详情' : '深度笔记')}
                                 </button>
-                            </div>}
+                            </div>
 
                             {/* Drill Generating Indicator */}
                             {isGeneratingDrill && (
@@ -1998,8 +2020,19 @@ const FlashcardView = ({ params }) => {
                         </div>
 
                         {/* Right: Detail Panel */}
-                        <div className={`border-l border-phy-border bg-phy-glassHeavy backdrop-blur transition-all duration-300 flex flex-col shadow-inner z-30 ${isMobile ? 'hidden' : (showDetailPanel ? 'w-[400px] translate-x-0' : 'w-0 translate-x-full opacity-0')}`}>
-                            <div className="p-6 h-full overflow-y-auto">
+                        <div className={`border-l border-phy-border bg-phy-glassHeavy backdrop-blur transition-all duration-300 flex flex-col shadow-inner z-[60] ${isMobile ? (showDetailPanel ? 'fixed inset-0 w-full animate-in slide-in-from-bottom' : 'hidden') : (showDetailPanel ? 'w-[400px] translate-x-0' : 'w-0 translate-x-full opacity-0')}`}>
+                            {isMobile && (
+                                <div className="p-4 border-b border-phy-border/30 flex items-center justify-between sticky top-0 bg-phy-glassHeavy backdrop-blur z-10">
+                                    <div className="flex items-center gap-2 font-black text-phy-text">
+                                        <BookOpen size={20} className="text-phy-accent" />
+                                        深度学习笔记
+                                    </div>
+                                    <button onClick={() => setShowDetailPanel(false)} className="p-2 bg-phy-glass rounded-full text-phy-muted">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            )}
+                            <div className={`${isMobile ? 'flex-1 overflow-y-auto p-4' : 'p-6 h-full overflow-y-auto'}`}>
                                 <h3 className="font-bold text-phy-text mb-6 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <BookOpen size={20} className="text-phy-accent" />
@@ -2302,7 +2335,7 @@ const FlashcardView = ({ params }) => {
             {mode === 'study' && lastAction && Date.now() - lastAction.timestamp < 5000 && (
                 <button
                     onClick={handleUndo}
-                    className="fixed bottom-8 left-8 z-40 flex items-center gap-2 bg-phy-text text-phy-bg px-4 py-3 rounded-xl shadow-lg hover:opacity-90 transition-all animate-fade-in"
+                    className={`fixed z-[70] flex items-center gap-2 bg-phy-text text-phy-bg px-4 py-3 rounded-xl shadow-lg hover:opacity-90 transition-all animate-fade-in ${isMobile ? 'top-10 left-1/2 -translate-x-1/2 pointer-events-auto' : 'bottom-8 left-8'}`}
                 >
                     <Undo2 size={18} />
                     <span className="font-bold text-sm">撤销 (Z)</span>

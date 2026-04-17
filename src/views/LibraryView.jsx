@@ -1,10 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    AlertCircle,
-    Brain,
-    CheckCircle2,
     FileText,
     FolderOpen,
+    Headphones,
     Loader2,
     MonitorPlay,
     Music,
@@ -14,32 +12,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
-import { generateListeningQuizFromTranscript, transcribeAudio } from '../services/ai';
-
-const extractOption = (option, idx) => {
-    const raw = String(option || '').trim();
-    const match = raw.match(/^([A-D])[).:\-：\s]+(.+)$/i);
-    const key = match ? match[1].toUpperCase() : String.fromCharCode(65 + idx);
-    const text = match ? match[2].trim() : raw;
-    return { key, text };
-};
-
-const normalizeAnswer = (value) => {
-    const found = String(value || '').toUpperCase().match(/[A-D]/);
-    return found ? found[0] : '';
-};
 
 const LibraryView = () => {
-    const { loadFiles, removeFileItem, playAudio, settings } = useApp();
+    const { loadFiles, removeFileItem, playAudio } = useApp();
     const [files, setFiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeFile, setActiveFile] = useState(null);
-
-    const [listeningQuiz, setListeningQuiz] = useState(null);
-    const [listeningAnswers, setListeningAnswers] = useState({});
-    const [listeningSubmitted, setListeningSubmitted] = useState(false);
-    const [transcriptText, setTranscriptText] = useState('');
-    const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -66,13 +44,6 @@ const LibraryView = () => {
         };
     }, [activeFile]);
 
-    const resetListeningState = () => {
-        setListeningQuiz(null);
-        setListeningAnswers({});
-        setListeningSubmitted(false);
-        setTranscriptText('');
-    };
-
     const handleDelete = async (e, id) => {
         e.stopPropagation();
         if (!window.confirm('确定要永久删除这个文件吗？')) return;
@@ -81,7 +52,6 @@ const LibraryView = () => {
         if (activeFile?.id === id) {
             if (activeFile?.url) URL.revokeObjectURL(activeFile.url);
             setActiveFile(null);
-            resetListeningState();
         }
         await loadData();
     };
@@ -93,7 +63,6 @@ const LibraryView = () => {
         const url = URL.createObjectURL(file.blob);
         const next = { ...file, url };
         setActiveFile(next);
-        resetListeningState();
 
         if (file.type.includes('audio')) {
             playAudio(next);
@@ -105,74 +74,7 @@ const LibraryView = () => {
             URL.revokeObjectURL(activeFile.url);
         }
         setActiveFile(null);
-        resetListeningState();
     };
-
-    const handleGenerateListeningQuiz = async () => {
-        if (!activeFile || !activeFile.type.includes('audio')) return;
-        setIsGeneratingQuiz(true);
-        try {
-            toast.loading('正在转写音频...', { id: 'listening_quiz' });
-            const transcript = await transcribeAudio(activeFile.blob, settings);
-            if (!transcript?.trim()) {
-                throw new Error('转写结果为空，请更换音频或检查模型设置');
-            }
-
-            toast.loading('正在生成听力题目...', { id: 'listening_quiz' });
-            const rawQuiz = await generateListeningQuizFromTranscript(transcript, settings, 6);
-            const normalizedQuestions = (rawQuiz?.questions || []).map((q, idx) => ({
-                id: q.id || idx + 1,
-                question: q.question || `第 ${idx + 1} 题`,
-                options: Array.isArray(q.options) ? q.options : [],
-                answer: normalizeAnswer(q.answer),
-                explanation: q.explanation || '',
-                evidence_sentence: q.evidence_sentence || ''
-            }));
-
-            if (!normalizedQuestions.length) {
-                throw new Error('没有生成有效题目，请重试');
-            }
-
-            setTranscriptText(transcript);
-            setListeningQuiz({
-                title: rawQuiz?.title || '听力练习题',
-                questions: normalizedQuestions
-            });
-            setListeningAnswers({});
-            setListeningSubmitted(false);
-            toast.success(`已生成 ${normalizedQuestions.length} 道听力题`, { id: 'listening_quiz' });
-        } catch (e) {
-            console.error('Generate listening quiz failed:', e);
-            toast.error(`生成听力题失败: ${e.message}`, { id: 'listening_quiz' });
-        } finally {
-            setIsGeneratingQuiz(false);
-        }
-    };
-
-    const handleSubmitListening = () => {
-        if (!listeningQuiz?.questions?.length) return;
-        const answeredCount = listeningQuiz.questions.filter((q) => listeningAnswers[q.id]).length;
-        if (!answeredCount) {
-            toast.error('请先选择至少一个答案');
-            return;
-        }
-        setListeningSubmitted(true);
-    };
-
-    const listeningResult = useMemo(() => {
-        if (!listeningQuiz?.questions?.length) return { total: 0, correct: 0, accuracy: 0 };
-        const total = listeningQuiz.questions.length;
-        const correct = listeningQuiz.questions.reduce((sum, q) => {
-            const picked = normalizeAnswer(listeningAnswers[q.id]);
-            const answer = normalizeAnswer(q.answer);
-            return sum + (picked && answer && picked === answer ? 1 : 0);
-        }, 0);
-        return {
-            total,
-            correct,
-            accuracy: total ? Math.round((correct / total) * 100) : 0
-        };
-    }, [listeningQuiz, listeningAnswers]);
 
     const getIcon = (type) => {
         if (type.includes('pdf')) return <FileText size={24} className="text-red-500" />;
@@ -273,142 +175,33 @@ const LibraryView = () => {
                         )}
 
                         {activeFile.type.includes('audio') && (
-                            <div className="max-w-4xl mx-auto space-y-4">
-                                <div className="rounded-2xl border border-phy-border bg-phy-glass p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-full bg-purple-500/15 text-purple-400 flex items-center justify-center">
-                                            <Music size={24} />
+                            <div className="max-w-4xl mx-auto h-full flex flex-col items-center justify-center">
+                                <div className="rounded-[2.5rem] border border-phy-border bg-phy-glass p-12 flex flex-col items-center text-center gap-6 shadow-2xl">
+                                    <div className="relative">
+                                        <div className="w-24 h-24 rounded-full bg-purple-500/15 text-purple-400 flex items-center justify-center animate-pulse">
+                                            <Music size={40} />
                                         </div>
-                                        <div>
-                                            <div className="text-phy-text font-bold">音频已在全局播放器中播放</div>
-                                            <div className="text-xs text-phy-muted">可一键转写并自动生成听力题，适合做精听训练</div>
+                                        <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-phy-accent text-white flex items-center justify-center shadow-lg">
+                                            <Headphones size={16} />
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={handleGenerateListeningQuiz}
-                                            disabled={isGeneratingQuiz}
-                                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-indigo-500 hover:bg-indigo-400 disabled:opacity-60 text-white"
-                                        >
-                                            {isGeneratingQuiz ? <Loader2 size={15} className="animate-spin" /> : <Brain size={15} />}
-                                            {isGeneratingQuiz ? '生成中...' : '自动生成听力题'}
-                                        </button>
+                                    
+                                    <div>
+                                        <h3 className="text-xl font-black text-phy-text mb-2">音频预览模式</h3>
+                                        <p className="text-sm text-phy-muted max-w-xs leading-relaxed">
+                                            该音频已在全局播放器中打开。如果你想进行精听练习、AI 转写或测试听力理解，请前往专用实验室。
+                                        </p>
+                                    </div>
+
+                                    <div className="p-4 rounded-2xl bg-phy-accentGlass border border-phy-accent/20 flex flex-col gap-3 w-full">
+                                        <div className="text-xs font-bold text-phy-accent uppercase tracking-widest">推荐工作流</div>
+                                        <div className="text-sm text-phy-text font-medium">使用“听力实验室”进行深度学习</div>
+                                    </div>
+
+                                    <div className="text-xs text-phy-muted italic">
+                                        提示：从左侧导航栏点击“听力实验室”即可进入
                                     </div>
                                 </div>
-
-                                {transcriptText && (
-                                    <details className="rounded-xl border border-phy-border bg-phy-glass p-4">
-                                        <summary className="cursor-pointer text-sm font-bold text-phy-text">查看转写文本</summary>
-                                        <div className="mt-3 text-sm leading-7 text-phy-text whitespace-pre-wrap break-words max-h-[240px] overflow-y-auto custom-scrollbar">
-                                            {transcriptText}
-                                        </div>
-                                    </details>
-                                )}
-
-                                {listeningQuiz?.questions?.length > 0 && (
-                                    <div className="rounded-2xl border border-phy-border bg-phy-glass p-4 md:p-5 space-y-4">
-                                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                                            <div>
-                                                <div className="text-base font-black text-phy-text">{listeningQuiz.title || '听力练习题'}</div>
-                                                <div className="text-xs text-phy-muted">{listeningQuiz.questions.length} 道题 · 单选题</div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        setListeningAnswers({});
-                                                        setListeningSubmitted(false);
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-bg text-phy-text hover:bg-phy-glassHeavy"
-                                                >
-                                                    重置作答
-                                                </button>
-                                                <button
-                                                    onClick={handleSubmitListening}
-                                                    className="px-3 py-2 rounded-lg text-xs font-bold bg-green-500 hover:bg-green-400 text-white"
-                                                >
-                                                    提交评分
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {listeningSubmitted && (
-                                            <div className={`rounded-xl border p-3 flex items-center gap-2 text-sm ${listeningResult.accuracy >= 60
-                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                                                : 'bg-orange-500/10 border-orange-500/30 text-orange-300'
-                                                }`}>
-                                                {listeningResult.accuracy >= 60 ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                                                成绩：{listeningResult.correct}/{listeningResult.total}，正确率 {listeningResult.accuracy}%
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-3">
-                                            {listeningQuiz.questions.map((q, idx) => {
-                                                const selected = listeningAnswers[q.id] || '';
-                                                const correct = normalizeAnswer(q.answer);
-                                                const isCorrect = listeningSubmitted && normalizeAnswer(selected) === correct;
-
-                                                return (
-                                                    <div key={q.id} className="rounded-xl border border-phy-border bg-phy-bg p-3">
-                                                        <div className="font-bold text-phy-text text-sm md:text-base mb-3">
-                                                            Q{idx + 1}. {q.question}
-                                                        </div>
-
-                                                        <div className="space-y-2">
-                                                            {(q.options || []).map((opt, optIdx) => {
-                                                                const { key, text } = extractOption(opt, optIdx);
-                                                                const picked = selected === key;
-                                                                const optionCorrect = listeningSubmitted && correct === key;
-                                                                const optionWrongPicked = listeningSubmitted && picked && correct !== key;
-                                                                return (
-                                                                    <label
-                                                                        key={`${q.id}-${key}`}
-                                                                        className={`flex items-start gap-3 rounded-lg border p-2.5 cursor-pointer transition-colors ${optionCorrect
-                                                                            ? 'border-emerald-500/50 bg-emerald-500/10'
-                                                                            : optionWrongPicked
-                                                                                ? 'border-red-500/50 bg-red-500/10'
-                                                                                : picked
-                                                                                    ? 'border-indigo-500/50 bg-indigo-500/10'
-                                                                                    : 'border-phy-border bg-transparent hover:bg-phy-glass'
-                                                                            }`}
-                                                                    >
-                                                                        <input
-                                                                            type="radio"
-                                                                            name={`listening-${q.id}`}
-                                                                            value={key}
-                                                                            checked={picked}
-                                                                            onChange={() => {
-                                                                                setListeningAnswers((prev) => ({ ...prev, [q.id]: key }));
-                                                                                if (listeningSubmitted) setListeningSubmitted(false);
-                                                                            }}
-                                                                            className="mt-1"
-                                                                        />
-                                                                        <div className="text-sm text-phy-text leading-6 break-words">
-                                                                            <span className="font-black mr-1">{key}.</span>{text}
-                                                                        </div>
-                                                                    </label>
-                                                                );
-                                                            })}
-                                                        </div>
-
-                                                        {listeningSubmitted && (
-                                                            <div className="mt-3 space-y-1 text-xs leading-6">
-                                                                <div className={`${isCorrect ? 'text-emerald-300' : 'text-orange-300'} font-bold`}>
-                                                                    正确答案：{correct || '未知'} · 你的答案：{selected || '未作答'}
-                                                                </div>
-                                                                {q.explanation && <div className="text-phy-muted">解析：{q.explanation}</div>}
-                                                                {q.evidence_sentence && (
-                                                                    <div className="text-blue-300">
-                                                                        证据句：{q.evidence_sentence}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         )}
 

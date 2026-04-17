@@ -43,13 +43,25 @@ jobs:
       working-directory: ./android
       run: chmod +x gradlew
       
-    - name: Build APK (Debug)
+    - name: Build APK (Release)
       working-directory: ./android
-      run: ./gradlew assembleDebug
+      run: ./gradlew assembleRelease
       
-    - name: Upload APK
+    - name: Sign APK
+      uses: r0adkll/sign-android-release@v1
+      id: sign_app
+      with:
+        releaseDirectory: android/app/build/outputs/apk/release
+        signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+        keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        keyPassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      env:
+        BUILD_TOOLS_VERSION: "34.0.0"
+
+    - name: Upload Signed APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: android/app/build/outputs/apk/debug/app-debug.apk
+        name: app-release-signed
+        path: ${{ steps.sign_app.outputs.signedReleaseFile }}
         if-no-files-found: error

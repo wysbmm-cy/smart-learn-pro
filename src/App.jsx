@@ -16,13 +16,14 @@ const viewFactories = {
     NotesView: () => import('./views/NotesView'),
     FlashcardView: () => import('./views/FlashcardView'),
     SettingsView: () => import('./views/SettingsView'),
-    PlanView: () => import('./views/PlanView'),
+
     CoachView: () => import('./views/CoachView'),
     VideoView: () => import('./views/VideoView'),
     WriterView: () => import('./views/WriterView'),
     TranslationChallengeView: () => import('./views/TranslationChallengeView'),
     ExamView: () => import('./views/ExamView'),
     KnowledgeGraphView: () => import('./views/KnowledgeGraphView'),
+    ListeningView: () => import('./views/ListeningView'),
 };
 
 export const preloadAllViews = () => {
@@ -39,13 +40,14 @@ const LibraryView = lazy(viewFactories.LibraryView);
 const NotesView = lazy(viewFactories.NotesView);
 const FlashcardView = lazy(viewFactories.FlashcardView);
 const SettingsView = lazy(viewFactories.SettingsView);
-const PlanView = lazy(viewFactories.PlanView);
+
 const CoachView = lazy(viewFactories.CoachView);
 const VideoView = lazy(viewFactories.VideoView);
 const WriterView = lazy(viewFactories.WriterView);
 const TranslationChallengeView = lazy(viewFactories.TranslationChallengeView);
 const ExamView = lazy(viewFactories.ExamView);
 const KnowledgeGraphView = lazy(viewFactories.KnowledgeGraphView);
+const ListeningView = lazy(viewFactories.ListeningView);
 
 const LoadingFallback = () => <SkeletonLoader />;
 
@@ -95,8 +97,7 @@ function AppContent() {
                 return <FlashcardView params={viewParams} />;
             case 'settings':
                 return <SettingsView />;
-            case 'plan':
-                return <PlanView />;
+
             case 'coach':
                 return <CoachView />;
             case 'video':
@@ -109,6 +110,8 @@ function AppContent() {
                 return <ExamView onNavigate={setCurrentView} params={viewParams} />;
             case 'knowledge':
                 return <KnowledgeGraphView />;
+            case 'listening':
+                return <ListeningView />;
             default:
                 return <Dashboard onNavigate={setCurrentView} />;
         }

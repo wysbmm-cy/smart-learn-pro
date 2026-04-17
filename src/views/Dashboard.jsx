@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Activity, ChevronRight, Calendar, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X, Play } from 'lucide-react';
+import { Upload, CheckCircle, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X, Play } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import ForgettingCurveChart from '../components/ForgettingCurveChart';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
 import DailySummaryCard from '../components/DailySummaryCard';
@@ -54,8 +53,6 @@ const Dashboard = ({ onNavigate }) => {
     // Get results from global state
     const storyComic = bgTasks.storyComic?.data;
 
-
-
     useEffect(() => {
         const load = async () => {
             setIsLoading(true);
@@ -70,23 +67,19 @@ const Dashboard = ({ onNavigate }) => {
             // Calculate today's stats
             try {
                 const allCards = await getFlashcards();
-                // Calculate FSRS due cards
                 const now = Date.now();
                 const dueCards = allCards.filter(c => !c.nextReview || c.nextReview <= now);
                 setDueCount(dueCards.length);
                 const allNotes = await getNotes();
                 const allHistory = await getHistory();
-
                 const allChat = await getChatSessions();
 
                 const isSameIsoDay = (value, day) => {
                     if (!value) return false;
-
                     if (typeof value === 'number') {
                         const d = new Date(value);
                         return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(day);
                     }
-
                     if (typeof value === 'string') {
                         if (/^\d+$/.test(value)) {
                             const d = new Date(Number(value));
@@ -98,11 +91,9 @@ const Dashboard = ({ onNavigate }) => {
                         const d = new Date(value);
                         return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(day);
                     }
-
                     if (value instanceof Date) {
                         return !Number.isNaN(value.getTime()) && value.toISOString().startsWith(day);
                     }
-
                     return false;
                 };
 
@@ -110,12 +101,7 @@ const Dashboard = ({ onNavigate }) => {
                 const todayCards = allCards.filter(c => isSameIsoDay(c.lastReview, today));
                 const todayNotes = allNotes.filter(n => isSameIsoDay(n.date, today));
                 const todayArticles = allHistory.filter(h => isSameIsoDay(h.date, today));
-
-                // Approximations for Chat & Writing
-                // 1. Chat: Sessions updated today
                 const todayChats = allChat.filter(c => c.updatedAt && new Date(c.updatedAt).toISOString().startsWith(today));
-
-                // 2. Writing: Simple word count of notes created today
                 const writingWordCount = todayNotes.reduce((acc, n) => acc + (n.content ? n.content.split(/\s+/).length : 0), 0);
 
                 setTodayStats({
@@ -123,7 +109,7 @@ const Dashboard = ({ onNavigate }) => {
                     articlesRead: todayArticles.length,
                     notesCreated: todayNotes.length,
                     flashcardsReviewed: todayCards.length,
-                    questionsAsked: todayChats.length, // Using session count as proxy for 'interactions' for now
+                    questionsAsked: todayChats.length,
                     writingCount: writingWordCount
                 });
             } catch (e) {
@@ -135,22 +121,17 @@ const Dashboard = ({ onNavigate }) => {
         load();
     }, []);
 
-
-
-    // Generate Story Comic (with options)
     const handleGenerateComic = async () => {
         if (!todayHighlights.length) {
             alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
             return;
         }
-        // Run in background with selected options
         runStoryComicGeneration(todayHighlights, {
             style: selectedComicStyle,
             format: selectedComicFormat
         });
     };
 
-    // Save comic image
     const handleSaveComic = async () => {
         if (!storyComic?.imageUrl) return;
         try {
@@ -186,7 +167,6 @@ const Dashboard = ({ onNavigate }) => {
                         }
                     </p>
 
-                    {/* Buttons: vertical stack on mobile, horizontal on desktop */}
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:flex-wrap">
                         {dueCount > 0 && (
                             <button
@@ -251,7 +231,6 @@ const Dashboard = ({ onNavigate }) => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Settings Button */}
                         <button
                             onClick={() => setShowComicSettings(!showComicSettings)}
                             className="p-3 rounded-xl bg-phy-glassHover hover:bg-white/20 text-purple-300 transition-all"
@@ -274,7 +253,6 @@ const Dashboard = ({ onNavigate }) => {
                     </div>
                 </div>
 
-                {/* Settings Panel */}
                 {showComicSettings && (
                     <div className="mb-6 p-4 bg-phy-glass rounded-xl border border-phy-borderHover relative z-10">
                         <div className="flex justify-between items-center mb-4">
@@ -284,7 +262,6 @@ const Dashboard = ({ onNavigate }) => {
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Style Selector */}
                             <div>
                                 <label className="block text-xs text-purple-300 mb-2">画风</label>
                                 <select
@@ -310,7 +287,6 @@ const Dashboard = ({ onNavigate }) => {
                                     </optgroup>
                                 </select>
                             </div>
-                            {/* Format Selector */}
                             <div>
                                 <label className="block text-xs text-purple-300 mb-2">格式</label>
                                 <select
@@ -338,7 +314,6 @@ const Dashboard = ({ onNavigate }) => {
                                 className="w-full h-auto object-cover"
                             />
                         </div>
-                        {/* Save Button */}
                         <button
                             onClick={handleSaveComic}
                             className="w-full py-3 rounded-xl bg-phy-glassHover hover:bg-white/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all border border-phy-borderHover"
@@ -358,82 +333,7 @@ const Dashboard = ({ onNavigate }) => {
 
             {/* 4. Study Heatmap */}
             <StudyHeatmap dailyActivity={stats.dailyActivity || {}} />
-
-
-            {/* 3. Forgetting Curve & Today's Task */}
-            <ForgettingCurveChart
-                flashcards={flashcards}
-                onReviewStart={() => {
-                    setFlashcardStartupState({ mode: 'study', folder: 'today' });
-                    onNavigate('flashcards');
-                }}
-            />
-
-            {/* 4. Stats Grid - Clean White Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                {/* Card 2: Streak (Orange Theme) */}
-                {isLoading ? (
-                    <div className="bg-phy-glass p-6 rounded-3xl shadow-sm border border-phy-border/50 h-[180px]">
-                        <div className="flex justify-between items-start mb-6">
-                            <Skeleton className="h-12 w-12 rounded-2xl bg-phy-bg" />
-                            <Skeleton className="h-4 w-16 bg-phy-bg" />
-                        </div>
-                        <Skeleton className="h-10 w-24 mb-2 bg-phy-bg" />
-                        <Skeleton className="h-4 w-32 bg-phy-bg" />
-                    </div>
-                ) : (
-                    <div className="bg-phy-glass p-6 rounded-3xl shadow-sm border border-phy-border/50 hover:shadow-md transition-all flex flex-col justify-between h-[180px]">
-                        <div className="flex justify-between items-start">
-                            <div className="p-3 bg-orange-50 text-orange-500 rounded-2xl">
-                                <Activity size={24} strokeWidth={2.5} />
-                            </div>
-                            <span className="text-[11px] font-bold text-phy-muted uppercase tracking-widest">学习天数</span>
-                        </div>
-                        <div>
-                            <div className="flex items-baseline gap-1 mb-2">
-                                <span className="text-4xl font-bold text-phy-text font-bold">{stats.streak}</span>
-                                <span className="text-lg text-phy-muted font-medium">天</span>
-                            </div>
-                            <div className="text-sm text-phy-muted font-medium">连续学习天数</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Card 3: Plan (Purple Theme) */}
-                {isLoading ? (
-                    <div className="bg-phy-glass p-6 rounded-3xl shadow-sm border border-phy-border/50 h-[180px]">
-                        <div className="flex justify-between items-start mb-6">
-                            <Skeleton className="h-12 w-12 rounded-2xl bg-phy-bg" />
-                            <Skeleton className="h-6 w-6 bg-phy-bg" />
-                        </div>
-                        <Skeleton className="h-6 w-36 mb-2 bg-phy-bg" />
-                        <Skeleton className="h-4 w-full bg-phy-bg" />
-                    </div>
-                ) : (
-                    <div
-                        onClick={() => onNavigate('plan')}
-                        className="bg-phy-glass p-6 rounded-3xl shadow-sm border border-phy-border/50 hover:shadow-md hover:border-blue-100 transition-all cursor-pointer flex flex-col justify-between h-[180px] group"
-                    >
-                        <div className="flex justify-between items-start">
-                            <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-100 transition-colors">
-                                <Calendar size={24} strokeWidth={2.5} />
-                            </div>
-                            <ChevronRight className="text-phy-text group-hover:text-blue-500 transition-colors" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-lg font-bold text-phy-text font-bold">查看智能计划</span>
-                            </div>
-                            <div className="text-sm text-phy-muted leading-relaxed">
-                                AI 已根据进度调整复习队列，点击开始今日复习。
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-            </div>
-        </div >
+        </div>
     );
 };
 

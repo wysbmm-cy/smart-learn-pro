@@ -1,5 +1,5 @@
 const DB_NAME = 'SmartLearnDB';
-const DB_VERSION = 15; // Bumped native tagging Support for Noteson Logs
+const DB_VERSION = 16; // Added listening_data store for persistent transcripts/quizzes
 
 export const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -122,6 +122,11 @@ export const initDB = () => {
                 const materialStore = db.createObjectStore('writing_materials', { keyPath: 'id' });
                 materialStore.createIndex('updatedAt', 'updatedAt', { unique: false });
                 materialStore.createIndex('category', 'category', { unique: false });
+            }
+            // --- NEW V16 STORE (Listening Lab Persistence) ---
+            if (!db.objectStoreNames.contains('listening_data')) {
+                const listStore = db.createObjectStore('listening_data', { keyPath: 'fileId' });
+                listStore.createIndex('updatedAt', 'updatedAt', { unique: false });
             }
         };
 
@@ -789,6 +794,42 @@ export const saveTranslationLog = async (log) => {
         };
         const request = store.put(record);
         request.onsuccess = () => resolve(record);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+// ============ Listening Lab Persistence ============
+
+export const saveListeningData = async (data) => {
+    // data: { fileId, transcript, quizData, updatedAt }
+    const db = await initDB();
+    const tx = db.transaction('listening_data', 'readwrite');
+    const store = tx.objectStore('listening_data');
+    return new Promise((resolve, reject) => {
+        const request = store.put({ ...data, updatedAt: Date.now() });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const getListeningData = async (fileId) => {
+    const db = await initDB();
+    const tx = db.transaction('listening_data', 'readonly');
+    const store = tx.objectStore('listening_data');
+    return new Promise((resolve, reject) => {
+        const request = store.get(fileId);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+export const deleteListeningData = async (fileId) => {
+    const db = await initDB();
+    const tx = db.transaction('listening_data', 'readwrite');
+    const store = tx.objectStore('listening_data');
+    return new Promise((resolve, reject) => {
+        const request = store.delete(fileId);
+        request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
 };

@@ -671,27 +671,29 @@ const ExamView = ({ params = {} }) => {
         }
     };
 
-    const captureSelection = () => {
-        const source = String(paper?.passage || '');
-        if (!source || !articleMainRef.current) {
-            setSelectionDraft(null);
-            return;
-        }
+    const captureSelection = (e) => {
+        if (!articleMainRef.current || !paper?.passage) return;
+
         const selection = window.getSelection?.();
-        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-            setSelectionDraft(null);
+        if (!selection || selection.rangeCount === 0) return;
+
+        const isCollapsed = selection.isCollapsed;
+        const selectedRaw = selection.toString();
+
+        if (isCollapsed || !selectedRaw.trim()) {
+            if (selectionDraft) setSelectionDraft(null);
             return;
         }
-        const range = selection.getRangeAt(0);
-        if (!articleMainRef.current.contains(range.commonAncestorContainer)) {
-            return;
-        }
+
         try {
+            const range = selection.getRangeAt(0);
+            if (!articleMainRef.current.contains(range.commonAncestorContainer)) return;
+
+            const source = paper.passage;
             const preRange = document.createRange();
             preRange.selectNodeContents(articleMainRef.current);
             preRange.setEnd(range.startContainer, range.startOffset);
             const start = preRange.toString().length;
-            const selectedRaw = selection.toString();
             const length = selectedRaw.length;
             const end = start + length;
             const text = normalizeText(source.slice(start, end) || selectedRaw);
@@ -711,6 +713,51 @@ const ExamView = ({ params = {} }) => {
         } catch (e) {
             console.error('Selection capture failed:', e);
         }
+    };
+
+    const handleTextTap = (e, seg) => {
+        if (!seg || !seg.text) return;
+        
+        let targetText = seg.text;
+        let targetStart = seg.start;
+        let targetEnd = seg.end;
+
+        // Try to select just the word at the tap location
+        try {
+            const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+            if (range) {
+                range.expand('word');
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                
+                const selectedText = selection.toString().trim();
+                // Ensure the selected word is actually within the current segment or reasonably close
+                if (selectedText && seg.text.includes(selectedText)) {
+                    targetText = selectedText;
+                    // We don't have exact index of the word globally easily without searching, 
+                    // but for marking it's fine as the text is unique enough or we can search.
+                    const internalStart = seg.text.indexOf(selectedText);
+                    if (internalStart !== -1) {
+                        targetStart = seg.start + internalStart;
+                        targetEnd = targetStart + selectedText.length;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Word selection fallback to sentence:', err);
+        }
+
+        setSelectionDraft({
+            start: targetStart,
+            end: targetEnd,
+            text: targetText,
+            context: seg.text,
+            parentSeg: seg,
+            source: 'article',
+            questionKey: null,
+            questionLabel: null
+        });
     };
 
     const captureQuestionSelection = () => {
@@ -850,10 +897,10 @@ const ExamView = ({ params = {} }) => {
                     continue;
                 }
                 const def = wordsMap.get(word);
-                const backContent = def 
-                    ? `【AI深度词解】\n${def}\n\n来源：文章阅读智能识别标记` 
+                const backContent = def
+                    ? `【AI深度词解】\n${def}\n\n来源：文章阅读智能识别标记`
                     : '来源：文章阅读手动人工标记\n建议：回顾原文上下文后再强化记忆';
-                
+
                 await addFlashcard({
                     id: crypto.randomUUID(),
                     front: word,
@@ -916,23 +963,23 @@ const ExamView = ({ params = {} }) => {
                 { role: 'system', content: 'You reply strictly with a raw JSON array of objects. No markdown wrap, no other text.' },
                 { role: 'user', content: prompt }
             ], settings, false);
-            
+
             let cleanJson = String(result || '').trim();
             if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
             if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
             if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
             cleanJson = cleanJson.trim();
-            
+
             const wordsList = JSON.parse(cleanJson);
             const newMarks = [];
             let addedCount = 0;
             const currentWords = new Set(wordMarks.map(m => m.text.toLowerCase()));
-            
+
             wordsList.forEach(item => {
                 const w = item.word?.trim();
                 const d = item.definition || '';
                 if (!w || currentWords.has(w.toLowerCase())) return;
-                
+
                 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const regex = new RegExp('\\b' + escapeRegExp(w) + '\\b', 'i');
                 const match = paper.passage.match(regex);
@@ -962,7 +1009,7 @@ const ExamView = ({ params = {} }) => {
             console.error('JSON Parse Error:', e);
         } finally {
             setIsAnalyzingVocab(false);
-            setVocabAnalysis(''); 
+            setVocabAnalysis('');
         }
     };
 
@@ -975,23 +1022,23 @@ const ExamView = ({ params = {} }) => {
                 { role: 'system', content: 'You reply strictly with a raw JSON array of objects. No markdown wrap, no other text.' },
                 { role: 'user', content: prompt }
             ], settings, false);
-            
+
             let cleanJson = String(result || '').trim();
             if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
             if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
             if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
             cleanJson = cleanJson.trim();
-            
+
             const list = JSON.parse(cleanJson);
             const newMarks = [];
             let addedCount = 0;
             const currentSentences = new Set(sentenceMarks.map(m => m.text.trim()));
-            
+
             list.forEach(item => {
                 const s = item.sentence?.trim();
                 const a = item.analysis || '';
                 if (!s || currentSentences.has(s)) return;
-                
+
                 const idx = paper.passage.indexOf(s);
                 if (idx !== -1) {
                     newMarks.push({
@@ -1513,23 +1560,59 @@ const ExamView = ({ params = {} }) => {
             </div>
 
             <div className="md:hidden shrink-0 border-b border-phy-border bg-phy-glass px-3 py-2">
-                <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                        <div className="text-[10px] text-phy-muted uppercase tracking-wide">阅读对抗训练</div>
-                        <h2 className="text-base font-black text-phy-text leading-6 truncate">{paper.title || '阅读对抗训练'}</h2>
-                        <div className="text-xs text-phy-muted mt-1">
-                            已答 {answeredCount}/{totalCount} {submitted ? `| 准确率 ${score.accuracy}%` : ''}
+                {selectionDraft ? (
+                    <div className="flex items-center justify-between gap-2 h-10">
+                        <div className="flex items-center gap-1.5 overflow-hidden flex-1">
+                            <span className="text-[10px] font-bold text-indigo-400 uppercase truncate max-w-[60px]">{selectionDraft.text}</span>
+                            <button
+                                onClick={() => addSelectionMark('word')}
+                                className="flex-1 py-1 px-2 rounded-lg bg-amber-500 text-amber-950 font-bold text-[10px] active:scale-95 transition-transform truncate"
+                            >
+                                词
+                            </button>
+                            <button
+                                onClick={() => addSelectionMark('sentence')}
+                                className="flex-1 py-1 px-2 rounded-lg bg-sky-500 text-sky-950 font-bold text-[10px] active:scale-95 transition-transform truncate"
+                            >
+                                句
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (selectionDraft.parentSeg) {
+                                        const seg = selectionDraft.parentSeg;
+                                        setSelectionDraft({ ...selectionDraft, text: seg.text, start: seg.start, end: seg.end });
+                                    }
+                                }}
+                                className="flex-1 py-1 px-2 rounded-lg bg-indigo-500 text-white font-bold text-[10px] active:scale-95 transition-transform truncate"
+                            >
+                                选全句
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button onClick={clearSelectionDraft} className="p-1.5 rounded-lg bg-white/5 text-phy-muted active:scale-95 transition-transform border border-phy-border">
+                                <X size={14} />
+                            </button>
                         </div>
                     </div>
-                    <button
-                        onClick={submitPaper}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black inline-flex items-center gap-1.5"
-                        title="提交并评分"
-                    >
-                        <Target size={13} />
-                        提交
-                    </button>
-                </div>
+                ) : (
+                    <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                            <div className="text-[10px] text-phy-muted uppercase tracking-wide">阅读对抗训练</div>
+                            <h2 className="text-base font-black text-phy-text leading-6 truncate">{paper.title || '阅读对抗训练'}</h2>
+                            <div className="text-xs text-phy-muted mt-1">
+                                已答 {answeredCount}/{totalCount} {submitted ? `| 准确率 ${score.accuracy}%` : ''}
+                            </div>
+                        </div>
+                        <button
+                            onClick={submitPaper}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black inline-flex items-center gap-1.5"
+                            title="提交并评分"
+                        >
+                            <Target size={13} />
+                            提交
+                        </button>
+                    </div>
+                )}
 
                 {mobileHeaderMode === 'compact' ? (
                     <div className="mt-2 flex items-center gap-2">
@@ -1912,20 +1995,32 @@ const ExamView = ({ params = {} }) => {
                                                 <div className="w-4 shrink-0" />
                                             )}
 
-                                            {/* Article text 閳?untouched */}
+                                            {/* Article text閳?untouched */}
                                             <div
                                                 ref={articleMainRef}
                                                 tabIndex={0}
                                                 onMouseUp={captureSelection}
                                                 onKeyUp={captureSelection}
-                                                className={`flex-1 min-w-0 ${articleTextClass} text-phy-text whitespace-pre-wrap break-words outline-none`}
+                                                onContextMenu={(e) => {
+                                                    // Block native menu on mobile to prevent hijacking the selection UX
+                                                    if (window.innerWidth < 768) e.preventDefault();
+                                                }}
+                                                className={`flex-1 min-w-0 ${articleTextClass} text-phy-text whitespace-pre-wrap break-words outline-none selection:bg-indigo-500/30`}
+                                                style={{ WebkitTouchCallout: 'none' }}
                                             >
                                                 {annotatedPassageSegments.length ? annotatedPassageSegments.map((seg, idx) => (
                                                     <span
                                                         key={`${seg.start}-${seg.end}-${idx}`}
+                                                        onClick={(e) => {
+                                                            if (window.innerWidth < 768) {
+                                                                handleTextTap(e, seg);
+                                                            }
+                                                        }}
                                                         className={[
                                                             seg.isWord ? 'bg-amber-400/25 rounded-[2px] px-[1px]' : '',
-                                                            seg.isSentence ? 'underline decoration-sky-400/80 decoration-2 underline-offset-[3px]' : ''
+                                                            seg.isSentence ? 'underline decoration-sky-400/80 decoration-2 underline-offset-[3px]' : '',
+                                                            // Custom highlight for currently selected segment on mobile
+                                                            selectionDraft && seg.start >= selectionDraft.start && seg.end <= selectionDraft.end ? 'bg-indigo-500/20' : ''
                                                         ].join(' ').trim()}
                                                     >
                                                         {seg.text}
@@ -1988,7 +2083,7 @@ const ExamView = ({ params = {} }) => {
                             {!paper.passage?.trim() && <div className="text-sm text-phy-muted">未检测到文章有效内容。</div>}
 
                             {vocabAnalysis && (
-                                <div className="rounded-xl border border-purple-500/40 bg-[#160E22] p-5 shadow-sm mt-6 mb-2">
+                                <div className="rounded-xl border border-purple-500/30 bg-phy-glass p-5 shadow-sm mt-6 mb-2">
                                     <div className="text-sm font-bold text-purple-400 mb-4 flex items-center gap-2">
                                         <Sparkles size={16} /> AI 文章核心生词提炼
                                     </div>
@@ -1999,7 +2094,7 @@ const ExamView = ({ params = {} }) => {
                             )}
 
                             {grammarAnalysis && (
-                                <div className="rounded-xl border border-pink-500/40 bg-[#220E15] p-5 shadow-sm mt-6 mb-2">
+                                <div className="rounded-xl border border-pink-500/30 bg-phy-glass p-5 shadow-sm mt-6 mb-2">
                                     <div className="text-sm font-bold text-pink-400 mb-4 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <Target size={16} /> AI 语法与长难句剖析
@@ -2019,7 +2114,7 @@ const ExamView = ({ params = {} }) => {
                             )}
 
                             {sentenceAnalysis && (
-                                <div className="rounded-xl border border-orange-500/40 bg-[#1E110A] p-5 shadow-sm mt-6 mb-2">
+                                <div className="rounded-xl border border-orange-500/30 bg-phy-glass p-5 shadow-sm mt-6 mb-2">
                                     <div className="text-sm font-bold text-orange-500 mb-4 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <Sparkles size={16} /> AI 疑难句深度分析
@@ -2174,6 +2269,64 @@ const ExamView = ({ params = {} }) => {
                     </section>
                 </div>
             </div>
+            {/* Mobile Compact Floating Action Bar at Top */}
+            {selectionDraft && window.innerWidth < 768 ? (
+                <div className="fixed top-0 left-0 right-0 z-[100] animate-in slide-in-from-top-full duration-300">
+                    <div className="bg-phy-glassHeavy backdrop-blur-xl border-b border-phy-border px-3 py-2.5 shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 px-2 py-1 bg-phy-glass rounded-lg border border-phy-border max-w-[120px]">
+                                <span className="text-[10px] font-bold text-phy-text uppercase truncate">{selectionDraft.text}</span>
+                                <button onClick={clearSelectionDraft} className="text-phy-muted hover:text-rose-500 transition-colors"><X size={12} /></button>
+                            </div>
+                            <div className="flex-1 flex gap-2">
+                                <button
+                                    onClick={() => addSelectionMark('word')}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-amber-500 text-amber-950 font-bold text-[10px] shadow-sm active:scale-95 transition-transform"
+                                >
+                                    <Highlighter size={12} />
+                                    标记生词
+                                </button>
+                                <button
+                                    onClick={() => addSelectionMark('sentence')}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-sky-500 text-sky-950 font-bold text-[10px] shadow-sm active:scale-95 transition-transform"
+                                >
+                                    <Underline size={12} />
+                                    标记疑难句
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (selectionDraft.parentSeg) {
+                                            const seg = selectionDraft.parentSeg;
+                                            setSelectionDraft({
+                                                ...selectionDraft,
+                                                text: seg.text,
+                                                start: seg.start,
+                                                end: seg.end
+                                            });
+                                        }
+                                    }}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-indigo-500 text-white font-bold text-[10px] shadow-sm active:scale-95 transition-transform"
+                                >
+                                    <Maximize2 size={12} />
+                                    选整句
+                                </button>
+                                {selectionDraft.source === 'article' && (
+                                    <button
+                                        onClick={() => {
+                                            analyzeSelectedSentence(selectionDraft.parentSeg || selectionDraft);
+                                            clearSelectionDraft();
+                                        }}
+                                        className="p-1.5 rounded-lg bg-indigo-600 text-white active:scale-95 transition-transform"
+                                        title="分析"
+                                    >
+                                        <Sparkles size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 };

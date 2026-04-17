@@ -13,12 +13,12 @@ const StudyHeatmap = ({ dailyActivity }) => {
         days.push(d);
     }
 
-    const getColor = (count) => {
-        if (!count) return 'bg-phy-bg';
-        if (count < 10) return 'bg-green-200'; // Light effort
-        if (count < 30) return 'bg-green-400'; // Moderate effort
-        if (count < 60) return 'bg-green-600'; // High effort
-        return 'bg-green-800';                 // Extreme effort (60+ items)
+    const getLevel = (count) => {
+        if (!count) return 0;
+        if (count < 10) return 1; // Light effort
+        if (count < 30) return 2; // Moderate effort
+        if (count < 60) return 3; // High effort
+        return 4;                 // Extreme effort (60+ items)
     };
 
     const formatDate = (date) => {
@@ -49,32 +49,34 @@ const StudyHeatmap = ({ dailyActivity }) => {
                     {weeks.map((week, wIndex) => (
                         <div key={wIndex} className="flex flex-col gap-1">
                             {week.map((day, dIndex) => {
-                                const dateStr = formatDate(day);
-                                const count = dailyActivity[dateStr] || 0;
-                                return (
-                                    <div
-                                        key={dateStr}
-                                        className={`w-3 h-3 rounded-sm ${getColor(count)} transition-all hover:scale-125 hover:ring-2 ring-offset-1 ring-green-300 relative group cursor-pointer hover:z-20`}
-                                    >
-                                        {/* Tooltip */}
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-phy-glassHeavy text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
-                                            {count} words on {dateStr}
-                                        </div>
-                                    </div>
-                                );
+                                 const dateStr = formatDate(day);
+                                 const count = dailyActivity[dateStr] || 0;
+                                 const level = getLevel(count);
+                                 return (
+                                     <div
+                                         key={dateStr}
+                                         className={`w-3 h-3 rounded-sm transition-all hover:scale-125 hover:ring-2 ring-offset-1 ring-phy-accent relative group cursor-pointer hover:z-20`}
+                                         style={{ backgroundColor: `var(--heatmap-l${level})` }}
+                                     >
+                                         {/* Tooltip */}
+                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-phy-glassHeavy backdrop-blur-md text-white border border-phy-border text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none shadow-xl">
+                                             {count} words on {dateStr}
+                                         </div>
+                                     </div>
+                                 );
                             })}
                         </div>
                     ))}
                 </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 mt-3 text-[10px] text-phy-muted">
+            <div className="flex items-center justify-end gap-2 mt-3 text-[10px] text-phy-muted font-medium">
                 <span>Less</span>
-                <div className="w-3 h-3 bg-phy-bg rounded-sm"></div>
-                <div className="w-3 h-3 bg-green-200 rounded-sm"></div>
-                <div className="w-3 h-3 bg-green-400 rounded-sm"></div>
-                <div className="w-3 h-3 bg-green-600 rounded-sm"></div>
-                <div className="w-3 h-3 bg-green-800 rounded-sm"></div>
+                <div className="w-3 h-3 rounded-sm shadow-inner" style={{ backgroundColor: 'var(--heatmap-l0)' }}></div>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--heatmap-l1)' }}></div>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--heatmap-l2)' }}></div>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--heatmap-l3)' }}></div>
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--heatmap-l4)' }}></div>
                 <span>More</span>
             </div>
         </div>

@@ -3,7 +3,8 @@ import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
 import {
     PenTool, Save, Sparkles, CheckCircle, AlertCircle, FileText, Trash2, X, Loader2, Layout,
-    ChevronRight, BookOpen, History, ListChecks, Target, GraduationCap, Wand2, Plus, Search, FolderOpen, RotateCcw, PanelLeftClose, PanelLeftOpen
+    ChevronRight, BookOpen, History, ListChecks, Target, GraduationCap, Wand2, Plus, Search, FolderOpen, RotateCcw, PanelLeftClose, PanelLeftOpen,
+    LayoutList, Columns
 } from 'lucide-react';
 import { saveWriting, getWritings, deleteWriting, getFlashcards, saveFlashcard, getFolders, saveFolder, saveWritingMaterial, getWritingMaterials, deleteWritingMaterial } from '../services/db';
 import { analyzeWriting, generateWritingOutline } from '../services/ai';
@@ -42,6 +43,7 @@ const INSERT_MODE_OPTIONS = [
 
 const normalizeWordFront = (raw) => String(raw || '').split('\n')[0].replace(/\/[^/]+\/$/, '').trim();
 const getTodayFlashcardFolderName = () => `Daily - ${new Date().toISOString().split('T')[0]}`;
+const isTranslationDraft = (item) => item?.isTranslation === true || item?.type === 'translation' || item?.genre === 'translation';
 
 const sentenceRanges = (text) => {
     const ranges = [];
@@ -305,6 +307,7 @@ const WriterView = ({ params }) => {
     const [materialCategory, setMaterialCategory] = useState('all');
     const [materialDrawerTab, setMaterialDrawerTab] = useState('recommend');
     const [activeMaterialId, setActiveMaterialId] = useState(null);
+    const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
     const [pendingInsert, setPendingInsert] = useState(null);
     const [insertAnchor, setInsertAnchor] = useState({ blockIndex: 0, offset: 0, selectedRange: null });
     const [insertModePreference, setInsertModePreference] = useState(() => localStorage.getItem(WRITER_MATERIAL_INSERT_MODE_KEY) || 'cursor');
@@ -334,6 +337,13 @@ const WriterView = ({ params }) => {
     const [isContentDirty, setIsContentDirty] = useState(false);
     const [expandedCompareMap, setExpandedCompareMap] = useState({});
     const [isWriterBootstrapped, setIsWriterBootstrapped] = useState(false);
+    const [readSelection, setReadSelection] = useState(null);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     const [editorLayoutMode, setEditorLayoutMode] = useState(() => localStorage.getItem(WRITER_EDITOR_LAYOUT_KEY) || 'merged');
 
     const analyzeAbort = useRef(null);
@@ -341,6 +351,7 @@ const WriterView = ({ params }) => {
     const analyzeReq = useRef(0);
     const lastAnalyzeAt = useRef(0);
     const activeDraftIdRef = useRef(currentId || null);
+    const mobileSheetTouchRef = useRef({ startY: 0, startHeight: 64, active: false });
     const applyAiTextChange = (nextText, label, extra = null) => {
         if (nextText === content) return;
         setLastAiAction({
@@ -357,9 +368,9 @@ const WriterView = ({ params }) => {
         setMobileTab('editor');
     };
 
-    const isMobileViewport = () => (typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+    const isMobileViewport = () => isMobile;
     const openMaterialsPanel = () => {
-        if (isMobileViewport()) {
+        if (isMobile) {
             setMobileMaterialSheetOpen(true);
             return;
         }
@@ -382,6 +393,60 @@ const WriterView = ({ params }) => {
     const closeMaterialsPanel = () => {
         setMaterialPanelMode('hidden');
         setMobileMaterialSheetOpen(false);
+    };
+
+    const handleReadOnlyTextTap = (e, source) => {
+        const selection = window.getSelection?.();
+        let targetText = "";
+
+        // Try to select just the word at the tap location
+        try {
+            const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+            if (range) {
+                range.expand('word');
+                selection.removeAllRanges();
+                selection.addRange(range);
+                targetText = selection.toString().trim();
+            }
+        } catch (err) {
+            console.warn('Word selection fallback:', err);
+        }
+
+        if (!targetText) {
+            setReadSelection(null);
+            return;
+        }
+
+        setReadSelection({
+            text: targetText,
+            source: source || 'reference',
+            at: Date.now()
+        });
+    };
+
+    const captureReadOnlySelection = (source) => {
+        const selection = window.getSelection?.();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+            if (readSelection) setReadSelection(null);
+            return;
+        }
+        const text = normalizeText(selection.toString());
+        if (!text) {
+            setReadSelection(null);
+            return;
+        }
+        setReadSelection({
+            text,
+            source: source || 'reference',
+            at: Date.now()
+        });
+    };
+
+    const clearReadSelection = () => {
+        setReadSelection(null);
+        try {
+            window.getSelection?.().removeAllRanges();
+        } catch (e) {}
     };
 
     const resolveAnchorForContent = (anchorCandidate, textContent = content) => {
@@ -1189,12 +1254,6 @@ const WriterView = ({ params }) => {
     };
 
     const persistDraft = async ({ silent = false } = {}) => {
-        if (isTranslationMode) {
-            if (!silent) {
-                toast('翻译挑战记录请在评分结算中保存，不会写入“我的写作”。', { icon: 'ℹ️' });
-            }
-            return false;
-        }
         if (!content.trim() && !examContext.prompt.trim() && !title.trim()) {
             if (!silent) toast.error('请先写一点内容');
             return false;
@@ -1383,13 +1442,13 @@ const WriterView = ({ params }) => {
     };
 
     const Sidebar = (
-        <div className="h-full flex flex-col p-4 bg-gradient-to-b from-slate-950/80 via-slate-900/70 to-slate-950/80 text-phy-text">
-            <div className="rounded-2xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-3 mb-3">
-                <h2 className="text-lg font-black text-white flex items-center gap-2">
-                    <PenTool className="text-indigo-300" size={18} />
+        <div className="h-full flex flex-col p-4 bg-phy-glassHeavy backdrop-blur-3xl text-phy-text">
+            <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 dark:bg-indigo-500/20 px-4 py-3 mb-3">
+                <h2 className="text-lg font-black text-indigo-600 dark:text-white flex items-center gap-2">
+                    <PenTool className="text-indigo-500 dark:text-indigo-300" size={18} />
                     AI 写作工坊
                 </h2>
-                <p className="text-xs text-indigo-100/80 mt-1">提纲驱动 · 素材积累 · 提分诊断</p>
+                <p className="text-xs text-indigo-600/80 dark:text-indigo-100/80 mt-1 font-medium">提纲驱动 · 素材积累 · 提分诊断</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-3">
@@ -1399,7 +1458,7 @@ const WriterView = ({ params }) => {
                 </div>
                 <div className="rounded-xl border border-phy-border bg-phy-glass p-2">
                     <div className="text-[10px] text-phy-muted">素材</div>
-                    <div className="text-base font-black text-amber-200">{materials.length}</div>
+                    <div className="text-base font-black text-amber-600 dark:text-amber-200">{materials.length}</div>
                 </div>
             </div>
 
@@ -1413,7 +1472,7 @@ const WriterView = ({ params }) => {
                 </button>
                 <button
                     onClick={openMaterialsPanel}
-                    className="w-full bg-amber-500/15 border border-amber-400/30 text-amber-200 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                    className="w-full bg-amber-500/10 dark:bg-amber-500/20 border border-amber-400/30 text-amber-700 dark:text-amber-200 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-500/20 transition-colors"
                 >
                     <FolderOpen size={16} />
                     打开素材包
@@ -1428,7 +1487,7 @@ const WriterView = ({ params }) => {
                     <div
                         key={w.id}
                         onClick={() => loadDraft(w)}
-                        className={`p-3 rounded-xl border cursor-pointer group relative transition-all ${currentId === w.id ? 'bg-indigo-500/15 border-indigo-400/40 text-indigo-100 shadow-lg shadow-indigo-500/10' : 'bg-slate-800/30 border-phy-border text-phy-muted hover:text-phy-text hover:border-phy-borderHover'}`}
+                        className={`p-3 rounded-xl border cursor-pointer group relative transition-all ${currentId === w.id ? 'bg-indigo-500/15 border-indigo-400/40 text-indigo-600 dark:text-indigo-100 shadow-lg shadow-indigo-500/10' : 'bg-phy-glass border-phy-border text-phy-muted hover:text-phy-text hover:border-phy-borderHover hover:bg-phy-glassHeavy'}`}
                     >
                         <div className="text-sm font-medium line-clamp-1 pr-6">{w.title || '未命名'}</div>
                         <div className="text-[10px] opacity-70 mt-1">{new Date(w.updatedAt || Date.now()).toLocaleDateString()}</div>
@@ -1443,7 +1502,7 @@ const WriterView = ({ params }) => {
     );
 
     const StepNav = (
-        <div className="px-4 md:px-6 py-3 border-b border-phy-border bg-slate-950/70 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+        <div className="px-4 md:px-6 py-3 border-b border-phy-border bg-phy-glass flex flex-wrap items-center gap-2">
             {STEPS.map((step, i) => {
                 const meta = STEP_META[step];
                 const active = workflowStep === step;
@@ -1455,18 +1514,18 @@ const WriterView = ({ params }) => {
                                 if (step === 'diagnose' && !analysis) return;
                                 setWorkflowStep(step);
                             }}
-                            className={`shrink-0 px-3 py-2 rounded-xl text-left transition-all border ${active ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-500/25' : 'bg-phy-glass text-phy-muted border-phy-border hover:text-phy-text'}`}
+                            className={`flex-1 min-w-[calc(50%-4px)] md:min-w-0 md:flex-none shrink-0 px-3 py-2 rounded-xl text-left transition-all border ${active ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-500/25' : 'bg-phy-glass text-phy-muted border-phy-border hover:text-phy-text hover:bg-phy-glassHeavy'}`}
                         >
-                            <div className="text-xs font-black">{meta.label}</div>
-                            <div className="text-[10px] opacity-80">{meta.hint}</div>
+                            <div className="text-xs font-black uppercase tracking-tight">{meta.label}</div>
+                            <div className="text-[10px] opacity-70 truncate font-medium">{meta.hint}</div>
                         </button>
-                        {i < STEPS.length - 1 ? <ChevronRight size={14} className="text-phy-muted shrink-0" /> : null}
+                        {i < STEPS.length - 1 ? <ChevronRight size={14} className="hidden md:inline text-phy-border shrink-0" /> : null}
                     </React.Fragment>
                 );
             })}
             <button
                 onClick={toggleWriterLeftPanel}
-                className="ml-auto hidden md:inline-flex shrink-0 px-3 py-2 rounded-xl text-xs font-bold border border-indigo-400/40 bg-indigo-500/15 text-indigo-100 hover:bg-indigo-500/25 items-center gap-1.5"
+                className="ml-auto hidden md:inline-flex shrink-0 px-3 py-2 rounded-xl text-xs font-bold border border-indigo-400/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-200 hover:bg-indigo-500/20 items-center gap-1.5 transition-colors"
             >
                 {isWriterLeftPanelHidden ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
                 {isWriterLeftPanelHidden ? '显示工坊' : '隐藏工坊'}
@@ -1746,16 +1805,16 @@ const WriterView = ({ params }) => {
     const WritePane = (
         <div className="flex flex-col h-full relative overflow-y-auto custom-scrollbar">
             {!focusMode ? StepNav : null}
-            <div className="px-4 md:px-6 py-2 border-b border-phy-border bg-slate-900/45">
-                <div className="flex items-center gap-2">
+            <div className="px-4 md:px-6 py-3 border-b border-phy-border bg-phy-glass">
+                <div className="flex items-center gap-3">
                     <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="输入标题..." className="bg-transparent text-base md:text-lg font-bold text-phy-text placeholder:text-phy-muted outline-none w-full" />
-                    <div className="text-xs text-phy-muted shrink-0">{wordCount} / {wordTarget} 词</div>
-                    <button onClick={saveDraft} className="p-2 rounded-lg text-phy-muted hover:text-emerald-400">{isSaving ? <CheckCircle size={18} className="text-emerald-500" /> : <Save size={18} />}</button>
-                    <button onClick={() => setFocusMode((v) => !v)} className={`p-2 rounded-lg text-xs font-bold border ${focusMode ? 'bg-indigo-600/20 border-indigo-400/40 text-indigo-200' : 'border-phy-border text-phy-muted hover:text-phy-text'}`}>
+                    <div className="text-xs text-phy-muted font-medium shrink-0 bg-phy-glass px-2 py-1 rounded-lg border border-phy-border">{wordCount} / {wordTarget} 词</div>
+                    <button onClick={saveDraft} className="p-2 rounded-lg text-phy-muted hover:text-emerald-500 transition-colors">{isSaving ? <CheckCircle size={18} className="text-emerald-500" /> : <Save size={18} />}</button>
+                    <button onClick={() => setFocusMode((v) => !v)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${focusMode ? 'bg-indigo-600/20 border-indigo-400/40 text-indigo-600 dark:text-indigo-200' : 'border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy'}`}>
                         {focusMode ? '退出专注' : '专注'}
                     </button>
                 </div>
-                <div className={`mt-1 text-[11px] ${autoSaveState === 'error' ? 'text-rose-300' : 'text-phy-muted'}`}>{autoSaveText}</div>
+                <div className={`mt-1.5 text-[10px] font-medium tracking-wide ${autoSaveState === 'error' ? 'text-rose-500' : 'text-phy-muted'}`}>{autoSaveText}</div>
 
                 <div className="mt-2 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-2">
                     <div className="rounded-xl border border-phy-border bg-phy-glass px-3 py-2">
@@ -1766,10 +1825,10 @@ const WriterView = ({ params }) => {
                             </div>
                             <div className="text-phy-muted">{wordProgress}% 进度</div>
                         </div>
-                        <div className="mt-2 h-1.5 rounded-full bg-slate-700/70 overflow-hidden">
-                            <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${wordProgress}%` }} />
+                        <div className="mt-2 h-1.5 rounded-full bg-phy-border overflow-hidden">
+                            <div className="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)] transition-all duration-300" style={{ width: `${wordProgress}%` }} />
                         </div>
-                        <div className="mt-1 text-[11px] text-phy-muted">{insertAnchorHint}</div>
+                        <div className="mt-1.5 text-[10px] text-phy-muted font-medium">{insertAnchorHint}</div>
                         {!focusMode && (gapHints.length || outlineMarkers.length) ? (
                             <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                                 {gapHints.map((hint) => (
@@ -1787,48 +1846,48 @@ const WriterView = ({ params }) => {
                     </div>
 
                     <div className="flex flex-wrap xl:flex-nowrap gap-2 items-center">
-                        <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="bg-phy-glass border border-phy-border text-xs rounded-lg px-2 py-1 text-phy-text h-[32px]">
+                        <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="bg-phy-glass border border-phy-border text-xs rounded-lg px-2 py-1 text-phy-text h-[32px] outline-none hover:border-indigo-400 font-bold transition-all">
                             {['grammar', 'polish', 'academic'].map(x => <option key={x} value={x}>{x}</option>)}
                         </select>
-                        <button onClick={openMaterialsPanel} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text flex items-center gap-1.5 h-[32px]"><FolderOpen size={12} /> 素材包</button>
-                        <button onClick={assembleAmmoPack} className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 flex items-center gap-1.5 h-[32px]"><ListChecks size={12} /> 组装</button>
-                        {!focusMode ? <button onClick={collectFromDraft} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text flex items-center gap-1.5 h-[32px]"><Plus size={12} /> 采集</button> : null}
+                        <button onClick={openMaterialsPanel} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 h-[32px] transition-colors"><FolderOpen size={12} /> 素材包</button>
+                        <button onClick={assembleAmmoPack} className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-400/30 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20 flex items-center gap-1.5 h-[32px] transition-colors"><ListChecks size={12} /> 组装</button>
+                        {!focusMode ? <button onClick={collectFromDraft} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 h-[32px] transition-colors"><Plus size={12} /> 采集</button> : null}
                         {lastAiAction ? (
-                            <button onClick={undoLastAiAction} className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-500/10 border border-rose-400/30 text-rose-200 flex items-center gap-1.5 h-[32px]">
+                            <button onClick={undoLastAiAction} className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-500/5 dark:bg-rose-500/10 border border-rose-400/30 text-rose-600 dark:text-rose-200 hover:bg-rose-500/20 flex items-center gap-1.5 h-[32px] transition-colors">
                                 <RotateCcw size={12} />
-                                撤销上一步
+                                撤销
                             </button>
                         ) : null}
-                        <button onClick={runAnalyze} disabled={isAnalyzing} className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 h-[32px] disabled:opacity-60">{isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {isAnalyzing ? '诊断中' : '诊断'}</button>
+                        <button onClick={runAnalyze} disabled={isAnalyzing} className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 h-[32px] disabled:opacity-60 shadow-lg shadow-indigo-500/20 transition-all">{isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {isAnalyzing ? '诊断中' : '诊断'}</button>
                     </div>
                 </div>
             </div>
             {!focusMode ? (
-                <div className="px-4 md:px-6 py-1.5 border-b border-phy-border bg-slate-900/25 flex flex-wrap items-center gap-2">
-                    {selection ? <button onClick={() => setShowPolishModal(true)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white flex items-center gap-1.5"><Sparkles size={12} /> 单句精修</button> : null}
-                    {selection ? <button onClick={collectSelectionToMaterial} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 border border-amber-400/30 text-amber-200 flex items-center gap-1.5"><Plus size={12} /> 收藏选中</button> : null}
+                <div className="px-4 md:px-6 py-2 border-b border-phy-border bg-phy-bg/5 backdrop-blur-sm flex flex-wrap items-center gap-2">
+                    {selection ? <button onClick={() => setShowPolishModal(true)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-md shadow-indigo-500/20 transition-all"><Sparkles size={12} /> 单句精修</button> : null}
+                    {selection ? <button onClick={collectSelectionToMaterial} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 dark:bg-amber-500/20 border border-amber-400/30 text-amber-600 dark:text-amber-200 flex items-center gap-1.5 hover:bg-amber-500/20 transition-colors"><Plus size={12} /> 收藏选中</button> : null}
                     <button
                         onClick={() => setEditorLayoutMode((v) => (v === 'merged' ? 'split' : 'merged'))}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-phy-glass border-phy-border text-phy-muted hover:text-phy-text flex items-center gap-1.5"
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-phy-glass border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 transition-colors"
                     >
-                        <Layout size={12} />
+                        {editorLayoutMode === 'merged' ? <LayoutList size={12} /> : <Columns size={12} />}
                         {editorLayoutMode === 'merged' ? '分段查看' : '合并查看'}
                     </button>
                     {topRecommendedMaterial ? (
                         <button
                             onClick={() => insertMaterialContent(topRecommendedMaterial, topRecommendedMaterial.content, '推荐素材插入')}
                             title={topRecommendedMaterial.title}
-                            className="ml-auto px-3 py-1 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20 shadow-sm transition-all"
                         >
-                            推荐素材
+                            插入推荐
                         </button>
                     ) : (
-                        <div className="ml-auto text-[11px] text-phy-muted">暂无可用素材</div>
+                        <div className="ml-auto text-[10px] text-phy-muted font-medium bg-phy-glass px-2 py-1 rounded-md border border-phy-border">暂无推荐素材</div>
                     )}
                 </div>
             ) : (
-                <div className="px-4 md:px-6 py-2 border-b border-phy-border bg-slate-900/25 text-[11px] text-phy-muted">
-                    专注模式已开启：已隐藏次要操作，保留写作与核心评估按钮。
+                <div className="px-4 md:px-6 py-2 border-b border-phy-border bg-phy-bg/10 text-[10px] text-phy-muted font-medium italic">
+                    专注模式已开启：已隐藏次要干扰操作。
                 </div>
             )}
             <div className={`w-full min-h-[420px] p-4 md:p-6 ${focusMode ? 'pt-8 md:pt-10' : ''} pb-28 md:pb-8 space-y-3`}>
@@ -1850,14 +1909,19 @@ const WriterView = ({ params }) => {
                                 <div
                                     key={`writer-block-${p.index}`}
                                     className={editorLayoutMode === 'merged'
-                                        ? `${idx > 0 ? 'mt-3 pt-3 border-t border-phy-border/60' : ''}`
-                                        : 'rounded-xl border border-phy-border bg-phy-glass/40 p-3'}
+                                        ? `${idx > 0 ? 'mt-4 pt-4 border-t border-phy-border/40' : ''}`
+                                        : 'rounded-2xl border border-phy-border bg-phy-glass/30 hover:bg-phy-glass/50 p-4 shadow-sm hover:shadow-md transition-all duration-300'}
                                 >
-                                    <div className="flex items-center justify-between gap-2 mb-2">
-                                        <span className="text-[10px] text-phy-muted">段落 P{p.index + 1}</span>
+                                    <div className="flex items-center justify-between gap-2 mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-5 h-5 rounded-full bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center text-[10px] font-black text-indigo-600 dark:text-indigo-300 border border-indigo-500/20">
+                                                {p.index + 1}
+                                            </div>
+                                            <span className="text-[10px] uppercase font-bold text-phy-muted tracking-wider">段落区块</span>
+                                        </div>
                                         <button
                                             onClick={() => deleteParagraphFromEditor(p.index)}
-                                            className="p-1.5 rounded-md text-phy-muted hover:text-rose-300 hover:bg-rose-500/10"
+                                            className="p-1.5 rounded-lg text-phy-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
                                             title="删除段落"
                                         >
                                             <Trash2 size={13} />
@@ -1902,516 +1966,532 @@ const WriterView = ({ params }) => {
                 </button>
             </div>
             <div
-                className="md:hidden absolute bottom-0 left-0 right-0 border-t border-phy-border bg-slate-950/90 backdrop-blur-md px-3 py-2 flex items-center gap-2"
+                className="md:hidden absolute bottom-0 left-0 right-0 border-t border-phy-border bg-phy-glassHeavy backdrop-blur-3xl px-3 py-2 flex items-center gap-2"
                 style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
             >
-                <button onClick={openMaterialsPanel} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text">素材</button>
-                <button onClick={assembleAmmoPack} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-200">组装</button>
-                <button onClick={runAnalyze} disabled={isAnalyzing} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white disabled:opacity-60">
-                    诊断
+                <button onClick={openMaterialsPanel} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95 transition-all">素材</button>
+                <button onClick={assembleAmmoPack} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 active:scale-95 transition-all">组装</button>
+                <button onClick={runAnalyze} disabled={isAnalyzing} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white disabled:opacity-60 active:scale-95 transition-all">
+                    {isAnalyzing ? '诊断中' : '诊断'}
                 </button>
-                <button onClick={saveDraft} className="px-3 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text">保存</button>
+                <button onClick={saveDraft} className="px-3 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95 transition-all">保存</button>
             </div>
         </div>
     );
 
     const DiagnosePane = (
-        <div className="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4 bg-slate-900/30">
+        <div 
+            className="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4 bg-phy-bg/20"
+            onMouseUp={() => captureReadOnlySelection('diagnose')}
+            onClick={(e) => { if (window.innerWidth < 768) handleReadOnlyTextTap(e, 'diagnose'); }}
+            onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault(); }}
+            style={{ WebkitTouchCallout: 'none' }}
+        >
             {!analysis ? (
                 <div className="glass-panel rounded-2xl border border-phy-border p-6 text-sm text-phy-muted text-center">暂无诊断结果，请先完成诊断。</div>
             ) : (
-                    <>
-                        <div className="glass-panel rounded-2xl border border-phy-border p-5"><div className="text-xs text-phy-muted uppercase mb-1">总评分</div><div className="text-4xl font-black text-phy-text">{analysis.score_total || analysis.score}<span className="text-lg text-phy-muted"> / 15</span></div><div className="text-sm text-phy-text mt-2">“{analysis.overall_comment || analysis.comment || '暂无总评'}”</div></div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Task</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.task_response ?? 0}</div></div>
-                            <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Coherence</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.coherence ?? 0}</div></div>
-                            <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Lexical</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.lexical_resource ?? 0}</div></div>
-                            <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Grammar</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.grammar_range_accuracy ?? 0}</div></div>
-                        </div>
-                        <div className="glass-panel rounded-2xl border border-phy-border p-4">
-                            <h4 className="font-bold text-phy-text text-sm mb-2">冲分建议清单</h4>
-                            {(analysis.improvement_plan || []).slice(0, 5).map((item) => (
-                                <label key={item.id} className="flex items-start gap-2 rounded-lg border border-phy-border p-2 bg-phy-glass mb-2">
-                                    <input type="checkbox" checked={Boolean(actionChecks[item.id])} onChange={() => setActionChecks(prev => ({ ...prev, [item.id]: !prev[item.id] }))} className="mt-0.5" />
-                                    <div className="text-sm text-phy-text">{item.title}: <span className="text-phy-muted">{item.action}</span></div>
-                                    <button onClick={(e) => { e.preventDefault(); requestInsertPreview(item.action, { label: '冲分建议插入', sourceTitle: item.title || '冲分建议', mode: insertModePreference, anchor: insertAnchor }); }} className="ml-auto px-2 py-1 text-[11px] rounded-md border border-indigo-500/30 text-indigo-300">插入</button>
-                                </label>
-                            ))}
-                        </div>
-                        <div className="glass-panel rounded-2xl border border-phy-border p-4">
-                            <h4 className="font-bold text-phy-text text-sm mb-2">句级问题 ({(analysis.issues || []).length})</h4>
-                            {(analysis.issues || []).map((issue, idx) => (
-                                <div key={idx} className={`rounded-lg border p-3 mb-2 ${issue.applied ? 'opacity-60 border-emerald-500/30 bg-emerald-500/5' : 'border-phy-border bg-phy-glass'}`}>
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="text-xs text-phy-muted">{issue.type} · sentence #{issue.sentence_index}</div>
-                                        {!issue.applied ? <button onClick={() => applyFix(issue)} className="px-2 py-1 text-[11px] rounded-md bg-emerald-600 hover:bg-emerald-500 text-white">应用到原文</button> : <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1"><CheckCircle size={12} />已应用</span>}
-                                    </div>
-                                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
-                                            <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原句</div>
-                                            <div className="text-sm text-rose-100 mt-1 whitespace-pre-wrap">{issue.original || '（空）'}</div>
-                                        </div>
-                                        <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
-                                            <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">建议表达</div>
-                                            <div className="text-sm text-emerald-100 mt-1 whitespace-pre-wrap">{issue.fixed || '（空）'}</div>
-                                        </div>
-                                    </div>
-                                    <div className="mt-2 text-xs text-phy-muted">{issue.reason}</div>
+                <>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-5"><div className="text-xs text-phy-muted uppercase mb-1">总评分</div><div className="text-4xl font-black text-phy-text">{analysis.score_total || analysis.score}<span className="text-lg text-phy-muted"> / 15</span></div><div className="text-sm text-phy-text mt-2">“{analysis.overall_comment || analysis.comment || '暂无总评'}”</div></div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Task</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.task_response ?? 0}</div></div>
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Coherence</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.coherence ?? 0}</div></div>
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Lexical</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.lexical_resource ?? 0}</div></div>
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">Grammar</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.grammar_range_accuracy ?? 0}</div></div>
+                    </div>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <h4 className="font-bold text-phy-text text-sm mb-2">冲分建议清单</h4>
+                        {(analysis.improvement_plan || []).slice(0, 5).map((item) => (
+                            <label key={item.id} className="flex items-start gap-2 rounded-lg border border-phy-border p-2 bg-phy-glass mb-2">
+                                <input type="checkbox" checked={Boolean(actionChecks[item.id])} onChange={() => setActionChecks(prev => ({ ...prev, [item.id]: !prev[item.id] }))} className="mt-0.5" />
+                                <div className="text-sm text-phy-text">{item.title}: <span className="text-phy-muted">{item.action}</span></div>
+                                <button onClick={(e) => { e.preventDefault(); requestInsertPreview(item.action, { label: '冲分建议插入', sourceTitle: item.title || '冲分建议', mode: insertModePreference, anchor: insertAnchor }); }} className="ml-auto px-2 py-1 text-[11px] rounded-md border border-indigo-500/30 text-indigo-300">插入</button>
+                            </label>
+                        ))}
+                    </div>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <h4 className="font-bold text-phy-text text-sm mb-2">句级问题 ({(analysis.issues || []).length})</h4>
+                        {(analysis.issues || []).map((issue, idx) => (
+                            <div key={idx} className={`rounded-lg border p-3 mb-2 ${issue.applied ? 'opacity-60 border-emerald-500/30 bg-emerald-500/5' : 'border-phy-border bg-phy-glass'}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="text-xs text-phy-muted">{issue.type} · sentence #{issue.sentence_index}</div>
+                                    {!issue.applied ? <button onClick={() => applyFix(issue)} className="px-2 py-1 text-[11px] rounded-md bg-emerald-600 hover:bg-emerald-500 text-white">应用到原文</button> : <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1"><CheckCircle size={12} />已应用</span>}
                                 </div>
-                            ))}
-                        </div>
-                        <div className="glass-panel rounded-2xl border border-phy-border p-4">
-                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                                <h4 className="font-bold text-phy-text text-sm">段落级改写对照</h4>
-                                <span className="text-[11px] text-phy-muted">只展示发生变化的段落</span>
-                                {rewrittenText ? (
-                                    <button
-                                        onClick={() => applyAiTextChange(rewrittenText, '采用整篇改写', { type: 'rewrite' })}
-                                        className="ml-auto px-2.5 py-1.5 rounded-md border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold"
-                                    >
-                                        一键采用整篇改写
-                                    </button>
-                                ) : null}
+                                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
+                                        <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原句</div>
+                                        <div className="text-sm text-rose-100 mt-1 whitespace-pre-wrap">{issue.original || '（空）'}</div>
+                                    </div>
+                                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
+                                        <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">建议表达</div>
+                                        <div className="text-sm text-emerald-100 mt-1 whitespace-pre-wrap">{issue.fixed || '（空）'}</div>
+                                    </div>
+                                </div>
+                                <div className="mt-2 text-xs text-phy-muted">{issue.reason}</div>
                             </div>
-                            {!rewrittenText ? (
-                                <div className="text-sm text-phy-muted">本次诊断未返回整篇改写。</div>
-                            ) : !changedParagraphComparisons.length ? (
-                                <div className="text-sm text-phy-muted">改写与原文差异很小，建议优先看上方“句级问题”。</div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {changedParagraphComparisons.map((row) => (
-                                        <div key={row.index} className="rounded-xl border border-phy-border bg-phy-glass p-3">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <div className="text-[11px] text-phy-muted">段落 P{row.index}</div>
-                                                <span className="text-[11px] px-2 py-0.5 rounded-full border border-indigo-400/30 bg-indigo-500/10 text-indigo-200">
-                                                    {row.changeCount || row.sentenceChanges.length} 处关键变化
-                                                </span>
-                                                <button
-                                                    onClick={() => setExpandedCompareMap((prev) => ({ ...prev, [row.index]: !prev[row.index] }))}
-                                                    className="ml-auto text-[11px] px-2 py-1 rounded-md border border-phy-border text-phy-muted hover:text-phy-text"
-                                                >
-                                                    {expandedCompareMap[row.index] ? '收起整段' : '展开整段'}
-                                                </button>
-                                            </div>
-
-                                            {row.sentenceChanges.length ? (
-                                                <div className="space-y-2">
-                                                    {row.sentenceChanges.map((change) => (
-                                                        <div key={change.index} className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-                                                            <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
-                                                                <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原句</div>
-                                                                <div className="text-sm text-rose-100 mt-1 whitespace-pre-wrap">{change.before}</div>
-                                                            </div>
-                                                            <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
-                                                                <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">改写句</div>
-                                                                <div className="text-sm text-emerald-100 mt-1 whitespace-pre-wrap">{change.after}</div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {row.changeCount > row.sentenceChanges.length ? (
-                                                        <div className="text-[11px] text-phy-muted">
-                                                            还有 {row.changeCount - row.sentenceChanges.length} 处变化，展开整段可查看完整内容。
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            ) : (
-                                                <div className="text-sm text-phy-muted">主要是措辞细调，未检测到明显句级结构变化。</div>
-                                            )}
-
-                                            {expandedCompareMap[row.index] ? (
-                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 mt-3">
-                                                    <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
-                                                        <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原段落全文</div>
-                                                        {row.before ? (
-                                                            <div className="mt-1">
-                                                                <InlineParagraphDiff oldText={row.before} newText={row.after} side="old" />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-sm text-rose-100 mt-1">（该段为新增）</div>
-                                                        )}
-                                                    </div>
-                                                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
-                                                        <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">改写段落全文</div>
-                                                        {row.after ? (
-                                                            <div className="mt-1">
-                                                                <InlineParagraphDiff oldText={row.before} newText={row.after} side="new" />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-sm text-emerald-100 mt-1">（该段被删除）</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ) : null}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                        ))}
+                    </div>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <h4 className="font-bold text-phy-text text-sm">段落级改写对照</h4>
+                            <span className="text-[11px] text-phy-muted">只展示发生变化的段落</span>
+                            {rewrittenText ? (
+                                <button
+                                    onClick={() => applyAiTextChange(rewrittenText, '采用整篇改写', { type: 'rewrite' })}
+                                    className="ml-auto px-2.5 py-1.5 rounded-md border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold"
+                                >
+                                    一键采用整篇改写
+                                </button>
+                            ) : null}
                         </div>
-                        <div className="glass-panel rounded-2xl border border-phy-border p-4"><h4 className="font-bold text-phy-text text-sm mb-2">词汇注入建议</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{injectSuggestions.map((item, idx) => <div key={idx} className="rounded-lg border border-phy-border bg-phy-glass p-3"><div className="text-sm font-bold text-phy-text">{item.word}</div><div className="text-xs text-phy-muted mt-1">{item.why}</div><div className="text-xs text-indigo-300 mt-1">{item.where}</div></div>)}</div></div>
-                    </>
+                        {!rewrittenText ? (
+                            <div className="text-sm text-phy-muted">本次诊断未返回整篇改写。</div>
+                        ) : !changedParagraphComparisons.length ? (
+                            <div className="text-sm text-phy-muted">改写与原文差异很小，建议优先看上方“句级问题”。</div>
+                        ) : (
+                            <div className="space-y-3">
+                                {changedParagraphComparisons.map((row) => (
+                                    <div key={row.index} className="rounded-xl border border-phy-border bg-phy-glass p-3">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="text-[11px] text-phy-muted">段落 P{row.index}</div>
+                                            <span className="text-[11px] px-2 py-0.5 rounded-full border border-indigo-400/30 bg-indigo-500/10 text-indigo-200">
+                                                {row.changeCount || row.sentenceChanges.length} 处关键变化
+                                            </span>
+                                            <button
+                                                onClick={() => setExpandedCompareMap((prev) => ({ ...prev, [row.index]: !prev[row.index] }))}
+                                                className="ml-auto text-[11px] px-2 py-1 rounded-md border border-phy-border text-phy-muted hover:text-phy-text"
+                                            >
+                                                {expandedCompareMap[row.index] ? '收起整段' : '展开整段'}
+                                            </button>
+                                        </div>
+
+                                        {row.sentenceChanges.length ? (
+                                            <div className="space-y-2">
+                                                {row.sentenceChanges.map((change) => (
+                                                    <div key={change.index} className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                                        <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
+                                                            <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原句</div>
+                                                            <div className="text-sm text-rose-100 mt-1 whitespace-pre-wrap">{change.before}</div>
+                                                        </div>
+                                                        <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
+                                                            <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">改写句</div>
+                                                            <div className="text-sm text-emerald-100 mt-1 whitespace-pre-wrap">{change.after}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {row.changeCount > row.sentenceChanges.length ? (
+                                                    <div className="text-[11px] text-phy-muted">
+                                                        还有 {row.changeCount - row.sentenceChanges.length} 处变化，展开整段可查看完整内容。
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-phy-muted">主要是措辞细调，未检测到明显句级结构变化。</div>
+                                        )}
+
+                                        {expandedCompareMap[row.index] ? (
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 mt-3">
+                                                <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
+                                                    <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原段落全文</div>
+                                                    {row.before ? (
+                                                        <div className="mt-1">
+                                                            <InlineParagraphDiff oldText={row.before} newText={row.after} side="old" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-sm text-rose-100 mt-1">（该段为新增）</div>
+                                                    )}
+                                                </div>
+                                                <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
+                                                    <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">改写段落全文</div>
+                                                    {row.after ? (
+                                                        <div className="mt-1">
+                                                            <InlineParagraphDiff oldText={row.before} newText={row.after} side="new" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-sm text-emerald-100 mt-1">（该段被删除）</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4"><h4 className="font-bold text-phy-text text-sm mb-2">词汇注入建议</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{injectSuggestions.map((item, idx) => <div key={idx} className="rounded-lg border border-phy-border bg-phy-glass p-3"><div className="text-sm font-bold text-phy-text">{item.word}</div><div className="text-xs text-phy-muted mt-1">{item.why}</div><div className="text-xs text-indigo-300 mt-1">{item.where}</div></div>)}</div></div>
+                </>
             )}
         </div>
     );
 
     const MaterialQuickPanel = ({ showClose = false, onClose = null, compact = false } = {}) => (
-        <div className="h-full min-h-0 flex flex-col bg-slate-950/96">
-            <div className="px-4 py-3 border-b border-phy-border bg-gradient-to-r from-indigo-500/15 to-amber-500/10">
-                    <div className="flex items-center gap-2">
-                        <FolderOpen size={16} className="text-amber-300" />
-                        <div className="font-black text-phy-text">写作素材包</div>
-                        <div className="text-xs text-phy-muted ml-auto">{materials.length} 条</div>
-                        <button onClick={() => setMaterialManagerModalOpen(true)} className="px-2 py-1 rounded-md border border-phy-border text-[11px] text-phy-text hover:bg-phy-glass">管理</button>
-                        {showClose && onClose ? (
-                            <button onClick={onClose} className="p-1.5 rounded-lg text-phy-muted hover:text-phy-text hover:bg-phy-glass">
-                                <X size={14} />
-                            </button>
-                        ) : null}
+        <div className={`h-full min-h-0 flex flex-col bg-phy-glassHeavy backdrop-blur-2xl ${isMobile ? 'overflow-y-auto' : ''}`}>
+            <div className="px-4 py-4 border-b border-phy-border bg-gradient-to-br from-indigo-500/5 to-amber-500/5">
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                        <FolderOpen size={16} className="text-amber-500 dark:text-amber-300" />
                     </div>
-                    <p className="text-[11px] text-phy-muted mt-1">快插入优先：搜索、预览、应用到当前写作位置。</p>
-                    <div className="text-[11px] text-phy-muted mt-1">{insertAnchorHint}</div>
+                    <div>
+                        <div className="font-black text-phy-text text-sm">写作素材包</div>
+                        <div className="text-[10px] text-phy-muted font-medium">{materials.length} 条已存储</div>
+                    </div>
+                    <button onClick={() => setMaterialManagerModalOpen(true)} className="ml-auto px-2.5 py-1.5 rounded-lg border border-phy-border text-[11px] font-bold text-phy-muted hover:text-phy-text hover:bg-phy-glass transition-colors">管理</button>
+                    {showClose && onClose ? (
+                        <button onClick={onClose} className="p-1.5 rounded-lg text-phy-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors">
+                            <X size={16} />
+                        </button>
+                    ) : null}
+                </div>
+                <p className="text-[11px] text-phy-muted mt-1">快插入优先：搜索、预览、应用到当前写作位置。</p>
+                <div className="text-[11px] text-phy-muted mt-1">{insertAnchorHint}</div>
             </div>
 
-                <div className="px-4 py-3 border-b border-phy-border space-y-2 bg-slate-950/90">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1">
+            <div className="px-4 py-3 border-b border-phy-border space-y-3 bg-phy-bg/5">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1">
+                        <button
+                            onClick={() => setMaterialDrawerTab('recommend')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'recommend' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                        >
+                            智能推荐 ({recommendedMaterials.length})
+                        </button>
+                        <button
+                            onClick={() => setMaterialDrawerTab('all')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'all' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                        >
+                            全部素材
+                        </button>
+                    </div>
+                    {vocabularyMaterials.length && showVocabularyWorkbench ? (
+                        <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1 ml-auto">
                             <button
-                                onClick={() => setMaterialDrawerTab('recommend')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'recommend' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                                onClick={() => setVocabView('cards')}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-bold ${vocabView === 'cards' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
                             >
-                                智能推荐 ({recommendedMaterials.length})
+                                词汇卡片
                             </button>
                             <button
-                                onClick={() => setMaterialDrawerTab('all')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'all' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                                onClick={() => setVocabView('table')}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-bold ${vocabView === 'table' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
                             >
-                                全部素材
+                                词汇表格
                             </button>
                         </div>
-                        {vocabularyMaterials.length && showVocabularyWorkbench ? (
-                            <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1 ml-auto">
-                                <button
-                                    onClick={() => setVocabView('cards')}
-                                    className={`px-2 py-1 rounded-lg text-[11px] font-bold ${vocabView === 'cards' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
-                                >
-                                    词汇卡片
-                                </button>
-                                <button
-                                    onClick={() => setVocabView('table')}
-                                    className={`px-2 py-1 rounded-lg text-[11px] font-bold ${vocabView === 'table' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
-                                >
-                                    词汇表格
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
-
-                    <div className="relative">
-                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-phy-muted" />
-                        <input
-                            value={materialQuery}
-                            onChange={(e) => setMaterialQuery(e.target.value)}
-                            placeholder="搜索标题 / 内容 / 标签"
-                            className="w-full pl-8 pr-3 py-2 rounded-lg bg-phy-bg border border-phy-border text-sm text-phy-text"
-                        />
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5">
-                        <button
-                            onClick={() => setMaterialCategory('all')}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
-                        >
-                            全部 ({materials.length})
-                        </button>
-                        {WRITING_MATERIAL_CATEGORIES.map((c) => (
-                            <button
-                                key={c.value}
-                                onClick={() => setMaterialCategory(c.value)}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === c.value ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
-                            >
-                                {c.label} ({categoryCounts.get(c.value) || 0})
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="rounded-xl border border-phy-border bg-phy-glass/60 p-2">
-                        <button
-                            onClick={() => setMaterialQuickActionsOpen((v) => !v)}
-                            className="w-full flex items-center justify-between text-xs font-bold text-phy-muted hover:text-phy-text"
-                        >
-                            <span>快捷动作（次级）</span>
-                            <span>{materialQuickActionsOpen ? '收起' : '展开'}</span>
-                        </button>
-                        {materialQuickActionsOpen ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                                <button onClick={collectSelectionToMaterial} className="px-3 py-2 rounded-lg border border-amber-400/30 bg-amber-500/10 text-amber-200 text-xs font-bold">
-                                    收藏选中
-                                </button>
-                                <button onClick={collectFromDraft} className="px-3 py-2 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">
-                                    草稿采集
-                                </button>
-                                <button onClick={assembleAmmoPack} className="px-3 py-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 text-xs font-bold">
-                                    一键组装
-                                </button>
-                                <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">
-                                    打开管理
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
+                    ) : null}
                 </div>
 
-                <div className="flex-1 min-h-0 grid grid-cols-1">
-                    <div className="border-b border-phy-border overflow-y-auto custom-scrollbar p-3 space-y-2">
-                        {drawerMaterials.map((item) => {
-                            const itemCategory = normalizeMaterialCategory(item.category);
-                            const vocabPairsPreview = itemCategory === 'vocabulary' ? parseVocabularyPairs(item) : [];
-                            const listPreview = itemCategory === 'vocabulary'
-                                ? (vocabPairsPreview.length ? `${vocabPairsPreview[0].source} -> ${vocabPairsPreview[0].target}` : item.content)
-                                : item.content;
-                            return (
-                                <div
-                                    key={item.id}
-                                    className={`w-full rounded-xl border p-2.5 transition ${activeMaterialId === item.id ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-phy-border bg-phy-glass hover:border-phy-borderHover'}`}
-                                >
-                                    <button onClick={() => setActiveMaterialId(item.id)} className="w-full text-left">
-                                        <div className="text-sm font-bold text-phy-text truncate">{item.title}</div>
-                                        <div className="text-[10px] text-phy-muted mt-1 flex items-center gap-1.5">
-                                            <span>{WRITING_MATERIAL_CATEGORY_LABELS[item.category] || item.category}</span>
-                                            {item.topic ? <span>· {item.topic}</span> : null}
-                                        </div>
-                                        <div className="text-[11px] text-phy-muted mt-1 line-clamp-2">{listPreview}</div>
-                                    </button>
-                                    <div className="mt-2 flex gap-1.5">
-                                        <button
-                                            onClick={() => requestInsertPreview(item.rewrite || item.content, {
-                                                label: `素材预览：${item.title}`,
-                                                materialId: item.id,
-                                                sourceTitle: item.title || '素材预览',
-                                                mode: insertModePreference,
-                                                anchor: insertAnchor
-                                            })}
-                                            className="flex-1 px-2 py-1 rounded-md text-[11px] border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glass"
-                                        >
-                                            预览
-                                        </button>
-                                        <button
-                                            onClick={() => insertMaterialContent(item, item.rewrite || item.content, `素材插入：${item.title}`)}
-                                            className="flex-1 px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
-                                        >
-                                            插入
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        {!drawerMaterials.length ? (
-                            <div className="rounded-xl border border-dashed border-phy-border p-3 text-xs text-phy-muted text-center">
-                                {materialDrawerTab === 'recommend' ? '暂无推荐素材，可切到“全部素材”查看。' : '没有素材'}
-                            </div>
-                        ) : null}
-                    </div>
+                <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-phy-muted" />
+                    <input
+                        value={materialQuery}
+                        onChange={(e) => setMaterialQuery(e.target.value)}
+                        placeholder="搜索标题 / 内容 / 标签"
+                        className="w-full pl-8 pr-3 py-2 rounded-lg bg-phy-bg border border-phy-border text-sm text-phy-text"
+                    />
+                </div>
 
-                    <div className="min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                <div className="flex flex-wrap gap-1.5">
+                    <button
+                        onClick={() => setMaterialCategory('all')}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
+                    >
+                        全部 ({materials.length})
+                    </button>
+                    {WRITING_MATERIAL_CATEGORIES.map((c) => (
+                        <button
+                            key={c.value}
+                            onClick={() => setMaterialCategory(c.value)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === c.value ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
+                        >
+                            {c.label} ({categoryCounts.get(c.value) || 0})
+                        </button>
+                    ))}
+                </div>
+
+                <div className="rounded-xl border border-phy-border bg-phy-glass/60 p-2">
+                    <button
+                        onClick={() => setMaterialQuickActionsOpen((v) => !v)}
+                        className="w-full flex items-center justify-between text-xs font-bold text-phy-muted hover:text-phy-text"
+                    >
+                        <span>快捷动作（次级）</span>
+                        <span>{materialQuickActionsOpen ? '收起' : '展开'}</span>
+                    </button>
+                    {materialQuickActionsOpen ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <button onClick={collectSelectionToMaterial} className="px-3 py-2 rounded-lg border border-amber-400/30 bg-amber-500/10 text-amber-200 text-xs font-bold">
+                                收藏选中
+                            </button>
+                            <button onClick={collectFromDraft} className="px-3 py-2 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">
+                                草稿采集
+                            </button>
+                            <button onClick={assembleAmmoPack} className="px-3 py-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 text-xs font-bold">
+                                一键组装
+                            </button>
+                            <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">
+                                打开管理
+                            </button>
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+
+            <div className={`flex-1 min-h-0 grid grid-cols-1 ${isMobile ? 'h-auto' : ''}`}>
+                <div className={`${isMobile ? 'pb-24' : 'overflow-y-auto custom-scrollbar'} p-3 space-y-2`}>
+                    {drawerMaterials.map((item) => {
+                        const itemCategory = normalizeMaterialCategory(item.category);
+                        const vocabPairsPreview = itemCategory === 'vocabulary' ? parseVocabularyPairs(item) : [];
+                        const listPreview = itemCategory === 'vocabulary'
+                            ? (vocabPairsPreview.length ? `${vocabPairsPreview[0].source} -> ${vocabPairsPreview[0].target}` : item.content)
+                            : item.content;
+                        return (
+                            <div
+                                key={item.id}
+                                className={`w-full rounded-xl border p-2.5 transition ${activeMaterialId === item.id ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-phy-border bg-phy-glass hover:border-phy-borderHover'}`}
+                            >
+                                <button onClick={() => setActiveMaterialId(item.id)} className="w-full text-left">
+                                    <div className="text-sm font-bold text-phy-text truncate">{item.title}</div>
+                                    <div className="text-[10px] text-phy-muted mt-1 flex items-center gap-1.5">
+                                        <span>{WRITING_MATERIAL_CATEGORY_LABELS[item.category] || item.category}</span>
+                                        {item.topic ? <span>· {item.topic}</span> : null}
+                                    </div>
+                                    <div className="text-[11px] text-phy-muted mt-1 line-clamp-2">{listPreview}</div>
+                                </button>
+                                <div className="mt-2 flex gap-1.5">
+                                    <button
+                                        onClick={() => requestInsertPreview(item.rewrite || item.content, {
+                                            label: `素材预览：${item.title}`,
+                                            materialId: item.id,
+                                            sourceTitle: item.title || '素材预览',
+                                            mode: insertModePreference,
+                                            anchor: insertAnchor
+                                        })}
+                                        className="flex-1 px-2 py-1 rounded-md text-[11px] border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glass"
+                                    >
+                                        预览
+                                    </button>
+                                    <button
+                                        onClick={() => insertMaterialContent(item, item.rewrite || item.content, `素材插入：${item.title}`)}
+                                        className="flex-1 px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                                    >
+                                        插入
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {!drawerMaterials.length ? (
+                        <div className="rounded-xl border border-dashed border-phy-border p-3 text-xs text-phy-muted text-center">
+                            {materialDrawerTab === 'recommend' ? '暂无推荐素材，可切到“全部素材”查看。' : '没有素材'}
+                        </div>
+                    ) : null}
+                </div>
+
+                <div className="min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
                     {showVocabularyWorkbench && vocabularyMaterials.length ? (
                         <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3">
-                                <div className="flex items-center justify-between gap-2 mb-2">
-                                    <div className="text-sm font-black text-phy-text">词汇替换工作台</div>
-                                    <div className="text-[11px] text-phy-muted">默认仅作用于当前选中句</div>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="text-sm font-black text-phy-text">词汇替换工作台</div>
+                                <div className="text-[11px] text-phy-muted">默认仅作用于当前选中句</div>
+                            </div>
+                            {vocabView === 'cards' ? (
+                                <div className="grid grid-cols-1 gap-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+                                    {vocabularyMaterials.map((item) => {
+                                        const pairs = parseVocabularyPairs(item);
+                                        const visiblePairs = pairs.slice(0, 6);
+                                        const hiddenCount = Math.max(0, pairs.length - visiblePairs.length);
+                                        return (
+                                            <div key={`vocab-card-${item.id}`} className="rounded-xl border border-phy-border bg-phy-glass p-2.5">
+                                                <div className="text-[11px] text-phy-muted">{item.title || '词汇替换'}</div>
+                                                {item.replaceReason ? (
+                                                    <div className="mt-1 text-xs text-phy-muted line-clamp-2">{item.replaceReason}</div>
+                                                ) : null}
+                                                {visiblePairs.length ? (
+                                                    <div className="mt-2 space-y-1.5">
+                                                        {visiblePairs.map((pair, pairIdx) => (
+                                                            <div key={`${item.id}-pair-card-${pairIdx}`} className="rounded-lg border border-phy-border bg-phy-glass p-2">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div className="text-xs font-bold text-rose-200 break-all">{pair.source}</div>
+                                                                    <div className="text-[10px] text-phy-muted">{'->'}</div>
+                                                                    <div className="text-xs font-bold text-emerald-200 break-all text-right">{pair.target}</div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => applyVocabularyToSelectedSentence(item, pair)}
+                                                                    className="mt-2 w-full px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                                >
+                                                                    用到当前句
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        {hiddenCount > 0 ? (
+                                                            <div className="text-[11px] text-phy-muted">还有 {hiddenCount} 组映射，点击素材详情可查看全部。</div>
+                                                        ) : null}
+                                                    </div>
+                                                ) : (
+                                                    <div className="mt-2 text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
+                                                        未解析到“原词 → 替换词”映射，请编辑该素材补全映射。
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                                {vocabView === 'cards' ? (
-                                    <div className="grid grid-cols-1 gap-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
-                                        {vocabularyMaterials.map((item) => {
-                                            const pairs = parseVocabularyPairs(item);
-                                            const visiblePairs = pairs.slice(0, 6);
-                                            const hiddenCount = Math.max(0, pairs.length - visiblePairs.length);
-                                            return (
-                                                <div key={`vocab-card-${item.id}`} className="rounded-xl border border-phy-border bg-phy-glass p-2.5">
-                                                    <div className="text-[11px] text-phy-muted">{item.title || '词汇替换'}</div>
-                                                    {item.replaceReason ? (
-                                                        <div className="mt-1 text-xs text-phy-muted line-clamp-2">{item.replaceReason}</div>
-                                                    ) : null}
-                                                    {visiblePairs.length ? (
-                                                        <div className="mt-2 space-y-1.5">
-                                                            {visiblePairs.map((pair, pairIdx) => (
-                                                                <div key={`${item.id}-pair-card-${pairIdx}`} className="rounded-lg border border-phy-border bg-slate-900/40 p-2">
+                            ) : (
+                                <div className="max-h-[340px] overflow-auto custom-scrollbar rounded-xl border border-phy-border bg-phy-glass">
+                                    <table className="w-full text-xs text-left">
+                                        <thead className="bg-phy-glassHeavy border-b border-phy-border text-phy-muted">
+                                            <tr>
+                                                <th className="px-2 py-2">材料</th>
+                                                <th className="px-2 py-2">原词</th>
+                                                <th className="px-2 py-2">替换词</th>
+                                                <th className="px-2 py-2">理由</th>
+                                                <th className="px-2 py-2">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {vocabularyRows.map((row) => (
+                                                <tr key={`vocab-row-${row.id}`} className="border-t border-phy-border">
+                                                    <td className="px-2 py-2 text-phy-muted max-w-[180px] truncate" title={row.item.title || '词汇替换'}>{row.item.title || '词汇替换'}</td>
+                                                    <td className="px-2 py-2 text-phy-text">{row.pair.source || '-'}</td>
+                                                    <td className="px-2 py-2 text-emerald-200">{row.pair.target || '-'}</td>
+                                                    <td className="px-2 py-2 text-phy-muted max-w-[240px] truncate">{row.pair.reason || row.item.replaceReason || '-'}</td>
+                                                    <td className="px-2 py-2">
+                                                        <button
+                                                            onClick={() => applyVocabularyToSelectedSentence(row.item, row.pair)}
+                                                            className="px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                        >
+                                                            应用
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+
+                    {activeMaterial ? (
+                        <div 
+                            className="rounded-2xl border border-indigo-400/30 bg-indigo-500/10 p-3"
+                            onMouseUp={() => captureReadOnlySelection('material')}
+                            onClick={(e) => { if (window.innerWidth < 768) handleReadOnlyTextTap(e, 'material'); }}
+                            onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault(); }}
+                            style={{ WebkitTouchCallout: 'none' }}
+                        >
+                            {(() => {
+                                const isVocab = normalizeMaterialCategory(activeMaterial.category) === 'vocabulary';
+                                return (
+                                    <>
+                                        <div className="flex items-start gap-2">
+                                            <div className="flex-1">
+                                                <div className="text-sm font-black text-phy-text">{activeMaterial.title}</div>
+                                                <div className="text-xs text-phy-muted mt-1">
+                                                    {WRITING_MATERIAL_CATEGORY_LABELS[activeMaterial.category] || activeMaterial.category}
+                                                    {activeMaterial.topic ? ` · ${activeMaterial.topic}` : ''}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    handleEditMaterial(activeMaterial);
+                                                    setMaterialManagerModalOpen(true);
+                                                }}
+                                                className="px-2 py-1 rounded-md border border-phy-border text-[11px] text-phy-muted hover:text-phy-text"
+                                            >
+                                                管理编辑
+                                            </button>
+                                        </div>
+                                        {isVocab ? (
+                                            <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5 space-y-2">
+                                                <div className="text-[11px] text-phy-muted">词汇替换映射</div>
+                                                {(() => {
+                                                    const pairs = parseVocabularyPairs(activeMaterial);
+                                                    if (!pairs.length) {
+                                                        return (
+                                                            <div className="text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
+                                                                该素材未解析到“原词 → 替换词”映射，请编辑后补全。
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <div className="max-h-[220px] overflow-auto custom-scrollbar space-y-1.5 pr-1">
+                                                            {pairs.map((pair, idx) => (
+                                                                <div key={`${activeMaterial.id}-pair-${idx}`} className="rounded-lg border border-phy-border bg-phy-glassHeavy p-2">
                                                                     <div className="flex items-center justify-between gap-2">
                                                                         <div className="text-xs font-bold text-rose-200 break-all">{pair.source}</div>
                                                                         <div className="text-[10px] text-phy-muted">{'->'}</div>
                                                                         <div className="text-xs font-bold text-emerald-200 break-all text-right">{pair.target}</div>
                                                                     </div>
                                                                     <button
-                                                                        onClick={() => applyVocabularyToSelectedSentence(item, pair)}
-                                                                        className="mt-2 w-full px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                                                        onClick={() => applyVocabularyToSelectedSentence(activeMaterial, pair)}
+                                                                        className="mt-2 px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
                                                                     >
-                                                                        用到当前句
+                                                                        应用到当前选中句
                                                                     </button>
                                                                 </div>
                                                             ))}
-                                                            {hiddenCount > 0 ? (
-                                                                <div className="text-[11px] text-phy-muted">还有 {hiddenCount} 组映射，点击素材详情可查看全部。</div>
-                                                            ) : null}
                                                         </div>
-                                                    ) : (
-                                                        <div className="mt-2 text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
-                                                            未解析到“原词 → 替换词”映射，请编辑该素材补全映射。
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="max-h-[340px] overflow-auto custom-scrollbar rounded-xl border border-phy-border bg-phy-glass">
-                                        <table className="w-full text-xs text-left">
-                                            <thead className="bg-slate-900/70 text-phy-muted">
-                                                <tr>
-                                                    <th className="px-2 py-2">材料</th>
-                                                    <th className="px-2 py-2">原词</th>
-                                                    <th className="px-2 py-2">替换词</th>
-                                                    <th className="px-2 py-2">理由</th>
-                                                    <th className="px-2 py-2">操作</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {vocabularyRows.map((row) => (
-                                                    <tr key={`vocab-row-${row.id}`} className="border-t border-phy-border">
-                                                        <td className="px-2 py-2 text-phy-muted max-w-[180px] truncate" title={row.item.title || '词汇替换'}>{row.item.title || '词汇替换'}</td>
-                                                        <td className="px-2 py-2 text-phy-text">{row.pair.source || '-'}</td>
-                                                        <td className="px-2 py-2 text-emerald-200">{row.pair.target || '-'}</td>
-                                                        <td className="px-2 py-2 text-phy-muted max-w-[240px] truncate">{row.pair.reason || row.item.replaceReason || '-'}</td>
-                                                        <td className="px-2 py-2">
-                                                            <button
-                                                                onClick={() => applyVocabularyToSelectedSentence(row.item, row.pair)}
-                                                                className="px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                                                            >
-                                                                应用
-                                                            </button>
-                                                        </td>
-                                                    </tr>
+                                                    );
+                                                })()}
+                                                {activeMaterial.replaceReason ? (
+                                                    <div className="text-xs text-phy-muted">替换理由：{activeMaterial.replaceReason}</div>
+                                                ) : null}
+                                                {activeMaterial.beforeExample ? (
+                                                    <div className="text-xs text-rose-200/90">替换前：{activeMaterial.beforeExample}</div>
+                                                ) : null}
+                                                {activeMaterial.afterExample ? (
+                                                    <div className="text-xs text-emerald-200">替换后：{activeMaterial.afterExample}</div>
+                                                ) : null}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-phy-text mt-2 whitespace-pre-wrap break-words leading-6">{activeMaterial.content}</div>
+                                        )}
+                                        {activeMaterial.rewrite ? (
+                                            <div className="mt-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-2.5">
+                                                <div className="text-[11px] text-indigo-200 font-bold mb-1">推荐改写版</div>
+                                                <div className="text-sm text-phy-text whitespace-pre-wrap break-words leading-6">{activeMaterial.rewrite}</div>
+                                            </div>
+                                        ) : null}
+                                        {activeMaterial.usage ? (
+                                            <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5">
+                                                <div className="text-[11px] text-emerald-300 font-bold mb-1">适用场景</div>
+                                                <div className="text-xs text-phy-muted whitespace-pre-wrap break-words leading-5">{activeMaterial.usage}</div>
+                                            </div>
+                                        ) : null}
+                                        {activeMaterial.caution ? (
+                                            <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 p-2.5">
+                                                <div className="text-[11px] text-amber-200 font-bold mb-1">误用提醒</div>
+                                                <div className="text-xs text-amber-100/90 whitespace-pre-wrap break-words leading-5">{activeMaterial.caution}</div>
+                                            </div>
+                                        ) : null}
+                                        {Array.isArray(activeMaterial.tags) && activeMaterial.tags.length > 0 ? (
+                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                {activeMaterial.tags.slice(0, 8).map((tag) => (
+                                                    <span key={`${activeMaterial.id}-${tag}`} className="px-1.5 py-0.5 rounded-md text-[10px] bg-phy-bg border border-phy-border text-phy-muted">{tag}</span>
                                                 ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        ) : null}
-
-                        {activeMaterial ? (
-                            <div className="rounded-2xl border border-indigo-400/30 bg-indigo-500/10 p-3">
-                                {(() => {
-                                    const isVocab = normalizeMaterialCategory(activeMaterial.category) === 'vocabulary';
-                                    return (
-                                        <>
-                                <div className="flex items-start gap-2">
-                                    <div className="flex-1">
-                                        <div className="text-sm font-black text-phy-text">{activeMaterial.title}</div>
-                                        <div className="text-xs text-phy-muted mt-1">
-                                            {WRITING_MATERIAL_CATEGORY_LABELS[activeMaterial.category] || activeMaterial.category}
-                                            {activeMaterial.topic ? ` · ${activeMaterial.topic}` : ''}
+                                            </div>
+                                        ) : null}
+                                        <div className="mt-3 grid grid-cols-3 gap-2">
+                                            <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.content, '素材正文插入')} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">{isVocab ? '插入替换映射' : '插入正文'}</button>
+                                            <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.rewrite || activeMaterial.content, '素材改写插入')} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">插入改写</button>
+                                            <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
                                         </div>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            handleEditMaterial(activeMaterial);
-                                            setMaterialManagerModalOpen(true);
-                                        }}
-                                        className="px-2 py-1 rounded-md border border-phy-border text-[11px] text-phy-muted hover:text-phy-text"
-                                    >
-                                        管理编辑
-                                    </button>
-                                </div>
-                                {isVocab ? (
-                                    <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5 space-y-2">
-                                        <div className="text-[11px] text-phy-muted">词汇替换映射</div>
-                                        {(() => {
-                                            const pairs = parseVocabularyPairs(activeMaterial);
-                                            if (!pairs.length) {
-                                                return (
-                                                    <div className="text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
-                                                        该素材未解析到“原词 → 替换词”映射，请编辑后补全。
-                                                    </div>
-                                                );
-                                            }
-                                            return (
-                                                <div className="max-h-[220px] overflow-auto custom-scrollbar space-y-1.5 pr-1">
-                                                    {pairs.map((pair, idx) => (
-                                                        <div key={`${activeMaterial.id}-pair-${idx}`} className="rounded-lg border border-phy-border bg-slate-900/40 p-2">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <div className="text-xs font-bold text-rose-200 break-all">{pair.source}</div>
-                                                                <div className="text-[10px] text-phy-muted">{'->'}</div>
-                                                                <div className="text-xs font-bold text-emerald-200 break-all text-right">{pair.target}</div>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => applyVocabularyToSelectedSentence(activeMaterial, pair)}
-                                                                className="mt-2 px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                                                            >
-                                                                应用到当前选中句
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            );
-                                        })()}
-                                        {activeMaterial.replaceReason ? (
-                                            <div className="text-xs text-phy-muted">替换理由：{activeMaterial.replaceReason}</div>
-                                        ) : null}
-                                        {activeMaterial.beforeExample ? (
-                                            <div className="text-xs text-rose-200/90">替换前：{activeMaterial.beforeExample}</div>
-                                        ) : null}
-                                        {activeMaterial.afterExample ? (
-                                            <div className="text-xs text-emerald-200">替换后：{activeMaterial.afterExample}</div>
-                                        ) : null}
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-phy-text mt-2 whitespace-pre-wrap break-words leading-6">{activeMaterial.content}</div>
-                                )}
-                                {activeMaterial.rewrite ? (
-                                    <div className="mt-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-2.5">
-                                        <div className="text-[11px] text-indigo-200 font-bold mb-1">推荐改写版</div>
-                                        <div className="text-sm text-phy-text whitespace-pre-wrap break-words leading-6">{activeMaterial.rewrite}</div>
-                                    </div>
-                                ) : null}
-                                {activeMaterial.usage ? (
-                                    <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5">
-                                        <div className="text-[11px] text-emerald-300 font-bold mb-1">适用场景</div>
-                                        <div className="text-xs text-phy-muted whitespace-pre-wrap break-words leading-5">{activeMaterial.usage}</div>
-                                    </div>
-                                ) : null}
-                                {activeMaterial.caution ? (
-                                    <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 p-2.5">
-                                        <div className="text-[11px] text-amber-200 font-bold mb-1">误用提醒</div>
-                                        <div className="text-xs text-amber-100/90 whitespace-pre-wrap break-words leading-5">{activeMaterial.caution}</div>
-                                    </div>
-                                ) : null}
-                                {Array.isArray(activeMaterial.tags) && activeMaterial.tags.length > 0 ? (
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                        {activeMaterial.tags.slice(0, 8).map((tag) => (
-                                            <span key={`${activeMaterial.id}-${tag}`} className="px-1.5 py-0.5 rounded-md text-[10px] bg-phy-bg border border-phy-border text-phy-muted">{tag}</span>
-                                        ))}
-                                    </div>
-                                ) : null}
-                                <div className="mt-3 grid grid-cols-3 gap-2">
-                                    <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.content, '素材正文插入')} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">{isVocab ? '插入替换映射' : '插入正文'}</button>
-                                    <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.rewrite || activeMaterial.content, '素材改写插入')} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">插入改写</button>
-                                    <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
-                                </div>
-                                        </>
-                                    );
-                                })()}
-                            </div>
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-phy-border p-5 text-sm text-phy-muted text-center">
-                                左侧选择一条素材查看详情
-                            </div>
-                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl border border-dashed border-phy-border p-5 text-sm text-phy-muted text-center">
+                            左侧选择一条素材查看详情
+                        </div>
+                    )}
 
-                    </div>
                 </div>
+            </div>
         </div>
     );
 
     const MaterialManagerForm = (
-        <div className="rounded-2xl border border-phy-border bg-slate-900/50 p-3 space-y-2">
+        <div className="rounded-2xl border border-phy-border bg-phy-glass p-3 space-y-2">
             <div className="text-xs font-bold text-phy-muted uppercase tracking-wide">{materialForm.id ? '编辑素材' : '新增素材'}</div>
             <input
                 value={materialForm.title}
@@ -2568,8 +2648,8 @@ const WriterView = ({ params }) => {
 
     const MaterialManagerModal = materialManagerModalOpen ? (
         <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="w-full max-w-6xl max-h-[88vh] rounded-2xl border border-phy-border bg-slate-950/96 shadow-2xl overflow-hidden flex flex-col">
-                <div className="px-4 py-3 border-b border-phy-border bg-slate-900/70 flex items-center gap-2">
+            <div className="w-full max-w-6xl max-h-[88vh] rounded-2xl border border-phy-border bg-phy-glassHeavy backdrop-blur-3xl shadow-2xl overflow-hidden flex flex-col animate-fade-in">
+                <div className="px-4 py-3 border-b border-phy-border bg-phy-glass flex items-center gap-2">
                     <FolderOpen size={16} className="text-amber-300" />
                     <div className="font-black text-phy-text">素材管理中心</div>
                     <div className="text-xs text-phy-muted ml-auto">新增 / 编辑 / 删除素材</div>
@@ -2602,7 +2682,7 @@ const WriterView = ({ params }) => {
     ) : null;
 
     const DesktopDockedMaterialPanel = materialPanelMode === 'docked' ? (
-        <aside className="hidden md:flex shrink-0 w-[560px] min-w-[520px] max-w-[640px] border-l border-phy-border bg-slate-950/96">
+        <aside className="hidden md:flex shrink-0 w-[560px] min-w-[520px] max-w-[640px] border-l border-phy-border bg-phy-glassHeavy backdrop-blur-2xl">
             {MaterialQuickPanel({ compact: false, showClose: true, onClose: () => setMaterialPanelMode('hidden') })}
         </aside>
     ) : null;
@@ -2611,8 +2691,8 @@ const WriterView = ({ params }) => {
         <>
             <div className="md:hidden fixed inset-0 z-[112] bg-black/45" onClick={() => setMobileMaterialSheetOpen(false)} />
             <div className="md:hidden fixed inset-x-0 bottom-0 z-[113] transition-transform duration-200" style={{ height: `${mobileMaterialSheetHeight}vh`, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-                <div className="h-full rounded-t-2xl border-t border-x border-phy-border bg-slate-950/97 shadow-2xl overflow-hidden flex flex-col">
-                    <div className="px-3 pt-2 pb-2 border-b border-phy-border bg-slate-900/80" onTouchStart={onMobileSheetTouchStart} onTouchMove={onMobileSheetTouchMove} onTouchEnd={onMobileSheetTouchEnd}>
+                <div className="h-full rounded-t-2xl border-t border-x border-phy-border bg-phy-glassHeavy shadow-2xl overflow-hidden flex flex-col">
+                    <div className="px-3 pt-2 pb-2 border-b border-phy-border bg-phy-glass" onTouchStart={onMobileSheetTouchStart} onTouchMove={onMobileSheetTouchMove} onTouchEnd={onMobileSheetTouchEnd}>
                         <div className="mx-auto w-10 h-1.5 rounded-full bg-phy-border mb-2" />
                         <div className="flex items-center gap-2">
                             <div className="text-sm font-black text-phy-text">素材快插入</div>
@@ -2641,7 +2721,7 @@ const WriterView = ({ params }) => {
     const TemplatePicker = (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-black/60">
             <div className="bg-phy-glassHeavy rounded-2xl shadow-2xl border border-phy-borderHover w-full max-w-3xl overflow-hidden flex flex-col max-h-[80vh]">
-                <div className="p-4 border-b border-phy-borderHover flex justify-between items-center bg-slate-950/50">
+                <div className="p-4 border-b border-phy-borderHover flex justify-between items-center bg-phy-glass">
                     <h3 className="font-bold text-white text-lg flex items-center gap-2"><Layout className="text-emerald-500" /> 选择写作模板</h3>
                     <button onClick={() => setShowTemplateModal(false)} className="text-phy-muted hover:text-white"><X /></button>
                 </div>
@@ -2660,7 +2740,7 @@ const WriterView = ({ params }) => {
     const pendingInsertPreview = pendingInsert ? buildInsertPreview(pendingInsert, content) : null;
     const InsertPreviewModal = pendingInsert ? (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm">
-            <div className="w-full max-w-4xl rounded-2xl border border-phy-border bg-slate-950/95 shadow-2xl overflow-hidden">
+            <div className="w-full max-w-4xl rounded-2xl border border-phy-border bg-phy-glassHeavy backdrop-blur-3xl shadow-2xl overflow-hidden animate-fade-in">
                 <div className="px-4 py-3 border-b border-phy-border flex items-center">
                     <div className="text-sm font-black text-phy-text">插入预览：{pendingInsert.label}</div>
                     <div className="ml-3 text-xs text-phy-muted">来源：{pendingInsert.sourceTitle || '素材内容'}</div>
@@ -2697,15 +2777,15 @@ const WriterView = ({ params }) => {
                             </div>
                         </div>
                     </div>
-                    <div className="rounded-xl border border-phy-border bg-slate-900/70 p-3">
-                        <div className="text-[11px] text-phy-muted mb-1">即将插入内容</div>
+                    <div className="rounded-xl border border-phy-border bg-phy-glass p-3 shadow-inner">
+                        <div className="text-[11px] text-phy-muted mb-1 font-bold">即将插入内容</div>
                         <div className="max-h-[24vh] overflow-y-auto text-sm text-phy-text whitespace-pre-wrap break-words leading-6">
                             {pendingInsert.text}
                         </div>
                     </div>
-                    <div className="text-[11px] text-phy-muted">共 {pendingInsert.text.length} 字符</div>
+                    <div className="text-[10px] text-phy-muted font-medium italic">共 {pendingInsert.text.length} 字符</div>
                 </div>
-                <div className="px-4 py-3 border-t border-phy-border flex justify-end gap-2 bg-slate-900/40">
+                <div className="px-4 py-3 border-t border-phy-border flex justify-end gap-2 bg-phy-glass/40">
                     <button onClick={() => setPendingInsert(null)} className="px-3 py-2 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">取消</button>
                     <button
                         onClick={confirmPendingInsert}
@@ -2721,7 +2801,7 @@ const WriterView = ({ params }) => {
 
     const AmmoPickerModal = ammoPicker.open ? (
         <div className="fixed inset-0 z-[129] flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm">
-            <div className="w-full max-w-3xl rounded-2xl border border-phy-border bg-slate-950/95 shadow-2xl overflow-hidden">
+            <div className="w-full max-w-3xl rounded-2xl border border-phy-border bg-phy-glassHeavy backdrop-blur-3xl shadow-2xl overflow-hidden animate-fade-in">
                 <div className="px-4 py-3 border-b border-phy-border flex items-center">
                     <div className="text-sm font-black text-phy-text">弹药包勾选</div>
                     <div className="ml-2 text-xs text-phy-muted">勾选你要插入的句块</div>
@@ -2745,7 +2825,7 @@ const WriterView = ({ params }) => {
                         </label>
                     ))}
                 </div>
-                <div className="px-4 py-3 border-t border-phy-border flex justify-between items-center bg-slate-900/40">
+                <div className="px-4 py-3 border-t border-phy-border flex justify-between items-center bg-phy-glass">
                     <div className="text-xs text-phy-muted">已选 {(ammoPicker.items || []).filter((x) => x.selected).length} 条</div>
                     <div className="flex gap-2">
                         <button onClick={() => setAmmoPicker({ open: false, items: [] })} className="px-3 py-2 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">取消</button>
@@ -2784,14 +2864,60 @@ const WriterView = ({ params }) => {
                 {DesktopDockedMaterialPanel}
             </div>
             <div className="md:hidden h-full min-h-0 flex flex-col rounded-2xl border border-phy-border bg-phy-glassHeavy overflow-hidden">
-                <div className="flex items-center justify-between p-2 px-4 bg-phy-glassHeavy border-b border-phy-border shrink-0">
-                    <div className="font-bold text-phy-text text-sm">写作助手</div>
-                    <div className="flex bg-phy-glass rounded-lg p-1">
-                        <button onClick={() => setMobileTab('tools')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'tools' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>工具</button>
-                        <button onClick={() => setMobileTab('editor')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>编辑</button>
-                        <button onClick={() => setMobileTab('analysis')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>诊断</button>
+                {readSelection ? (
+                    <div className="flex items-center justify-between p-2 px-4 bg-phy-glassHeavy border-b border-phy-border shrink-0 h-10">
+                        <div className="flex items-center gap-1.5 overflow-hidden flex-1">
+                            <span className="text-[10px] font-bold text-indigo-400 uppercase truncate max-w-[60px]">{readSelection.text}</span>
+                            <button
+                                onClick={() => {
+                                    const selection = window.getSelection?.();
+                                    if (selection) {
+                                        try {
+                                            selection.modify("extend", "backward", "sentence");
+                                            selection.modify("extend", "forward", "sentence");
+                                            const text = selection.toString().trim();
+                                            if (text) setReadSelection({ ...readSelection, text });
+                                        } catch (e) {}
+                                    }
+                                }}
+                                className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] active:scale-95 transition-transform"
+                            >
+                                选整句
+                            </button>
+                            <button
+                                onClick={() => {
+                                    insertMaterialContent(null, readSelection.text, '选中文字插入');
+                                    clearReadSelection();
+                                }}
+                                className="px-2 py-1 rounded-lg bg-indigo-600 text-white font-bold text-[10px] active:scale-95 transition-transform"
+                            >
+                                插入
+                            </button>
+                            <button
+                                onClick={() => {
+                                    handleEditMaterial({ title: '新单词/短语', content: readSelection.text, category: 'vocabulary' });
+                                    setMaterialManagerModalOpen(true);
+                                    clearReadSelection();
+                                }}
+                                className="px-2 py-1 rounded-lg bg-amber-500 text-amber-950 font-bold text-[10px] active:scale-95 transition-transform"
+                            >
+                                收藏
+                            </button>
+                        </div>
+                        <button onClick={clearReadSelection} className="ml-2 p-1.5 rounded-lg bg-white/5 text-phy-muted border border-phy-border">
+                            <X size={14} />
+                        </button>
                     </div>
-                </div>
+                ) : (
+                    <div className="flex items-center justify-between p-2 px-4 bg-phy-glassHeavy border-b border-phy-border shrink-0">
+                        <div className="font-bold text-phy-text text-sm">写作助手</div>
+                        <div className="flex bg-phy-glass rounded-lg p-1">
+                            <button onClick={() => setMobileTab('tools')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'tools' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>工具</button>
+                            <button onClick={() => setMobileTab('editor')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>编辑</button>
+                            <button onClick={() => setMobileTab('analysis')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>诊断</button>
+                        </div>
+                    </div>
+                )}
                 <div className="flex-1 overflow-hidden">{mobileTab === 'tools' ? Sidebar : mobileTab === 'editor' ? Main : DiagnosePane}</div>
             </div>
         </div>
