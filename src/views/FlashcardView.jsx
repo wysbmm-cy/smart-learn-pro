@@ -1860,7 +1860,7 @@ const FlashcardView = ({ params }) => {
                     </div>
 
                     {/* Flashcard Study Area */}
-                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative ${isMobile ? (isFlipped && showGradePanel ? 'pb-[calc(env(safe-area-inset-bottom,0px)+88px)]' : 'pb-[calc(env(safe-area-inset-bottom,0px)+8px)]') : ''}`}>
+                    <div className={`flex-1 flex ${isMobile ? 'flex-col' : 'flex-row'} items-stretch overflow-hidden bg-phy-bg/30 relative ${isMobile ? 'pb-[calc(env(safe-area-inset-bottom,0px)+88px)]' : ''}`}>
                         {/* Progress Bar */}
                         <div className="absolute top-0 left-0 h-1 bg-phy-accent transition-all duration-300 z-10" style={{ width: `${(currentCardIndex / studyQueue.length) * 100}%` }}></div>
 
@@ -2335,7 +2335,7 @@ const FlashcardView = ({ params }) => {
             {mode === 'study' && lastAction && Date.now() - lastAction.timestamp < 5000 && (
                 <button
                     onClick={handleUndo}
-                    className={`fixed z-[70] flex items-center gap-2 bg-phy-text text-phy-bg px-4 py-3 rounded-xl shadow-lg hover:opacity-90 transition-all animate-fade-in ${isMobile ? 'top-10 left-1/2 -translate-x-1/2 pointer-events-auto' : 'bottom-8 left-8'}`}
+                    className={`fixed z-[70] flex items-center gap-2 bg-phy-text text-phy-bg px-4 py-3 rounded-xl shadow-lg hover:opacity-90 transition-all animate-fade-in ${isMobile ? 'bottom-[calc(env(safe-area-inset-bottom,0px)+88px)] left-4 pointer-events-auto' : 'bottom-8 left-8'}`}
                 >
                     <Undo2 size={18} />
                     <span className="font-bold text-sm">撤销 (Z)</span>
