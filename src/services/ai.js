@@ -3005,7 +3005,7 @@ export async function generateDeepNotes(word, context, settings) {
     return null;
   }
 
-  const prompt = `
+  const fallbackPrompt = `
   Role: Expert English Teacher.
   Task: Create a "Deep Dive Vocabulary Note" for the word: "${word}".
   Context: The word appears in this sentence: "${context || 'No specific context'}".
@@ -3043,6 +3043,15 @@ export async function generateDeepNotes(word, context, settings) {
   - **写作/翻译提分点：** [Tips]
   `;
 
+  let prompt = settings.deepNotePrompt;
+  if (prompt && typeof prompt === 'string' && prompt.trim() !== '') {
+    prompt = prompt
+      .replace(/{{word}}/g, word || 'N/A')
+      .replace(/{{context}}/g, context || 'No specific context');
+  } else {
+    prompt = fallbackPrompt;
+  }
+
   try {
     const markdown = await fetchFromAI([
       { role: "system", content: "You are a helpful linguistic assistant. Output clean Markdown." },
@@ -3052,6 +3061,48 @@ export async function generateDeepNotes(word, context, settings) {
     return markdown;
   } catch (error) {
     console.error("Deep Notes Generation Error:", error);
+    return null;
+  }
+}
+
+/**
+ * Uses AI to rewrite a user's prompt template based on instructions.
+ * @param {string} currentPrompt The current raw text in the template
+ * @param {string} instruction What the user wants to add or change
+ * @param {object} settings Application settings containing API keys
+ * @returns {Promise<string>} The new optimized raw prompt
+ */
+export async function optimizePromptTemplate(currentPrompt, instruction, settings) {
+  if (!checkApiKey(settings)) {
+    console.warn("API Key check failed in optimizePromptTemplate");
+    return null;
+  }
+
+  const systemMessage = `You are a world-class Prompt Engineer. 
+The user is providing an existing prompt template and an instruction on how to modify it.
+
+YOUR TASK:
+1. Revise the provided prompt template exactly as instructed.
+2. Maintain any existing placeholders like {{word}} or {{context}} unless explicitly asked to remove them.
+3. OUTPUT ONLY the raw, revised prompt string. DO NOT include polite opening/closing remarks (like "Here is the revised prompt"). DO NOT wrap it in a root markdown code block (e.g. \`\`\`markdown) unless the original text explicitly had it in its raw format. The output should be ready to directly copy-paste into a text area.`;
+
+  const userMessage = `EXISTING PROMPT TEMPLATE:
+---
+${currentPrompt || '(Empty)'}
+---
+
+INSTRUCTION:
+${instruction}`;
+
+  try {
+    const newPrompt = await fetchFromAI([
+      { role: "system", content: systemMessage },
+      { role: "user", content: userMessage }
+    ], settings, false);
+
+    return newPrompt ? newPrompt.trim() : null;
+  } catch (error) {
+    console.error("Prompt Optimization Error:", error);
     return null;
   }
 }

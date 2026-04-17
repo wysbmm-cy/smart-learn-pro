@@ -1,7 +1,7 @@
-﻿import React, { useState } from 'react';
-import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash, Loader2, Sparkles, Wand2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection } from '../services/ai';
+import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection, optimizePromptTemplate } from '../services/ai';
 
 // Navigation sections for quick jump
 const sections = [
@@ -11,7 +11,6 @@ const sections = [
     { id: 'image', label: '图像生成', icon: ImageIcon },
     { id: 'system', label: 'AI 人设', icon: Settings },
     { id: 'tools', label: '效率工具', icon: Clock },
-    { id: 'modules', label: '分析模块', icon: Box },
     { id: 'styles', label: '漫画风格', icon: BookMarked },
     { id: 'drills', label: '智能练习', icon: Hash },
     { id: 'review', label: '复习设置', icon: Clock },
@@ -25,6 +24,21 @@ const SettingsView = () => {
     const [audioConnectionStatus, setAudioConnectionStatus] = useState('idle');
     const [ttsConnectionStatus, setTtsConnectionStatus] = useState('idle');
     const [imageGenConnectionStatus, setImageGenConnectionStatus] = useState('idle');
+
+    // Prompt Optimizer State
+    const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false);
+    const [promptInstruction, setPromptInstruction] = useState('');
+
+    const handleOptimizePrompt = async () => {
+        if (!promptInstruction.trim() || isOptimizingPrompt) return;
+        setIsOptimizingPrompt(true);
+        const newPrompt = await optimizePromptTemplate(settings.deepNotePrompt, promptInstruction, settings);
+        if (newPrompt) {
+            updateSetting('deepNotePrompt', newPrompt);
+            setPromptInstruction(''); // clear instruction on success
+        }
+        setIsOptimizingPrompt(false);
+    };
 
     // Custom Style Form
     const [newStyleName, setNewStyleName] = useState('');
@@ -508,18 +522,60 @@ const SettingsView = () => {
                                 className="w-full bg-phy-bg border border-phy-border rounded-xl p-4 text-sm focus:bg-phy-glass focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-phy-text min-h-[100px] mb-6"
                                 placeholder="Define how the AI should behave..."
                             />
-
+                        </div>
+                        <div className="pt-4 border-t border-phy-border/30">
                             <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Vocabulary Analysis Prompt (词汇分析指令)
+                                深度笔记预设指令 (Deep Note Prompt)
                             </label>
                             <textarea
-                                value={settings.vocabAnalysisPrompt}
-                                onChange={(e) => updateSetting('vocabAnalysisPrompt', e.target.value)}
-                                className="w-full bg-phy-bg border border-phy-border rounded-xl p-4 text-xs focus:bg-phy-glass focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-phy-muted min-h-[300px]"
-                                placeholder="Define the strict JSON output structure..."
+                                value={settings.deepNotePrompt || ''}
+                                onChange={(e) => updateSetting('deepNotePrompt', e.target.value)}
+                                className="w-full bg-phy-bg border border-phy-border rounded-xl p-4 text-sm focus:bg-phy-glass focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-phy-text min-h-[200px] mb-2"
+                                placeholder="Edit the prompt template for deep notes..."
+                            />
+                            <p className="text-[11px] text-phy-muted mb-4">
+                                可用占位符: <code className="bg-phy-border px-1 rounded font-mono">{"{{word}}"}</code> (当前单词), <code className="bg-phy-border px-1 rounded font-mono">{"{{context}}"}</code> (上下文例文)。保留核心 markdown 骨架以确保最佳排版效果。
+                            </p>
+                            
+                            {/* AI Prompt Optimizer Magic Wand */}
+                            <div className="flex items-center gap-2 mb-6">
+                                <div className="relative flex-1">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-phy-muted">
+                                        <Wand2 size={14} />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={promptInstruction}
+                                        onChange={(e) => setPromptInstruction(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleOptimizePrompt(); }}
+                                        disabled={isOptimizingPrompt}
+                                        placeholder="告诉 AI 修改想法... (如: 增加托福考点剖析)"
+                                        className="w-full pl-9 pr-4 py-2.5 bg-phy-glass border border-indigo-500/30 rounded-xl text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder:text-indigo-400/50 text-indigo-100"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleOptimizePrompt}
+                                    disabled={!promptInstruction.trim() || isOptimizingPrompt}
+                                    className="px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-500/50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
+                                >
+                                    {isOptimizingPrompt ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                                    <span className="hidden sm:inline">{isOptimizingPrompt ? "优化中..." : "AI 帮我改"}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-phy-border/30">
+                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
+                                词汇提取数量 (Vocabulary Quantity Target)
+                            </label>
+                            <input
+                                type="text"
+                                value={settings.vocabCount}
+                                onChange={(e) => updateSetting('vocabCount', e.target.value)}
+                                className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:bg-phy-glass focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-phy-text"
+                                placeholder="e.g. 10-15 or 20"
                             />
                             <p className="text-[11px] text-phy-muted mt-2">
-                                <b>Tip:</b> Use <code>{'{{vocabCount}}'}</code> as a placeholder for the number required (e.g. "10-15"). Must maintain VALID JSON output structure for the app to work.
+                                设置 AI 在分析文章时抓取的生词目标数量。
                             </p>
                         </div>
                     </div>
@@ -589,53 +645,6 @@ const SettingsView = () => {
                                 <option value="500">500 词</option>
                             </select>
                             <p className="text-[11px] text-phy-muted mt-2 ml-1">限制每次批量导入提取的最大词汇数量，设置上限可加快处理速度</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Modules Card */}
-                <div id="modules" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
-                    <div className="flex items-center gap-3 text-phy-text font-bold font-bold border-b border-phy-border pb-4 mb-6">
-                        <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                            <Box size={20} />
-                        </div>
-                        <h3 className="text-lg">个性化分析模块</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Toggle
-                            title="Writing Guide (写作指导)"
-                            checked={settings.showWriting}
-                            onChange={(v) => updateSetting('showWriting', v)}
-                        />
-                        <Toggle
-                            title="Mnemonics (AI 联想记忆)"
-                            checked={settings.showMnemonic}
-                            onChange={(v) => updateSetting('showMnemonic', v)}
-                        />
-                        <Toggle
-                            title="Etymology (词源解析)"
-                            checked={settings.showEtymology}
-                            onChange={(v) => updateSetting('showEtymology', v)}
-                        />
-                        <Toggle
-                            title="Collocations (地道搭配/例句)"
-                            checked={settings.showCollocations}
-                            onChange={(v) => updateSetting('showCollocations', v)}
-                        />
-                        <div className="md:col-span-2 mt-4 pt-4 border-t border-slate-50">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Vocabulary Quantity Target (词汇提取数量)
-                            </label>
-                            <input
-                                type="text"
-                                value={settings.vocabCount}
-                                onChange={(e) => updateSetting('vocabCount', e.target.value)}
-                                className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:bg-phy-glass focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono text-phy-text"
-                                placeholder="e.g. 10-15 or 20"
-                            />
-                            <p className="text-[11px] text-phy-muted mt-2">
-                                Set a target range (e.g. "15-20") or fixed number for key word extraction.
-                            </p>
                         </div>
                     </div>
                 </div>

@@ -302,7 +302,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
             {/* Pomodoro */}
             {showPomodoro && (
-                <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[45] animate-slide-up">
+                <div className="fixed inset-0 pointer-events-none z-[100]">
                     <PomodoroTimer onClose={() => setShowPomodoro(false)} />
                 </div>
             )}

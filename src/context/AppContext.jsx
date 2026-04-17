@@ -61,26 +61,47 @@ const DEFAULT_SETTINGS = {
     apiBaseUrl: 'https://api.moonshot.cn/v1',
     modelName: 'kimi-k2-0905-preview',
     apiKey: 'sk-oZJYOSFELAIMihGSsTILis6FDgWTUB0xnujShpivalzUr9Ci',
-    showWriting: true,
-    showMnemonic: true,
-    showCollocations: true,
-    showEtymology: false,
     preloadAll: true,
     maxReviewCards: 0,  // 0 = unlimited, otherwise cap per session
     writingLevel: "CET-6",
     writingPrompt: "Strict examiner mode. Find all errors.",
     vocabCount: "10-15",
+    deepNotePrompt: `Role: Expert English Teacher.
+Task: Create a "Deep Dive Vocabulary Note" for the word: "{{word}}".
+Context: The word appears in this sentence: "{{context}}".
+
+Output Format: Markdown (Strictly follow this structure):
+
+## {{word}}
+### 1. 词性与词源
+*   **词性：** [e.g. Noun/Verb]
+*   **词源：** [Brief etymology]
+
+### 2. 核心释义
+1.  **[Meaning 1]：** [Definition]
+2.  **[Meaning 2]：** [Definition]
+
+### 3. 常见搭配与用法
+*   **[Collocation 1]**：[CN Meaning]
+*   **[Collocation 2]**：[CN Meaning]
+    > [Example sentence]
+
+### 4. 同/近义词辨析
+| 单词 | 侧重点 | 例句 |
+| :--- | :--- | :--- |
+| **{{word}}** | ... | ... |
+| **[Synonym]** | ... | ... |
+
+### 5. 例句展示
+1.  [Sentence 1] ([CN Translation])
+2.  [Sentence 2] ([CN Translation])
+
+**记忆要点：** [Mnemonic or key takeaway]
+
+### 6. 考试应用与备考策略
+- **考察频率：** [High/Medium]
+- **写作/翻译提分点：** [Tips]`,
     systemPrompt: "You are SmartLearn AI, an intelligent and helpful English tutor. You are powered by advanced AI technology. Answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
-    vocabAnalysisPrompt: `
-  Role: Expert English Teacher.
-  Task: Analyze the provided text comprehensively in one go.
-  Requirements:
-  1. Summary: Chinese summary + Difficulty Level.
-  2. Vocabulary: Extract {{vocabCount}} key words/phrases (prioritize academic). For each: Chinese meaning, mnemonic, usage tips.
-  3. Grammar: Identify 2-3 **truly advanced or noteworthy** syntactic structures.
-  
-  Output MUST be valid JSON.
-  `,
 
     // Audio API Settings (Separate)
     audioApiBaseUrl: 'https://api.siliconflow.cn/v1', // TeleAI endpoint is usually standard OpenAI format

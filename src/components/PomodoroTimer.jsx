@@ -25,8 +25,11 @@ const PomodoroTimer = () => {
     const [mode, setMode] = useState('focus'); // 'focus' | 'break'
     const [isMinimized, setIsMinimized] = useState(false);
 
-    // Draggable State (Default: Bottom Left)
-    const [position, setPosition] = useState({ x: 24, y: window.innerHeight - 250 });
+    // Draggable State (Default: Bottom Right)
+    const [position, setPosition] = useState({ 
+        x: window.innerWidth - 280, 
+        y: window.innerWidth < 768 ? window.innerHeight - 350 : window.innerHeight - 250 
+    });
     const [isDragging, setIsDragging] = useState(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
@@ -144,7 +147,7 @@ const PomodoroTimer = () => {
     if (isMinimized) {
         return (
             <div
-                className="fixed z-[90] transition-shadow left-0 top-0" // Pos handled by style
+                className="fixed z-[90] transition-shadow left-0 top-0 pointer-events-auto" // Pos handled by style
                 style={style}
                 onMouseDown={handleMouseDown}
             >
@@ -184,7 +187,7 @@ const PomodoroTimer = () => {
     // Expanded View
     return (
         <div
-            className="fixed z-[90] animate-fade-in-up"
+            className="fixed z-[90] animate-fade-in-up pointer-events-auto"
             style={style}
         >
             <div className={`bg-white/90 backdrop-blur-md border border-phy-border shadow-2xl rounded-2xl p-4 w-64 transition-all ${isActive ? (mode === 'focus' ? 'ring-2 ring-red-500/20' : 'ring-2 ring-green-500/20') : ''}`}>
