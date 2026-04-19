@@ -192,7 +192,7 @@ const GlobalPlayer = () => {
                 </div>
             ) : (
                 // Expanded Player Card
-                <div className="bg-white/90 backdrop-blur-md border border-blue-100 shadow-2xl rounded-2xl p-3 flex flex-col gap-2 w-80 shadow-blue-500/20">
+                <div className="bg-phy-glassHeavy backdrop-blur-xl border border-phy-border shadow-2xl rounded-2xl p-3 flex flex-col gap-2 w-80 shadow-phy-accentGlass/10">
 
                     {/* Drag Handle & Header */}
                     <div
@@ -205,14 +205,14 @@ const GlobalPlayer = () => {
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={() => setIsMinimized(true)}
-                                className="p-1 hover:bg-phy-bg rounded text-phy-muted hover:text-phy-muted"
+                                className="p-1 hover:bg-phy-glass/20 rounded text-phy-muted hover:text-phy-text"
                                 title="最小化"
                             >
                                 <Minimize2 size={16} />
                             </button>
                             <button
                                 onClick={closeAudio}
-                                className="p-1 hover:bg-red-50 rounded text-phy-muted hover:text-red-500"
+                                className="p-1 hover:bg-red-500/20 rounded text-phy-muted hover:text-red-400"
                                 title="关闭"
                             >
                                 <X size={16} />
@@ -222,13 +222,13 @@ const GlobalPlayer = () => {
 
                     <div className="flex items-center gap-3">
                         {/* Art */}
-                        <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white shadow-md shrink-0 ${audioState.isPlaying ? 'animate-pulse' : ''}`}>
+                        <div className={`w-10 h-10 bg-gradient-to-br from-phy-accent to-phy-accent/60 rounded-lg flex items-center justify-center text-white shadow-md shrink-0 ${audioState.isPlaying ? 'animate-pulse' : ''}`}>
                             <Music size={20} />
                         </div>
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-phy-text font-bold text-xs truncate scroll-m-2">{audioState.file.name}</h4>
+                            <h4 className="font-bold text-phy-text text-xs truncate">{audioState.file.name}</h4>
                             <p className="text-[10px] text-phy-muted truncate">音频播放器</p>
                         </div>
                     </div>
@@ -237,15 +237,15 @@ const GlobalPlayer = () => {
                     <div className="px-1">
                         <div
                             ref={progressRef}
-                            className="h-1.5 w-full bg-phy-bg rounded-full cursor-pointer group relative"
+                            className="h-1.5 w-full bg-phy-bg border border-phy-border rounded-full cursor-pointer group relative"
                             onClick={handleProgressClick}
                         >
                             <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-150 relative"
+                                className="h-full bg-phy-accent rounded-full transition-all duration-150 relative"
                                 style={{ width: `${progress}%` }}
                             >
                                 {/* Drag Handle Dot */}
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-phy-glass border-2 border-blue-500 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-phy-bg border-2 border-phy-accent rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                         </div>
                         {/* Time Display */}
@@ -256,17 +256,17 @@ const GlobalPlayer = () => {
                     </div>
 
                     {/* Controls */}
-                    <div className="flex items-center justify-around bg-phy-bg rounded-xl p-1">
+                    <div className="flex items-center justify-around bg-phy-bg/40 rounded-xl p-1 border border-phy-border">
                         <button
                             onClick={cycleSpeed}
-                            className="text-[10px] font-bold text-phy-muted hover:text-blue-600 px-2 py-1 transition-colors"
+                            className="text-[10px] font-bold text-phy-muted hover:text-phy-accent px-2 py-1 transition-colors"
                         >
                             {rate}x
                         </button>
 
                         <button
                             onClick={() => toggleAudioPlay(!audioState.isPlaying)}
-                            className="p-1.5 bg-phy-glass shadow-sm border border-phy-border text-blue-600 rounded-full hover:scale-105 active:scale-95 transition-all"
+                            className="p-1.5 bg-phy-glass border border-phy-border text-phy-accent rounded-full hover:scale-105 active:scale-95 transition-all"
                         >
                             {audioState.isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
                         </button>

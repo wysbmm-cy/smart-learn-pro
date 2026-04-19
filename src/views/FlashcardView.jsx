@@ -2032,7 +2032,7 @@ const FlashcardView = ({ params }) => {
                                     </button>
                                 </div>
                             )}
-                            <div className={`${isMobile ? 'flex-1 overflow-y-auto p-4' : 'p-6 h-full overflow-y-auto'}`}>
+                            <div className={`${isMobile ? 'flex-1 overflow-y-auto p-4 pb-32' : 'p-6 h-full overflow-y-auto'} mobile-safe-bottom`}>
                                 <h3 className="font-bold text-phy-text mb-6 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <BookOpen size={20} className="text-phy-accent" />
@@ -2152,7 +2152,7 @@ const FlashcardView = ({ params }) => {
 
                     {/* Control Buttons (4-Level FSRS) moved inside container */}
                     {isFlipped && showGradePanel && (
-                        <div className={`${isMobile ? 'fixed left-2 right-2 bottom-[calc(env(safe-area-inset-bottom,0px)+8px)] z-40 grid grid-cols-4 gap-2 p-2 rounded-2xl border border-phy-border bg-phy-glassHeavy/95 backdrop-blur mobile-safe-bottom' : 'mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4'}`}>
+                        <div className={`${isMobile ? 'fixed left-2 right-2 bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] z-40 grid grid-cols-4 gap-2 p-2 rounded-2xl border border-phy-border bg-phy-glassHeavy/95 backdrop-blur' : 'mt-8 flex gap-3 w-full max-w-2xl animate-fade-in-up px-4'}`}>
                             <button
                                 onClick={() => handleNextCard(1)}
                                 disabled={isAdvancingCard}

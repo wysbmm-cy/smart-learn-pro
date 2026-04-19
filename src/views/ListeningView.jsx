@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { decodeAudioData, sliceAudioBuffer, audioBufferToWav } from '../utils/audioUtils';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
     AlertCircle,
     Brain,
     CheckCircle2,
     Headphones,
     Loader2,
-    Music,
-    Play,
+    Music, Scissors,
+    Play, Plus,
     RefreshCw,
     Search,
     Type,
@@ -31,7 +32,8 @@ const normalizeAnswer = (value) => {
 };
 
 const ListeningView = () => {
-    const { loadFiles, playAudio, settings } = useApp();
+    const fileInputRef = useRef(null);
+    const { loadFiles, playAudio, settings, saveToFileLibrary } = useApp();
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
@@ -49,6 +51,8 @@ const ListeningView = () => {
     
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+    const [isSplitting, setIsSplitting] = useState(false);
+    const [splitRange, setSplitRange] = useState({ start: 0, end: 10 });
 
     useEffect(() => {
         const handleResize = () => {
@@ -58,6 +62,30 @@ const ListeningView = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+        const handleDirectUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 25 * 1024 * 1024) {
+            toast.error('文件太大（需 <25MB）');
+            return;
+        }
+
+        const tid = toast.loading('正在上传音频...');
+        try {
+            await saveToFileLibrary({
+                name: file.name,
+                type: file.type || 'audio/mpeg',
+                blob: file
+            });
+            toast.success('上传成功', { id: tid });
+            await loadData();
+            e.target.value = null; // Reset
+        } catch (err) {
+            toast.error(`上传失败: ${err.message}`, { id: tid });
+        }
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -216,6 +244,45 @@ const ListeningView = () => {
         };
     }, [listeningQuiz, listeningAnswers]);
 
+        const handleSplitAudio = async () => {
+        if (!activeFile) return;
+        const start = parseFloat(splitRange.start);
+        const end = parseFloat(splitRange.end);
+        
+        if (isNaN(start) || isNaN(end) || start >= end || start < 0) {
+            toast.error('请输入有效的起止时间');
+            return;
+        }
+
+        setIsSplitting(true);
+        const tid = toast.loading('正在导出切割片段...');
+        try {
+            const buffer = await decodeAudioData(activeFile.blob);
+            // Cap end time to duration
+            const safeEnd = Math.min(end, buffer.duration);
+            if (start >= safeEnd) throw new Error('起止时间超出音频范围');
+
+            const sliced = sliceAudioBuffer(buffer, start, safeEnd);
+            const wavBlob = audioBufferToWav(sliced);
+            
+            const segmentName = `[片段] ${activeFile.name.replace(/\.[^/.]+$/, "")} (${Math.floor(start)}s-${Math.floor(safeEnd)}s).wav`;
+            
+            await saveToFileLibrary({
+                name: segmentName,
+                type: 'audio/wav',
+                blob: wavBlob
+            });
+            
+            toast.success('片段已保存至音频库', { id: tid });
+            loadData(); // Refresh list
+        } catch (e) {
+            console.error('Split failed', e);
+            toast.error(`切割失败: ${e.message}`, { id: tid });
+        } finally {
+            setIsSplitting(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center text-phy-muted animate-pulse">
@@ -227,15 +294,26 @@ const ListeningView = () => {
 
     // Sidebar Content Component to avoid duplication
     const Sidebar = (
+        <>
+            <input type="file" ref={fileInputRef} onChange={handleDirectUpload} accept="audio/*" className="hidden" />
         <div className={`${isMobile ? 'w-full' : 'w-80'} flex flex-col glass-sidebar rounded-[2rem] border border-phy-border overflow-hidden transition-all duration-500`}>
             <div className="p-5 border-b border-phy-border bg-phy-glassHeavy/30">
-                <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center justify-between mb-4">
                     <div className="p-2.5 bg-phy-accentGlass text-phy-accent rounded-2xl shadow-sm">
                         <Headphones size={22} />
                     </div>
                     <div>
                         <h2 className="text-lg font-bold text-phy-text">音频库</h2>
                         <p className="text-[10px] text-phy-muted uppercase tracking-wider font-bold">精听训练专用</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2 bg-phy-accent text-white rounded-xl hover:bg-phy-accent/80 transition-all shadow-lg shadow-phy-accent/20"
+                            title="上传音频"
+                        >
+                            <Plus size={16} />
+                        </button>
                     </div>
                 </div>
                 <div className="relative">
@@ -288,6 +366,7 @@ const ListeningView = () => {
                 )}
             </div>
         </div>
+        </>
     );
 
     return (
@@ -339,36 +418,64 @@ const ListeningView = () => {
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 no-scrollbar">
-                                    {!transcriptText ? (
+                                    <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-phy-glass rounded-xl border border-phy-border shrink-0">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-[10px] text-phy-muted">Start</span>
+                                                <input 
+                                                    type="number" 
+                                                    value={splitRange.start} 
+                                                    onChange={(e) => setSplitRange(prev => ({ ...prev, start: e.target.value }))}
+                                                    className="w-12 bg-phy-bg border border-phy-border rounded-md px-1 py-0.5 text-[10px] outline-none" 
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-[10px] text-phy-muted">End</span>
+                                                <input 
+                                                    type="number" 
+                                                    value={splitRange.end} 
+                                                    onChange={(e) => setSplitRange(prev => ({ ...prev, end: e.target.value }))}
+                                                    className="w-12 bg-phy-bg border border-phy-border rounded-md px-1 py-0.5 text-[10px] outline-none" 
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleSplitAudio}
+                                                disabled={isSplitting}
+                                                className="p-1.5 rounded-lg bg-phy-accent/20 text-phy-accent hover:bg-phy-accent/30 transition-all disabled:opacity-50"
+                                                title="切割为新文件"
+                                            >
+                                                {isSplitting ? <Loader2 size={14} className="animate-spin" /> : <Scissors size={14} />}
+                                            </button>
+                                        </div>
+
                                         <button
                                             onClick={handleTranscribe}
                                             disabled={isTranscribing}
-                                            className="whitespace-nowrap flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-phy-accent text-white font-bold text-sm shadow-lg shadow-phy-accent/30 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                                            className={`whitespace-nowrap flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+                                                !transcriptText 
+                                                    ? 'bg-phy-accent text-white shadow-lg shadow-phy-accent/30 hover:brightness-110' 
+                                                    : 'bg-phy-glass border border-phy-border text-phy-muted hover:text-phy-accent'
+                                            }`}
+                                            title={transcriptText ? "重新转写" : "AI 转写音频文本"}
                                         >
-                                            {isTranscribing ? <Loader2 size={16} className="animate-spin" /> : <Type size={16} />}
-                                            一键 AI 转写
+                                            {isTranscribing ? <Loader2 size={16} className="animate-spin" /> : (transcriptText ? <RefreshCw size={16} /> : <Type size={16} />)}
+                                            {transcriptText ? (isMobile ? "重转" : "重新转写") : "一键 AI 转写"}
                                         </button>
-                                    ) : (
-                                        <div className="flex items-center gap-2 w-full md:w-auto">
-                                            <button
-                                                onClick={handleGenerateQuiz}
-                                                disabled={isGeneratingQuiz}
-                                                className="whitespace-nowrap flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/30 hover:bg-indigo-400 active:scale-95 transition-all disabled:opacity-50"
-                                            >
-                                                {isGeneratingQuiz ? <Loader2 size={16} className="animate-spin" /> : <Brain size={16} />}
-                                                {listeningQuiz ? '重练题目' : '生成练习题'}
-                                            </button>
-                                            <button
-                                                onClick={handleTranscribe}
-                                                className="shrink-0 p-2.5 rounded-xl bg-phy-glass border border-phy-border text-phy-muted hover:text-phy-accent transition-all"
-                                                title="重新转写"
-                                            >
-                                                <RefreshCw size={18} />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
+
+                                        <button
+                                            onClick={handleGenerateQuiz}
+                                            disabled={isGeneratingQuiz || !transcriptText}
+                                            className={`whitespace-nowrap flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed ${
+                                                transcriptText 
+                                                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-400' 
+                                                    : 'bg-phy-glass border border-phy-border text-phy-muted'
+                                            }`}
+                                            title={!transcriptText ? "请先完成 AI 转写" : "基于文本生成练习题"}
+                                        >
+                                            {isGeneratingQuiz ? <Loader2 size={16} className="animate-spin" /> : <Brain size={16} />}
+                                            {listeningQuiz ? '重练题目' : '生成练习题'}
+                                        </button>
+                                    </div>
                             </div>
 
                             {/* Content Area: Stacks on Mobile */}

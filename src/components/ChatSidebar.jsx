@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import SharedMarkdown from './SharedMarkdown';
-import { X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, History, Plus, Trash2, MessageSquare, Zap, MessageCircle, Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, BookOpen, ImagePlus } from 'lucide-react';
+import { 
+    X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, 
+    History, Plus, Trash2, MessageSquare, Zap, MessageCircle, 
+    Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, 
+    BookOpen, ImagePlus, Calendar, BarChart3 
+} from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
 import { analyzeImagesForChat, streamChatMessage, streamAgentChat } from '../services/ai';
@@ -43,16 +48,16 @@ const TOOL_LABELS = {
 
 // View ID -> display info
 const VIEW_INFO = {
-    flashcards: { label: 'Flashcards', icon: Layers, color: 'text-violet-600 bg-violet-50 border-violet-200' },
-    writer: { label: 'Writer', icon: PenTool, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-    coach: { label: 'Coach', icon: Mic, color: 'text-green-600 bg-green-50 border-green-200' },
-    notes: { label: 'Notes', icon: NotebookPen, color: 'text-amber-600 bg-amber-50 border-amber-200' },
-    study: { label: 'Study', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
-    exam: { label: 'Exam', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
-    plan: { label: 'Plan', icon: Brain, color: 'text-cyan-600 bg-cyan-50 border-cyan-200' },
-    dashboard: { label: 'Dashboard', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
-    knowledge: { label: 'Knowledge Graph', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
-    review: { label: 'Review Center', icon: Brain, color: 'text-sky-600 bg-sky-50 border-sky-200' },
+    flashcards: { label: '单词闪卡', icon: Layers, color: 'text-violet-600 bg-violet-50 border-violet-200' },
+    writer: { label: '写作中心', icon: PenTool, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+    coach: { label: '口语教练', icon: Mic, color: 'text-green-600 bg-green-50 border-green-200' },
+    notes: { label: '学习笔记', icon: NotebookPen, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+    study: { label: '沉浸阅读', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
+    exam: { label: '模考中心', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
+    plan: { label: '学习计划', icon: Brain, color: 'text-cyan-600 bg-cyan-50 border-cyan-200' },
+    dashboard: { label: '仪表盘', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
+    knowledge: { label: '知识图谱', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+    review: { label: '复习中心', icon: Brain, color: 'text-sky-600 bg-sky-50 border-sky-200' },
 };
 
 const ChatSidebar = ({ isMobileSheet = false }) => {
@@ -449,69 +454,64 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             )}
 
             {/* Header */}
-            <div className={`h-14 md:h-16 flex items-center justify-between px-4 border-b border-phy-border shrink-0 ${isMobileSheet ? 'bg-transparent' : 'bg-phy-glass-heavy'}`}>
-                <div className="flex items-center gap-2 font-bold text-phy-text">
-                    <div className={`p-1.5 rounded-lg ${chatMode === 'agent' ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+            <div className={`h-14 flex items-center justify-between px-4 border-b border-phy-border shrink-0 ${isMobileSheet ? 'bg-transparent' : 'bg-phy-glassHeavy/50 backdrop-blur-md'}`}>
+                <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${chatMode === 'agent' ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-indigo-100 text-indigo-600 shadow-sm'}`}>
                         {chatMode === 'agent' ? <Zap size={18} /> : <Bot size={18} />}
                     </div>
-                    <span>{chatMode === 'agent' ? 'AI Agent' : 'AI Tutor'}</span>
+                    <div className="flex flex-col -space-y-0.5">
+                        <span className="text-sm font-bold text-phy-text">{chatMode === 'agent' ? 'AI 智能体' : 'AI 导师'}</span>
+                        <span className="text-[10px] text-phy-muted font-medium uppercase tracking-wider">
+                            {chatMode === 'agent' ? '全能助手' : '学习导航'}
+                        </span>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                     {/* Mode Toggle */}
-                    <div className="flex bg-phy-glassHeavy rounded-lg p-0.5 mr-1 border border-phy-border">
+                    <div className="flex bg-phy-glassHeavy/80 p-0.5 rounded-lg border border-phy-border shadow-inner">
                         <button
                             onClick={() => setChatMode('chat')}
-                            className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${chatMode === 'chat'
-                                ? 'bg-phy-accentGlass text-phy-accent shadow-sm border border-phy-borderHover'
+                            className={`px-2 py-1 flex items-center gap-1.5 rounded-md transition-all ${chatMode === 'chat'
+                                ? 'bg-phy-accent text-white shadow-sm'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="Normal chat mode"
+                            title="导师模式"
                         >
-                            <MessageCircle size={14} className="inline mr-1" />
-                            Chat
+                            <MessageCircle size={14} />
+                            <span className="text-[11px] font-bold">聊天</span>
                         </button>
                         <button
                             onClick={() => setChatMode('agent')}
-                            className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${chatMode === 'agent'
-                                ? 'bg-phy-accentGlass text-phy-accent shadow-sm border border-phy-borderHover'
+                            className={`px-2 py-1 flex items-center gap-1.5 rounded-md transition-all ${chatMode === 'agent'
+                                ? 'bg-phy-accent text-white shadow-sm'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="Agent mode with tool calls"
+                            title="智能体模式"
                         >
-                            <Zap size={14} className="inline mr-1" />
-                            Agent
+                            <Zap size={14} />
+                            <span className="text-[11px] font-bold">智能体</span>
                         </button>
                     </div>
 
-                    {/* History Toggle */}
+                    <div className="w-px h-4 bg-phy-border mx-0.5" />
+
                     <button
                         onClick={() => setViewMode(prev => prev === 'chat' ? 'history' : 'chat')}
-                        className={`p-2 rounded-lg transition-colors ${viewMode === 'history' ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glassHeavy text-phy-muted'}`}
-                        title="Chat History"
+                        className={`p-1.5 rounded-lg transition-colors ${viewMode === 'history' ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glassHeavy text-phy-muted'}`}
+                        title="对话历史"
                     >
-                        {viewMode === 'history' ? <MessageSquare size={18} /> : <History size={18} />}
+                        <History size={18} />
                     </button>
 
                     <button
                         onClick={toggleChat}
-                        className="p-2 hover:bg-phy-glassHeavy rounded-lg text-phy-muted transition-colors"
+                        className="p-1.5 hover:bg-phy-glassHeavy rounded-lg text-phy-muted transition-colors"
                     >
                         <X size={18} />
                     </button>
                 </div>
             </div>
-
-            {/* Agent Mode Banner */}
-            {chatMode === 'agent' && viewMode === 'chat' && (
-                <div className="px-4 py-2 bg-phy-accent border-b border-phy-borderHover shrink-0 bg-opacity-10 backdrop-blur-sm">
-                    <div className="flex items-center gap-2 text-xs text-phy-text font-bold">
-                        <Database size={12} className="text-phy-accent" />
-                        <span>Agent Mode</span>
-                        <span className="opacity-70 font-normal">- read data, write actions, and navigate pages</span>
-                    </div>
-                </div>
-            )}
 
             {/* Content: Switch between Chat and History */}
             {viewMode === 'history' ? (
@@ -524,13 +524,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                         }}
                         className="w-full flex items-center justify-center gap-2 py-3 bg-phy-glass border border-dashed border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors font-bold text-sm shadow-sm"
                     >
-                        <Plus size={16} /> New Chat
+                        <Plus size={16} /> 开启新对话
                     </button>
 
-                    <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mt-4 px-2">Recent Sessions</div>
+                    <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mt-4 px-2">最近对话</div>
 
                     {(!chatSessions || chatSessions.length === 0) && (
-                        <div className="text-center py-8 text-phy-muted text-sm italic">No history found.</div>
+                        <div className="text-center py-8 text-phy-muted text-sm italic">未找到历史记录。</div>
                     )}
 
                     {(chatSessions || []).map(session => (
@@ -544,19 +544,19 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                     ? 'bg-phy-glass border-phy-accent shadow-md ring-2 ring-phy-accent/20'
                                     : 'bg-phy-bg border-phy-border hover:border-phy-accentHover hover:bg-phy-glassHeavy'}`}
                             >
-                                <div className="font-bold text-phy-text text-sm truncate pr-6">{session.title || "New Chat"}</div>
+                                <div className="font-bold text-phy-text text-sm truncate pr-6">{session.title || "新对话"}</div>
                                 <div className="text-[10px] text-phy-muted mt-1 flex justify-between items-center">
                                     <span>{new Date(session.updatedAt || Date.now()).toLocaleDateString()}</span>
-                                    <span>{session.messages?.length || 0} msgs</span>
+                                    <span>{session.messages?.length || 0} 条消息</span>
                                 </div>
                             </button>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm("Delete this chat?")) removeChatSession(session.id);
+                                    if (confirm("确定要删除此对话吗？")) removeChatSession(session.id);
                                 }}
                                 className="absolute right-2 top-3 p-1.5 text-phy-text hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                                title="Delete"
+                                title="删除"
                             >
                                 <Trash2 size={14} />
                             </button>
@@ -571,33 +571,51 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                         onScroll={updateAutoScrollState}
                         className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar"
                     >
-                        {/* Welcome / New Chat Hint */}
                         {chatMessages.length <= 1 && (
-                            <div className="text-center py-8 opacity-60">
-                                <div className={`w-16 h-16 bg-phy-glassHeavy text-phy-accent rounded-2xl mx-auto flex items-center justify-center mb-3 border border-phy-border`}>
-                                    {chatMode === 'agent' ? <Zap size={32} /> : <Bot size={32} />}
+                            <div className="py-6 px-2 animate-fade-in">
+                                <div className="text-center mb-8">
+                                    <div className={`w-14 h-14 mx-auto flex items-center justify-center rounded-2xl mb-4 shadow-lg border border-phy-border ${
+                                        chatMode === 'agent' ? 'bg-amber-50 text-amber-600' : 'bg-indigo-50 text-indigo-600'
+                                    }`}>
+                                        {chatMode === 'agent' ? <Zap size={28} /> : <Bot size={28} />}
+                                    </div>
+                                    <h2 className="text-lg font-bold text-phy-text mb-1">
+                                        {chatMode === 'agent' ? 'AI 学习助手' : '英语学习导师'}
+                                    </h2>
+                                    <p className="text-xs text-phy-muted max-w-[240px] mx-auto leading-relaxed">
+                                        {chatMode === 'agent'
+                                            ? '我可以分析你的学习数据、整理闪卡，并为你提供个性化的学习建议。'
+                                            : '我可以回答你关于语法、词汇或学习方法的所有问题。'
+                                        }
+                                    </p>
                                 </div>
-                                <p className="text-phy-muted text-sm">
-                                    {chatMode === 'agent'
-                                        ? 'Agent mode: I can read your study data and take in-app actions for you.'
-                                        : 'Start a new conversation...'
-                                    }
-                                </p>
+
                                 {chatMode === 'agent' && (
-                                    <div className="mt-4 flex flex-wrap gap-2 justify-center px-4">
+                                    <div className="grid grid-cols-1 gap-2.5">
                                         {[
-                                            'Show my flashcard stats and weak words',
-                                            'Generate a focused daily learning plan',
-                                            'Generate deep notes for the word: ephemeral',
-                                            'Create sentence practice with: ephemeral, serendipity',
-                                            'Create a reading quiz from my latest article',
-                                        ].map((q, i) => (
+                                            { label: '生成每日计划', hint: '根据数据定制学习日程', cmd: '请根据我的学习数据生成一个实用的每日学习计划。' },
+                                            { label: '闪卡表现分析', hint: '查看统计数据与薄弱词汇', cmd: '我想看看我的闪卡统计数据和薄弱单词。' },
+                                            { label: '单词深度笔记', hint: '深度解析单词 "ephemeral"', cmd: '为单词 ephemeral 生成一份深度学习笔记。' },
+                                            { label: '阅读强化练习', hint: '根据最新文章生成测验', cmd: '根据我最近读的文章生成一份阅读测验。' },
+                                            { label: '写作表达特训', hint: '针对生词生成造句练习', cmd: '针对我最近学习的一些难词生成造句练习。' }
+                                        ].map((item, i) => (
                                             <button
                                                 key={i}
-                                                onClick={() => { setInput(q.replace(/^\S+\s/, '')); inputRef.current?.focus(); }}
-                                                className="text-xs px-3 py-1.5 bg-phy-bg border border-phy-border text-phy-text rounded-full hover:bg-phy-glassHeavy hover:border-phy-borderHover transition-colors"
+                                                onClick={() => { handleDirectMessage(item.cmd); }}
+                                                className="group w-full flex items-center gap-3 p-3 bg-phy-bg border border-phy-border rounded-xl hover:bg-phy-glassHeavy hover:border-phy-accent transition-all text-left shadow-sm"
                                             >
-                                                {q}
+                                                <div className="w-8 h-8 rounded-lg bg-phy-glassHeavy flex items-center justify-center text-phy-muted group-hover:text-phy-accent group-hover:bg-phy-accentGlass transition-colors">
+                                                    {i === 0 ? <Calendar size={16} /> : 
+                                                     i === 1 ? <BarChart3 size={16} /> :
+                                                     i === 2 ? <BookOpen size={16} /> :
+                                                     i === 3 ? <FileText size={16} /> :
+                                                     <PenTool size={16} />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-xs font-bold text-phy-text truncate">{item.label}</div>
+                                                    <div className="text-[10px] text-phy-muted truncate">{item.hint}</div>
+                                                </div>
+                                                <ChevronRight size={14} className="text-phy-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                                             </button>
                                         ))}
                                     </div>
@@ -632,7 +650,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             <div className="mx-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 animate-fade-in">
                                 <div className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
                                     <Database size={12} />
-                                    Agent is calling tools...
+                                    智能体正在调用工具...
                                 </div>
                                 {toolCalls.map((tc, i) => {
                                     const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '*' };
@@ -656,7 +674,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             <div className="mx-2 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl space-y-3 animate-fade-in">
                                 <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
                                     <CheckCircle2 size={14} />
-                                    Action completed. Open the destination to continue:
+                                    任务已完成。请点击下方目标前往查看：
                                 </div>
                                 <div className="space-y-2">
                                     {pendingActions.map((action, i) => {
@@ -754,7 +772,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                         {showSuggestions && suggestions.length > 0 && (
                             <div className="absolute bottom-full left-4 right-4 mb-2 bg-phy-glass rounded-xl shadow-2xl border border-phy-border overflow-hidden max-h-60 overflow-y-auto animate-fade-in z-50">
                                 <div className="px-3 py-2 bg-phy-bg border-b border-phy-border text-xs font-bold text-phy-muted uppercase tracking-wider">
-                                    Reference Context
+                                    引用上下文
                                 </div>
                                 {suggestions.map((item, idx) => (
                                     <button
@@ -777,16 +795,6 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                     </button>
                                 ))}
                             </div>
-                        )}
-
-                        {chatMode === 'agent' && (
-                            <button
-                                onClick={() => handleDirectMessage("Please generate a practical daily study plan based on my recent learning data, including review and new learning tasks.")}
-                                className="mb-3 w-full py-2.5 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center justify-center gap-2"
-                            >
-                                <Zap size={14} className="text-orange-500" />
-                                Generate Daily Plan (Agent)
-                            </button>
                         )}
 
                         {imageAttachments.length > 0 && (
@@ -845,7 +853,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                     }
                                     if (e.key === 'Escape') setShowSuggestions(false);
                                 }}
-                                placeholder={chatMode === 'agent' ? 'Ask the agent to read data and do actions (create/edit/delete/navigate)...' : 'Ask anything... (@ for context)'}
+                                placeholder={chatMode === 'agent' ? '让 Agent 读取数据、导航页面或执行操作（创建闪卡、笔记等）...' : '问我任何问题... (输入 @ 引用上下文)'}
                                 className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-20 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
                             />
                             <button

@@ -26,12 +26,37 @@ import {
     saveFolder,
     saveTranslationLog
 } from '../services/db';
-import { generateTranslationChallenge, gradeTranslation } from '../services/ai';
+import { generateTranslationChallenge, gradeTranslation, checkTranslationComponents } from '../services/ai';
 import { getTodayNotesFolderName } from '../utils/noteFolders';
+import { readTranslationLinkedExamples, normalizeKnowledgeLinkingSettings } from '../utils/knowledgeLinking';
 
 const LS_FILTERS = 'translation_history_filters';
 const LS_FEEDBACK_COLLAPSED = 'translation_feedback_collapsed';
 const LS_SHORTCUTS_ENABLED = 'translation_keyboard_shortcuts_enabled';
+const LS_EXAMPLES_PANEL_COLLAPSED = 'translation_examples_panel_collapsed';
+const LS_EXAMPLES_AUTO_PICK = 'translation_examples_auto_pick';
+const LS_EXAMPLES_PER_TASK_COUNT = 'translation_examples_per_task_count';
+
+const DEFAULT_EXAMPLES_PER_TASK = 3;
+const GENERATION_EXAMPLE_CAP = 6;
+const MIN_TOKEN_LEN = 2;
+const ENGLISH_STOPWORDS = new Set([
+    'the', 'and', 'for', 'are', 'with', 'that', 'this', 'from', 'into', 'your', 'have', 'will', 'been',
+    'were', 'was', 'their', 'they', 'them', 'then', 'than', 'about', 'because', 'while', 'when', 'where',
+    'which', 'what', 'who', 'whom', 'whose', 'how', 'why', 'can', 'could', 'should', 'would', 'might',
+    'there', 'here', 'also', 'just', 'very', 'more', 'most', 'such', 'much', 'many', 'some', 'any', 'our',
+    'you', 'we', 'i', 'he', 'she', 'it', 'is', 'am', 'be', 'to', 'of', 'in', 'on', 'at', 'by', 'as', 'or',
+    'if', 'an', 'a'
+]);
+
+const SCENARIO_KEYWORD_MAP = {
+    email: ['email', 'mail', 'subject', 'dear', 'regards', 'schedule', 'meeting', 'follow-up', '回复', '邮件'],
+    dialogue: ['dialogue', 'conversation', 'talk', 'chat', 'speak', 'say', 'reply', 'ask', '对话', '交流'],
+    classroom: ['classroom', 'teacher', 'student', 'course', 'lecture', 'assignment', 'class', '课堂', '教学'],
+    workplace: ['workplace', 'team', 'project', 'deadline', 'manager', 'client', 'report', '职场', '协作'],
+    travel: ['travel', 'trip', 'airport', 'hotel', 'ticket', 'boarding', 'tour', '旅行', '出行'],
+    social: ['social', 'media', 'post', 'comment', 'share', 'feed', 'platform', '社交', '媒体']
+};
 
 const FILTER_DEFAULT = {
     difficulty: 'all',
@@ -47,6 +72,15 @@ const DIFFICULTIES = [
     { value: 'hard', label: '困难', desc: '2 条热身 + 1 条主任务（更高复杂度）' }
 ];
 
+const SCENARIO_OPTIONS = [
+    { value: 'email', label: '邮件沟通' },
+    { value: 'dialogue', label: '日常对话' },
+    { value: 'classroom', label: '课堂讨论' },
+    { value: 'workplace', label: '职场协作' },
+    { value: 'travel', label: '旅行沟通' },
+    { value: 'social', label: '社交媒体' }
+];
+
 const STAGE = {
     setup: '设置',
     answer: '作答',
@@ -56,6 +90,19 @@ const STAGE = {
 };
 
 const ISSUE_TAGS = ['词义错', '语法错', '逻辑错', '漏译'];
+const WEAKNESS_KEYS = ['logic_omission', 'target_usage', 'naturalness', 'literal_translation', 'grammar_collocation'];
+const WEAKNESS_LABEL = {
+    logic_omission: '逻辑关系漏译',
+    target_usage: '目标词会认不会用',
+    naturalness: '表达不自然',
+    literal_translation: '直译倾向',
+    grammar_collocation: '冠词/搭配问题'
+};
+const SELF_CHECK_LIST = [
+    { key: 'complete', label: '信息是否完整（人物/动作/结果）' },
+    { key: 'logic', label: '逻辑关系是否清晰（因果/转折/递进）' },
+    { key: 'register', label: '语气是否符合场景（正式/中性/口语）' }
+];
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
 const todayFlashcardFolder = () => `Daily - ${new Date().toISOString().split('T')[0]}`;
@@ -98,6 +145,7 @@ const buildTasks = (challenge) => {
         hint: String(item.hint || ''),
         scenario: String(item.scenario || ''),
         targetWords: Array.isArray(item.targetWords) ? item.targetWords : []
+    , scaffold: item.scaffold || null
     }));
     const main = challenge.mainTask
         ? [{
@@ -107,6 +155,7 @@ const buildTasks = (challenge) => {
             hint: String(challenge.mainTask.hint || ''),
             scenario: String(challenge.mainTask.scenario || ''),
             targetWords: Array.isArray(challenge.mainTask.targetWords) ? challenge.mainTask.targetWords : []
+        , scaffold: challenge.mainTask.scaffold || null
         }]
         : [];
     if (warmups.length || main.length) return [...warmups, ...main];
@@ -134,10 +183,66 @@ const normalizeGrade = (raw, requiredMinHit = 0) => {
         overall_comment: String(raw?.overall_comment || raw?.comment || ''),
         issues: Array.isArray(raw?.issues) ? raw.issues : [],
         improved_version: String(raw?.improved_version || raw?.rewritten_text || ''),
+        acceptance: raw?.acceptance !== false,
+        action_plan: Array.isArray(raw?.action_plan) ? raw.action_plan : [],
+        subscores: raw?.subscores || {},
         vocab_hit,
         hitCount,
         requiredMinHit: Number(raw?.requiredMinHit || requiredMinHit || 0)
     };
+};
+
+const parseIssueWeakness = (issue) => {
+    const text = `${String(issue?.type || '').toLowerCase()} ${String(issue?.reason || '').toLowerCase()}`;
+    const bucket = [];
+    if (/logic|coherence|连接|逻辑|漏译|omit|missing/.test(text)) bucket.push('logic_omission');
+    if (/target|vocab|word|词汇|词义/.test(text)) bucket.push('target_usage');
+    if (/natural|fluency|地道|自然|表达/.test(text)) bucket.push('naturalness');
+    if (/literal|直译/.test(text)) bucket.push('literal_translation');
+    if (/grammar|article|collocation|搭配|语法|冠词/.test(text)) bucket.push('grammar_collocation');
+    return bucket.length ? bucket : ['target_usage'];
+};
+
+const summarizeWeakness = (logs = []) => {
+    const now = Date.now();
+    const recent7d = now - 7 * 24 * 60 * 60 * 1000;
+    const latest3Ids = new Set(
+        [...logs]
+            .sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0))
+            .slice(0, 3)
+            .map((x) => String(x?.id || x?.challengeId || x?.createdAt))
+    );
+    const scoreMap = new Map(WEAKNESS_KEYS.map((key) => [key, 0]));
+
+    logs.forEach((log) => {
+        const id = String(log?.id || log?.challengeId || log?.createdAt);
+        const ts = Number(log?.createdAt || 0);
+        const weight = (ts >= recent7d ? 1 : 0) + (latest3Ids.has(id) ? 1.5 : 0.6);
+        const rows = getLatestRows(log);
+
+        rows.forEach((row) => {
+            (row?.issues || []).forEach((issue) => {
+                parseIssueWeakness(issue).forEach((key) => scoreMap.set(key, (scoreMap.get(key) || 0) + weight));
+            });
+            const hit = Number(row?.hitCount || 0);
+            const req = Number(row?.requiredMinHit || 0);
+            if (req > 0 && hit < req) {
+                scoreMap.set('target_usage', (scoreMap.get('target_usage') || 0) + weight * 1.2);
+            }
+            const ss = row?.subscores || {};
+            if (Number(ss?.naturalness || 0) < 70) {
+                scoreMap.set('naturalness', (scoreMap.get('naturalness') || 0) + weight * 0.8);
+            }
+            if (Number(ss?.grammar || 0) < 70) {
+                scoreMap.set('grammar_collocation', (scoreMap.get('grammar_collocation') || 0) + weight * 0.8);
+            }
+        });
+    });
+
+    return Array.from(scoreMap.entries())
+        .map(([key, score]) => ({ key, label: WEAKNESS_LABEL[key], score: Number(score.toFixed(2)) }))
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score);
 };
 const fallbackFromLog = (log) => ({
     challengeId: log?.challengeId || `replay-${Date.now()}`,
@@ -282,6 +387,123 @@ const parseTargetWordsInput = (raw) => {
     ).slice(0, 12);
 };
 
+const tokenizeText = (text) => {
+    const raw = String(text || '').toLowerCase();
+    const englishTokens = raw.match(/[a-z]{2,}/g) || [];
+    const chineseTokens = raw.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    return [...englishTokens, ...chineseTokens]
+        .map((x) => x.trim())
+        .filter((x) => x.length >= MIN_TOKEN_LEN && !ENGLISH_STOPWORDS.has(x));
+};
+
+const getScenarioKeywords = (taskScenario = '', scenarioLock = '') => {
+    const scenarioText = String(taskScenario || '').toLowerCase();
+    const keyByLock = String(scenarioLock || '').toLowerCase();
+    if (keyByLock && SCENARIO_KEYWORD_MAP[keyByLock]) {
+        return SCENARIO_KEYWORD_MAP[keyByLock];
+    }
+    const found = Object.entries(SCENARIO_KEYWORD_MAP).find(([key]) => scenarioText.includes(key));
+    return found ? found[1] : [];
+};
+
+const scoreExampleForTask = (task, example, scenarioLock = '') => {
+    const taskTokens = tokenizeText(`${task?.chinese || ''} ${task?.hint || ''} ${(task?.targetWords || []).join(' ')}`);
+    const exampleTokens = tokenizeText(example?.text || '');
+    const taskSet = new Set(taskTokens);
+    const overlap = exampleTokens.reduce((count, token) => count + (taskSet.has(token) ? 1 : 0), 0);
+
+    const scenarioKeywords = getScenarioKeywords(task?.scenario, scenarioLock);
+    const exampleText = String(example?.text || '').toLowerCase();
+    const scenarioBonus = scenarioKeywords.some((kw) => exampleText.includes(String(kw).toLowerCase())) ? 2 : 0;
+    const recencyBonus = Number(example?.updatedAt || 0) > 0 ? Math.min(1, (Date.now() - Number(example.updatedAt)) < 7 * 24 * 3600 * 1000 ? 1 : 0.4) : 0;
+
+    return overlap * 3 + scenarioBonus + recencyBonus;
+};
+
+const uniqueByHash = (items = []) => {
+    const map = new Map();
+    (Array.isArray(items) ? items : []).forEach((item) => {
+        const key = String(item?.sourceHash || item?.text || '').trim();
+        if (!key || map.has(key)) return;
+        map.set(key, item);
+    });
+    return Array.from(map.values());
+};
+
+const pickByCursor = (ranked = [], cursor = 0, count = DEFAULT_EXAMPLES_PER_TASK) => {
+    const list = uniqueByHash(ranked);
+    if (!list.length) return [];
+    if (list.length <= count) return list;
+
+    const normalizedCursor = Math.max(0, Number(cursor || 0));
+    const start = (normalizedCursor * count) % list.length;
+    const result = [];
+    for (let i = 0; i < list.length && result.length < count; i += 1) {
+        const item = list[(start + i) % list.length];
+        if (!result.some((x) => x.sourceHash === item.sourceHash)) {
+            result.push(item);
+        }
+    }
+    return result;
+};
+
+const buildTaskExampleMaps = (tasks = [], pool = [], count = DEFAULT_EXAMPLES_PER_TASK, scenarioLock = '') => {
+    const rankedMap = {};
+    const selectedMap = {};
+    const cursorMap = {};
+    let previousHashes = new Set();
+    const safePool = uniqueByHash(pool);
+
+    (Array.isArray(tasks) ? tasks : []).forEach((task) => {
+        const ranked = safePool
+            .map((example) => ({ ...example, __score: scoreExampleForTask(task, example, scenarioLock) }))
+            .sort((a, b) => {
+                if (b.__score !== a.__score) return b.__score - a.__score;
+                return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
+            });
+        const rankedClean = ranked.map(({ __score, ...rest }) => rest);
+        rankedMap[task.id] = rankedClean;
+        cursorMap[task.id] = 0;
+
+        const preferred = rankedClean.filter((x) => !previousHashes.has(x.sourceHash));
+        const selected = (preferred.length >= count ? preferred : rankedClean).slice(0, count);
+        selectedMap[task.id] = selected;
+        previousHashes = new Set(selected.map((x) => x.sourceHash));
+    });
+
+    return { rankedMap, selectedMap, cursorMap };
+};
+
+const pickGenerationExamples = (pool = [], scenarioLock = '', cap = GENERATION_EXAMPLE_CAP) => {
+    const safePool = uniqueByHash(pool);
+    const scenarioKeywords = getScenarioKeywords(scenarioLock, scenarioLock);
+    const ranked = safePool
+        .map((item) => {
+            const text = String(item?.text || '').toLowerCase();
+            const scenarioBonus = scenarioKeywords.some((kw) => text.includes(String(kw).toLowerCase())) ? 2 : 0;
+            const tokenCount = tokenizeText(item?.text || '').length;
+            const recencyBonus = Number(item?.updatedAt || 0) > 0 ? (Date.now() - Number(item.updatedAt) < 7 * 24 * 3600 * 1000 ? 1 : 0.3) : 0;
+            return { item, score: scenarioBonus + Math.min(2, tokenCount / 8) + recencyBonus };
+        })
+        .sort((a, b) => b.score - a.score || Number(b.item?.updatedAt || 0) - Number(a.item?.updatedAt || 0))
+        .slice(0, Math.max(1, cap));
+    return ranked.map((x) => String(x.item?.text || '').trim()).filter(Boolean);
+};
+
+const buildExampleHitSummary = (examples = [], answerText = '') => {
+    const answerTokens = new Set(tokenizeText(answerText));
+    return (Array.isArray(examples) ? examples : []).map((example) => {
+        const candidateTokens = tokenizeText(example?.text || '').filter((x) => x.length >= 4).slice(0, 12);
+        const matched = candidateTokens.filter((token) => answerTokens.has(token));
+        const hit = matched.length >= 2 || (candidateTokens.length > 0 && matched.length / candidateTokens.length >= 0.35);
+        return {
+            ...example,
+            hit,
+            matched: matched.slice(0, 4)
+        };
+    });
+};
+
 const buildCustomChallenge = ({ source, hint, difficulty, targetWords }) => {
     const normalizedDifficulty = normalizeDifficulty(difficulty);
     const warmupCount = normalizedDifficulty === 'easy' ? 1 : 2;
@@ -322,13 +544,19 @@ const buildCustomChallenge = ({ source, hint, difficulty, targetWords }) => {
 
 const TranslationChallengeView = () => {
     const { settings, saveToNotes } = useApp();
+    const linkingConfig = normalizeKnowledgeLinkingSettings(settings?.knowledgeLinking);
 
     const [difficulty, setDifficulty] = useState('medium');
+    const [scenarioMode, setScenarioMode] = useState('auto');
+    const [scenarioLock, setScenarioLock] = useState('workplace');
     const [challenge, setChallenge] = useState(null);
     const [stage, setStage] = useState('setup');
     const [index, setIndex] = useState(0);
     const [answers, setAnswers] = useState({});
     const [results, setResults] = useState({});
+    const [draftOneSnapshots, setDraftOneSnapshots] = useState({});
+    const [hintLayers, setHintLayers] = useState({});
+    const [selfChecks, setSelfChecks] = useState({});
     const [summary, setSummary] = useState(null);
     const [logs, setLogs] = useState([]);
     const [links, setLinks] = useState({ flashcards: false, notes: false });
@@ -344,16 +572,67 @@ const TranslationChallengeView = () => {
     const [customSourceText, setCustomSourceText] = useState('');
     const [customHintText, setCustomHintText] = useState('');
     const [customTargetWordsText, setCustomTargetWordsText] = useState('');
+    const [useLinkedExamples, setUseLinkedExamples] = useState(
+        Boolean(linkingConfig.enabled && linkingConfig.rules.examplesToTranslation)
+    );
+    const [examplesPanelCollapsed, setExamplesPanelCollapsed] = useState(() => readBool(LS_EXAMPLES_PANEL_COLLAPSED, true));
+    const [exampleAutoPick] = useState(() => readBool(LS_EXAMPLES_AUTO_PICK, true));
+    const [examplesPerTask] = useState(() => {
+        const raw = Number(localStorage.getItem(LS_EXAMPLES_PER_TASK_COUNT) || DEFAULT_EXAMPLES_PER_TASK);
+        return clamp(Number.isFinite(raw) ? raw : DEFAULT_EXAMPLES_PER_TASK, 1, 5);
+    });
+    const [selectedExamplesByTaskId, setSelectedExamplesByTaskId] = useState({});
+    const [rankedExamplesByTaskId, setRankedExamplesByTaskId] = useState({});
+    const [examplePickCursorByTaskId, setExamplePickCursorByTaskId] = useState({});
+
+    // Scaffolded Translation States
+    const [practiceMode, setPracticeMode] = useState('full'); // 'full' | 'scaffolded'
+    const [subStage, setSubStage] = useState('phrases'); // 'phrases' | 'cloze' | 'full'
+    const [scaffoldAnswers, setScaffoldAnswers] = useState({});
+    const [scaffoldFeedback, setScaffoldFeedback] = useState({});
+    const [checkingSubStep, setCheckingSubStep] = useState(false);
 
     const tasks = useMemo(() => buildTasks(challenge), [challenge]);
     const currentTask = tasks[index] || null;
     const currentRows = currentTask ? (results[currentTask.id] || []) : [];
     const latest = currentRows.length ? currentRows[currentRows.length - 1] : null;
     const currentAnswer = currentTask ? (answers[currentTask.id] || '') : '';
+    const currentDraftOne = currentTask ? (draftOneSnapshots[currentTask.id] || null) : null;
+    const currentHintLayer = currentTask ? Number(hintLayers[currentTask.id] || 0) : 0;
+    const currentSelfCheck = currentTask ? (selfChecks[currentTask.id] || {}) : {};
+    const allSelfChecksDone = SELF_CHECK_LIST.every((item) => Boolean(currentSelfCheck[item.key]));
     const activeTargetWords = useMemo(
         () => (currentTask?.targetWords || challenge?.targetWords || []).filter(Boolean),
         [currentTask, challenge]
     );
+    const [linkedExamplesCache, setLinkedExamplesCache] = useState(() => readTranslationLinkedExamples());
+    const linkedExamples = useMemo(
+        () => (linkedExamplesCache || []).map((x) => x.text).filter(Boolean),
+        [linkedExamplesCache]
+    );
+    const linkedExampleCount = linkedExamples.length;
+    const currentTaskExamples = useMemo(
+        () => currentTask ? (selectedExamplesByTaskId[currentTask.id] || []) : [],
+        [currentTask, selectedExamplesByTaskId]
+    );
+    const currentTaskRankedExamples = useMemo(
+        () => currentTask ? (rankedExamplesByTaskId[currentTask.id] || []) : [],
+        [currentTask, rankedExamplesByTaskId]
+    );
+    const currentExampleHitSummary = useMemo(
+        () => buildExampleHitSummary(currentTaskExamples, latest?.userTranslation || ''),
+        [currentTaskExamples, latest?.userTranslation]
+    );
+    const effectiveHintTiers = useMemo(() => {
+        const fallbackL1 = [String(currentTask?.hint || '').trim() || '先确认语义是否完整。'];
+        const tiers = challenge?.hintTiers || {};
+        return {
+            l1: Array.isArray(tiers?.l1) && tiers.l1.length ? tiers.l1 : fallbackL1,
+            l2: Array.isArray(tiers?.l2) && tiers.l2.length ? tiers.l2 : ['检查逻辑连接词、时态和主谓一致。'],
+            l3: Array.isArray(tiers?.l3) && tiers.l3.length ? tiers.l3 : ['对照场景语气，做一次压缩与润色。']
+        };
+    }, [challenge, currentTask]);
+
     const refreshLogs = async () => {
         const data = await getTranslationLogs(120);
         setLogs(data || []);
@@ -375,6 +654,39 @@ const TranslationChallengeView = () => {
         localStorage.setItem(LS_SHORTCUTS_ENABLED, String(shortcutsEnabled));
     }, [shortcutsEnabled]);
 
+    useEffect(() => {
+        localStorage.setItem(LS_EXAMPLES_PANEL_COLLAPSED, String(examplesPanelCollapsed));
+    }, [examplesPanelCollapsed]);
+
+    useEffect(() => {
+        localStorage.setItem(LS_EXAMPLES_AUTO_PICK, String(exampleAutoPick));
+        localStorage.setItem(LS_EXAMPLES_PER_TASK_COUNT, String(examplesPerTask));
+    }, [exampleAutoPick, examplesPerTask]);
+
+    useEffect(() => {
+        setUseLinkedExamples(Boolean(linkingConfig.enabled && linkingConfig.rules.examplesToTranslation));
+    }, [linkingConfig.enabled, linkingConfig.rules.examplesToTranslation]);
+
+    useEffect(() => {
+        const reload = () => setLinkedExamplesCache(readTranslationLinkedExamples());
+        reload();
+        window.addEventListener('focus', reload);
+        return () => window.removeEventListener('focus', reload);
+    }, []);
+
+    useEffect(() => {
+        if (!challenge || !tasks.length || !useLinkedExamples || !exampleAutoPick || !linkedExamplesCache.length) {
+            setSelectedExamplesByTaskId({});
+            setRankedExamplesByTaskId({});
+            setExamplePickCursorByTaskId({});
+            return;
+        }
+        const { rankedMap, selectedMap, cursorMap } = buildTaskExampleMaps(tasks, linkedExamplesCache, examplesPerTask, scenarioLock);
+        setRankedExamplesByTaskId(rankedMap);
+        setSelectedExamplesByTaskId(selectedMap);
+        setExamplePickCursorByTaskId(cursorMap);
+    }, [challenge, tasks, useLinkedExamples, exampleAutoPick, linkedExamplesCache, examplesPerTask, scenarioLock]);
+
     const issueTagPool = useMemo(() => {
         const map = new Map();
         logs.forEach((log) => {
@@ -382,6 +694,7 @@ const TranslationChallengeView = () => {
         });
         return Array.from(map.keys());
     }, [logs]);
+    const weaknessTrend = useMemo(() => summarizeWeakness(logs), [logs]);
 
     const filteredLogs = useMemo(() => {
         const now = Date.now();
@@ -450,6 +763,18 @@ const TranslationChallengeView = () => {
             attempts: itemResults.reduce((sum, x) => sum + Number(x.attempts?.length || 0), 0),
             targetWords: challenge?.targetWords || [],
             scenario: challenge?.mainTask?.scenario || '',
+            scenarioProfile: challenge?.scenarioProfile || null,
+            issueBuckets: getIssueStats({ itemResults }),
+            rounds: itemResults.map((x) => ({
+                taskId: x.task?.id,
+                round1: draftOneSnapshots?.[x.task?.id] || null,
+                round2: x.latest || null
+            })),
+            weaknessSnapshot: summarizeWeakness([{
+                id: `current-${Date.now()}`,
+                createdAt: Date.now(),
+                itemResults
+            }]).slice(0, 5),
             itemResults
         };
     };
@@ -459,24 +784,80 @@ const TranslationChallengeView = () => {
         setIndex(0);
         setAnswers({});
         setResults({});
+        setDraftOneSnapshots({});
+        setHintLayers({});
+        setSelfChecks({});
         setSummary(null);
         setLinks({ flashcards: false, notes: false });
         setLogSaved(false);
+        setSelectedExamplesByTaskId({});
+        setRankedExamplesByTaskId({});
+        setExamplePickCursorByTaskId({});
     };
 
-    const startChallenge = async (preset = null) => {
+    const startChallenge = async (preset = null, runtimeOptions = {}) => {
         setLoadingGen(true);
         try {
-            const cards = await getFlashcards();
-            const generated = preset || await generateTranslationChallenge(cards, settings, {
+            const linkedPool = useLinkedExamples ? readTranslationLinkedExamples() : [];
+            const latestLinkedExamples = useLinkedExamples
+                ? (
+                    exampleAutoPick
+                        ? pickGenerationExamples(
+                            linkedPool,
+                            scenarioMode === 'lock' ? scenarioLock : '',
+                            GENERATION_EXAMPLE_CAP
+                        )
+                        : linkedPool.map((x) => x.text).filter(Boolean)
+                )
+                : [];
+            if (useLinkedExamples) {
+                setLinkedExamplesCache(linkedPool);
+            }
+            const allCards = await getFlashcards();
+            
+            // Prioritize unfamiliar words (last two categories: Critical & Weak)
+            const getScore = (c) => {
+                try { return getEffectiveWeaknessScore(c); } catch(e) { return 0; }
+            };
+
+            const p1 = allCards.filter(c => getScore(c) >= 10); // 需强化 & 较弱
+            const p2 = allCards.filter(c => getScore(c) >= 5 && getScore(c) < 10); // 一般
+            const others = allCards.filter(c => getScore(c) < 5);
+
+            // Create a pool of up to 40 cards, prioritizing p1 then p2
+            const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+            let pool = [];
+            
+            if (p1.length >= 20) {
+                pool = shuffle(p1).slice(0, 40);
+            } else if (p1.length + p2.length >= 10) {
+                pool = [...p1, ...shuffle(p2)].slice(0, 40);
+            } else {
+                pool = [...p1, ...p2, ...shuffle(others)].slice(0, 40);
+            }
+
+            // Fallback to allCards if pool is empty for some reason
+            const finalVocab = pool.length > 0 ? pool : allCards;
+
+            const generated = preset || await generateTranslationChallenge(finalVocab, settings, {
                 difficulty,
-                mode: 'mixed'
+                mode: 'mixed',
+                scenarioMode,
+                scenarioLock,
+                weaknessFocus: Array.isArray(runtimeOptions?.weaknessFocus) ? runtimeOptions.weaknessFocus : [],
+                linkedExamples: latestLinkedExamples
             });
             setChallenge(generated);
             setDifficulty(normalizeDifficulty(generated?.difficulty || difficulty));
             setIndex(0);
             setAnswers({});
             setResults({});
+            setDraftOneSnapshots({});
+            setHintLayers({});
+            setSelfChecks({});
+            setSubStage('phrases');
+            setScaffoldAnswers({});
+            setScaffoldFeedback({});
             setSummary(null);
             setLinks({ flashcards: false, notes: false });
             setLogSaved(false);
@@ -498,12 +879,31 @@ const TranslationChallengeView = () => {
         }
         setLoadingScore(true);
         try {
+            const isFirstRound = stage === 'answer';
             const raw = await gradeTranslation(currentTask, text, settings, {
                 requiredMinHit: Number(challenge?.requiredMinHit || 0),
                 difficulty: challenge?.difficulty || difficulty,
-                mode: 'mixed'
+                mode: 'mixed',
+                round: isFirstRound ? 'draft1' : 'draft2'
             });
             const graded = normalizeGrade(raw, challenge?.requiredMinHit);
+            if (isFirstRound) {
+                setDraftOneSnapshots((prev) => ({
+                    ...prev,
+                    [currentTask.id]: {
+                        ...graded,
+                        userTranslation: text,
+                        createdAt: Date.now()
+                    }
+                }));
+                setHintLayers((prev) => ({ ...prev, [currentTask.id]: Math.max(1, Number(prev?.[currentTask.id] || 0)) }));
+                setStage('rewrite');
+                setLogSaved(false);
+                toast.success('初稿已记录，请查看分层提示后完成二稿');
+                return;
+            }
+
+            const draftOne = draftOneSnapshots?.[currentTask.id] || null;
             setResults((prev) => {
                 const rows = prev?.[currentTask.id] || [];
                 return {
@@ -519,6 +919,9 @@ const TranslationChallengeView = () => {
                             userTranslation: text,
                             targetWords: currentTask.targetWords || [],
                             scenario: currentTask.scenario || '',
+                            draft1: draftOne,
+                            revisionGain100: graded.score100 - Number(draftOne?.score100 || 0),
+                            revisionGain15: graded.score15 - Number(draftOne?.score15 || 0),
                             createdAt: Date.now()
                         }
                     ]
@@ -526,7 +929,7 @@ const TranslationChallengeView = () => {
             });
             setStage('feedback');
             setLogSaved(false);
-            toast.success(graded.pass ? '本题通过，可进入下一题' : '已生成反馈，可继续重译提分');
+            toast.success(graded.pass ? '二稿通过，可进入下一题' : '已生成反馈，可继续优化');
         } catch (e) {
             toast.error(`评分失败：${e?.message || '未知错误'}`);
         } finally {
@@ -534,7 +937,50 @@ const TranslationChallengeView = () => {
         }
     };
 
-    const nextTask = () => {
+    
+    const checkSubStep = async (type, originalText, inputKey) => {
+        const input = String(scaffoldAnswers[inputKey] || '').trim();
+        if (!input) {
+            toast.error('请输入内容');
+            return;
+        }
+        setCheckingSubStep(true);
+        try {
+            const result = await checkTranslationComponents(type, {
+                chinese: currentTask.chinese,
+                originalText: originalText
+            }, input, settings);
+            
+            setScaffoldFeedback(prev => ({
+                ...prev,
+                [inputKey]: result
+            }));
+            
+            if (result.isCorrect) {
+                toast.success(result.feedback || '回答正确！');
+            } else {
+                toast.error(result.feedback || '再想想看？');
+            }
+        } catch (e) {
+            toast.error(`检查失败：${e?.message || '未知错误'}`);
+        } finally {
+            setCheckingSubStep(false);
+        }
+    };
+
+    const handleNextSubStage = () => {
+        if (subStage === 'phrases') setSubStage('cloze');
+        else if (subStage === 'cloze') {
+            // Pre-fill the final answer area if it's empty
+            if (!currentAnswer) {
+                // Try to use the cloze correctly filled version or just let the user type
+                // For now, just advance
+            }
+            setSubStage('full');
+        }
+    };
+
+const nextTask = () => {
         if (index + 1 >= tasks.length) {
             const nextSummary = buildSummary();
             setSummary(nextSummary);
@@ -543,6 +989,28 @@ const TranslationChallengeView = () => {
         }
         setIndex((x) => x + 1);
         setStage('answer');
+        setSubStage('phrases');
+        setScaffoldAnswers({});
+        setScaffoldFeedback({});
+    };
+
+    const unlockHintTier = (tier = 1) => {
+        if (!currentTask) return;
+        setHintLayers((prev) => ({
+            ...prev,
+            [currentTask.id]: Math.max(Number(prev?.[currentTask.id] || 0), tier)
+        }));
+    };
+
+    const toggleSelfCheck = (key) => {
+        if (!currentTask) return;
+        setSelfChecks((prev) => ({
+            ...prev,
+            [currentTask.id]: {
+                ...(prev?.[currentTask.id] || {}),
+                [key]: !prev?.[currentTask.id]?.[key]
+            }
+        }));
     };
 
     const saveLog = async () => {
@@ -561,6 +1029,10 @@ const TranslationChallengeView = () => {
             itemResults: s.itemResults,
             targetWords: s.targetWords,
             scenario: s.scenario,
+            rounds: s.rounds,
+            weaknessSnapshot: s.weaknessSnapshot,
+            issueBuckets: s.issueBuckets,
+            scenarioProfile: s.scenarioProfile,
             challengePackage: challenge,
             createdAt: Date.now()
         });
@@ -670,6 +1142,20 @@ const TranslationChallengeView = () => {
         toast.success('已生成错因复练集');
     };
 
+    const generateTargetedChallenge = async () => {
+        const currentSummary = summary || (stage === 'settlement' ? buildSummary() : null);
+        const focusBase = currentSummary
+            ? summarizeWeakness([...logs, { id: `current-${Date.now()}`, createdAt: Date.now(), itemResults: currentSummary.itemResults }])
+            : weaknessTrend;
+        const focusTags = focusBase.slice(0, 3).map((item) => item.key);
+        await startChallenge(null, { weaknessFocus: focusTags });
+        if (focusTags.length) {
+            toast.success(`已生成针对练：${focusTags.map((x) => WEAKNESS_LABEL[x]).filter(Boolean).join('、')}`);
+        } else {
+            toast.success('已生成通用针对练');
+        }
+    };
+
     const startCustomChallenge = async () => {
         const source = String(customSourceText || '').trim();
         if (source.length < 6) {
@@ -684,6 +1170,34 @@ const TranslationChallengeView = () => {
             targetWords
         });
         await startChallenge(pack);
+    };
+
+    const rotateCurrentTaskExamples = (goToRewrite = false) => {
+        if (!currentTask) return;
+        const ranked = currentTaskRankedExamples;
+        const current = currentTaskExamples;
+        if (!ranked.length || ranked.length <= current.length) {
+            toast('当前题目没有更多可切换的例句');
+            return;
+        }
+
+        const currentCursor = Number(examplePickCursorByTaskId[currentTask.id] || 0);
+        const nextCursor = currentCursor + 1;
+        const nextPick = pickByCursor(ranked, nextCursor, examplesPerTask);
+
+        const unchanged = nextPick.length === current.length
+            && nextPick.every((item, idx) => item?.sourceHash === current[idx]?.sourceHash);
+        if (unchanged) {
+            toast('例句组合已切换到末尾');
+            return;
+        }
+
+        setExamplePickCursorByTaskId((prev) => ({ ...prev, [currentTask.id]: nextCursor }));
+        setSelectedExamplesByTaskId((prev) => ({ ...prev, [currentTask.id]: nextPick }));
+        if (goToRewrite) {
+            setStage('rewrite');
+        }
+        toast.success(goToRewrite ? '已换一组例句，进入再译' : '已换一组例句');
     };
 
     useEffect(() => {
@@ -725,6 +1239,13 @@ const TranslationChallengeView = () => {
         : latest?.score15 >= 9
             ? 'text-amber-200 border-amber-400/30 bg-amber-500/10'
             : 'text-rose-200 border-rose-400/30 bg-rose-500/10';
+    const settlementData = summary || buildSummary();
+    const avgRevisionGain100 = Math.round(
+        ((settlementData.rounds || []).reduce(
+            (sum, x) => sum + (Number(x?.round2?.score100 || 0) - Number(x?.round1?.score100 || 0)),
+            0
+        )) / Math.max(1, (settlementData.rounds || []).length)
+    );
 
     return (
         <div className="h-full min-h-0 overflow-y-auto md:overflow-hidden p-3 md:p-6">
@@ -736,7 +1257,7 @@ const TranslationChallengeView = () => {
                             <h2 className="text-xl font-black text-phy-text flex items-center gap-2 mt-1">
                                 <Languages size={20} className="text-indigo-300" />翻译挑战
                             </h2>
-                            <p className="text-sm text-phy-muted mt-1">桌面效率版：历史快回放 + 快捷键 + 折叠反馈。</p>
+                            <p className="text-sm text-phy-muted mt-1">教练化两轮：初稿 → 分层提示 → 二稿评分（全端一致）。</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="px-3 py-2 rounded-xl bg-phy-bg border border-phy-border text-sm text-phy-text">
@@ -744,6 +1265,31 @@ const TranslationChallengeView = () => {
                                     <option key={x.value} value={x.value}>{x.label} · {x.desc}</option>
                                 ))}
                             </select>
+                            <select value={scenarioMode} onChange={(e) => setScenarioMode(e.target.value)} className="px-3 py-2 rounded-xl bg-phy-bg border border-phy-border text-sm text-phy-text">
+                                <option value="auto">场景：自动轮换</option>
+                                <option value="lock">场景：手动锁定</option>
+                            </select>
+                            {scenarioMode === 'lock' ? (
+                                <select value={scenarioLock} onChange={(e) => setScenarioLock(e.target.value)} className="px-3 py-2 rounded-xl bg-phy-bg border border-phy-border text-sm text-phy-text">
+                                    {SCENARIO_OPTIONS.map((x) => (
+                                        <option key={x.value} value={x.value}>{x.label}</option>
+                                    ))}
+                                </select>
+                            ) : null}
+                            <div className="flex rounded-xl bg-phy-glass border border-phy-border p-0.5">
+                                <button onClick={() => setPracticeMode('full')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${practiceMode === 'full' ? 'bg-indigo-600 text-white shadow-lg' : 'text-phy-muted hover:text-phy-text'}`}>全句模式</button>
+                                <button onClick={() => setPracticeMode('scaffolded')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${practiceMode === 'scaffolded' ? 'bg-indigo-600 text-white shadow-lg' : 'text-phy-muted hover:text-phy-text'}`}>阶梯模式</button>
+                            </div>
+                            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-phy-border bg-phy-glass text-xs text-phy-text">
+                                <input
+                                    type="checkbox"
+                                    className="accent-indigo-500"
+                                    checked={useLinkedExamples}
+                                    onChange={(e) => setUseLinkedExamples(e.target.checked)}
+                                />
+                                <span>纳入深度笔记例句</span>
+                                <span className="text-phy-muted">({linkedExampleCount})</span>
+                            </label>
                             <button onClick={() => startChallenge()} disabled={loadingGen} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-60">
                                 {loadingGen ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}开始挑战
                             </button>
@@ -789,6 +1335,14 @@ const TranslationChallengeView = () => {
                             </button>
                         </div>
                     </div>
+                    {challenge?.progression ? (
+                        <div className="mt-3 rounded-xl border border-indigo-400/25 bg-indigo-500/10 p-3">
+                            <div className="text-xs font-semibold text-indigo-100">任务线递进说明</div>
+                            <div className="mt-1 text-xs text-indigo-100/90">热身目标：{challenge.progression.warmupGoal}</div>
+                            <div className="mt-1 text-xs text-indigo-100/90">衔接动作：{challenge.progression.bridge}</div>
+                            <div className="mt-1 text-xs text-indigo-100/90">主任务目标：{challenge.progression.mainGoal}</div>
+                        </div>
+                    ) : null}
                 </section>
 
                 <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(360px,1fr)] gap-4 md:min-h-0">
@@ -809,6 +1363,11 @@ const TranslationChallengeView = () => {
                                         <span className="ml-auto text-xs text-amber-200/90 inline-flex items-center gap-1">
                                             <Target size={12} />目标词命中要求：至少 {Number(challenge.requiredMinHit || 0)}
                                         </span>
+                                        {challenge?.scenarioProfile?.label ? (
+                                            <span className="text-xs text-indigo-200 border border-indigo-400/30 bg-indigo-500/10 rounded-md px-2 py-1">
+                                                场景：{challenge.scenarioProfile.label}
+                                            </span>
+                                        ) : null}
                                     </div>
                                 </div>
 
@@ -818,36 +1377,224 @@ const TranslationChallengeView = () => {
                                         <div className="mt-2 text-sm text-amber-100 whitespace-pre-wrap leading-relaxed">{currentTask.chinese}</div>
                                         {currentTask.hint ? <div className="mt-2 text-xs text-amber-200/80">提示：{currentTask.hint}</div> : null}
                                         <div className="mt-2 text-xs text-amber-100/80">目标词：{activeTargetWords.join(' / ') || '无'}</div>
+                                        {useLinkedExamples ? (
+                                            <div className="mt-3 rounded-lg border border-indigo-300/25 bg-indigo-500/10 p-2.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setExamplesPanelCollapsed((v) => !v)}
+                                                    className="w-full inline-flex items-center justify-between gap-2 text-left"
+                                                >
+                                                    <span className="text-xs font-semibold text-indigo-100">
+                                                        本题已纳入深度笔记例句（{currentTaskExamples.length}）
+                                                    </span>
+                                                    <span className="inline-flex items-center gap-1 text-[11px] text-indigo-200/90">
+                                                        {examplesPanelCollapsed ? '展开' : '收起'}
+                                                        {examplesPanelCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                                                    </span>
+                                                </button>
+
+                                                {!examplesPanelCollapsed ? (
+                                                    <div className="mt-2 space-y-2">
+                                                        {currentTaskExamples.length ? (
+                                                            currentTaskExamples.map((item, idx) => (
+                                                                <div key={item.sourceHash || `${item.sourceNoteId}-${idx}`} className="rounded-md border border-indigo-300/20 bg-black/10 px-2.5 py-2">
+                                                                    <div className="text-xs text-indigo-100 whitespace-pre-wrap break-words leading-relaxed">{idx + 1}. {item.text}</div>
+                                                                    <div className="mt-1 text-[11px] text-indigo-200/75">
+                                                                        来源：{item.sourceNoteTitle || '深度笔记'}{item.sourceSection ? ` · ${item.sourceSection}` : ''}
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-indigo-200/85">
+                                                                当前没有可纳入的深度笔记例句。请先在深度笔记中写“例句/Examples”块并保存。
+                                                            </div>
+                                                        )}
+                                                        {currentTaskRankedExamples.length > currentTaskExamples.length ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => rotateCurrentTaskExamples(false)}
+                                                                className="px-2.5 py-1.5 rounded-md border border-indigo-300/30 bg-indigo-500/20 text-indigo-100 text-[11px] font-bold"
+                                                            >
+                                                                换一组例句
+                                                            </button>
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
                                     </div>
 
+                                    
                                     <div className="glass-panel rounded-2xl border border-phy-border p-4">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <label className="text-xs text-phy-muted">你的英文翻译</label>
-                                            <span className="text-xs text-phy-muted">Ctrl/Cmd + Enter 提交</span>
-                                        </div>
-                                        <textarea
-                                            value={currentAnswer}
-                                            onChange={(e) => setAnswers((prev) => ({ ...prev, [currentTask.id]: e.target.value }))}
-                                            rows={9}
-                                            placeholder="在这里输入你的译文..."
-                                            className="mt-2 w-full rounded-xl border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text resize-y min-h-[220px]"
-                                        />
-                                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                                            <button onClick={submitScore} disabled={loadingScore} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-60">
-                                                {loadingScore ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                                                {loadingScore ? '评分中...' : '提交评分'}
-                                            </button>
-                                            {latest ? <span className="text-xs text-phy-muted">最近得分：{latest.score100}/100 · {latest.score15}/15 · 尝试 {latest.attempt}</span> : null}
-                                        </div>
+                                        {practiceMode === 'scaffolded' && subStage !== 'full' ? (
+                                            <div className="space-y-6">
+                                                {/* Sub-stage tabs */}
+                                                <div className="flex items-center gap-2 border-b border-phy-border pb-3">
+                                                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${subStage === 'phrases' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30' : 'bg-phy-glass text-phy-muted border border-phy-border'}`}>1. 核心短语</div>
+                                                    <div className={`w-4 h-px bg-phy-border`} />
+                                                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${subStage === 'cloze' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30' : 'bg-phy-glass text-phy-muted border border-phy-border'}`}>2. 完形填空</div>
+                                                    <div className={`w-4 h-px bg-phy-border`} />
+                                                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${subStage === 'full' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30' : 'bg-phy-glass text-phy-muted border border-phy-border'}`}>3. 全句翻译</div>
+                                                </div>
+
+                                                {subStage === 'phrases' && (
+                                                    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
+                                                        {(currentTask.scaffold?.phrases || []).map((p, i) => (
+                                                            <div key={i} className="space-y-2">
+                                                                <div className="flex items-center justify-between">
+                                                                    <label className="text-xs text-phy-muted">短语 {i + 1}：{p.cn}</label>
+                                                                    {scaffoldFeedback[`p${i}`] && (
+                                                                        <span className={`text-[10px] font-bold ${scaffoldFeedback[`p${i}`].isCorrect ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                            {scaffoldFeedback[`p${i}`].isCorrect ? '√ 正确' : '× 建议参考'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <input 
+                                                                        type="text"
+                                                                        value={scaffoldAnswers[`p${i}`] || ''}
+                                                                        onChange={(e) => setScaffoldAnswers(prev => ({...prev, [`p${i}`]: e.target.value}))}
+                                                                        className="flex-1 rounded-lg border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text"
+                                                                        placeholder="输入对应英文短语..."
+                                                                    />
+                                                                    <button 
+                                                                        onClick={() => checkSubStep('phrases', p.en, `p${i}`)}
+                                                                        disabled={checkingSubStep}
+                                                                        className="px-3 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-xs hover:bg-phy-bg transition-colors"
+                                                                    >
+                                                                        {checkingSubStep ? <Loader2 size={12} className="animate-spin" /> : '核对'}
+                                                                    </button>
+                                                                </div>
+                                                                {scaffoldFeedback[`p${i}`] && !scaffoldFeedback[`p${i}`].isCorrect && (
+                                                                    <div className="text-[11px] text-amber-200 bg-amber-500/10 p-2 rounded-lg border border-amber-400/20">
+                                                                        建议：{scaffoldFeedback[`p${i}`].suggestion}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                        <button 
+                                                            onClick={handleNextSubStage}
+                                                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all"
+                                                        >
+                                                            下一步：进入完形填空
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {subStage === 'cloze' && (
+                                                    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="space-y-3">
+                                                            <div className="text-xs text-phy-muted">补充完整句子：</div>
+                                                            <div className="p-4 rounded-xl border border-phy-border bg-phy-glass text-sm text-phy-text leading-relaxed">
+                                                                {currentTask.scaffold?.cloze || 'AI未能生成填空模板，请直接进行全句翻译。'}
+                                                            </div>
+                                                            <div className="flex flex-col gap-2">
+                                                                <textarea 
+                                                                    value={scaffoldAnswers['cloze'] || ''}
+                                                                    onChange={(e) => setScaffoldAnswers(prev => ({...prev, 'cloze': e.target.value}))}
+                                                                    className="w-full rounded-xl border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text min-h-[100px]"
+                                                                    placeholder="在此填补空缺部分或完整复写句子..."
+                                                                />
+                                                                <button 
+                                                                    onClick={() => checkSubStep('cloze', currentTask.scaffold?.cloze, 'cloze')}
+                                                                    disabled={checkingSubStep}
+                                                                    className="w-full py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-xs hover:bg-phy-bg transition-colors inline-flex items-center justify-center gap-2"
+                                                                >
+                                                                    {checkingSubStep ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                                                                    {checkingSubStep ? 'AI 检查中...' : '提交这一步'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {scaffoldFeedback['cloze'] && (
+                                                            <div className={`p-3 rounded-xl border ${scaffoldFeedback['cloze'].isCorrect ? 'border-emerald-400/30 bg-emerald-500/10' : 'border-amber-400/30 bg-amber-500/10'}`}>
+                                                                <div className={`text-xs font-bold ${scaffoldFeedback['cloze'].isCorrect ? 'text-emerald-300' : 'text-amber-200'}`}>反馈：</div>
+                                                                <p className="text-sm mt-1 text-phy-text">{scaffoldFeedback['cloze'].feedback}</p>
+                                                                {!scaffoldFeedback['cloze'].isCorrect && (
+                                                                    <p className="text-[11px] mt-2 text-phy-muted border-t border-phy-border pt-2 italic">参考：{scaffoldFeedback['cloze'].suggestion}</p>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <button 
+                                                            onClick={() => setSubStage('full')}
+                                                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20"
+                                                        >
+                                                            下一步：通关全句翻译
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <label className="text-xs text-phy-muted">{stage === 'rewrite' ? '二稿译文（基于提示修订）' : '初稿译文'}</label>
+                                                    <span className="text-xs text-phy-muted">Ctrl/Cmd + Enter 提交</span>
+                                                </div>
+                                                {currentDraftOne ? (
+                                                    <div className="mt-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                                                        初稿基线：{currentDraftOne.score100}/100 · {currentDraftOne.score15}/15
+                                                    </div>
+                                                ) : null}
+                                                {stage === 'rewrite' ? (
+                                                    <div className="mt-2 rounded-lg border border-indigo-400/25 bg-indigo-500/10 p-3 space-y-3">
+                                                        <div className="text-xs font-semibold text-indigo-100">自检清单（建议先完成）</div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                                            {SELF_CHECK_LIST.map((item) => (
+                                                                <label key={item.key} className="inline-flex items-center gap-2 text-xs text-indigo-100/90">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={Boolean(currentSelfCheck[item.key])}
+                                                                        onChange={() => toggleSelfCheck(item.key)}
+                                                                    />
+                                                                    {item.label}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                        <div className="rounded-lg border border-indigo-300/20 bg-phy-bg/40 p-2">
+                                                            <div className="text-xs text-indigo-100 mb-2">分层提示（L1 → L2 → L3）</div>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                <button onClick={() => unlockHintTier(1)} className="px-2 py-1 rounded-md text-xs border border-indigo-300/30 bg-indigo-500/20 text-indigo-100">L1</button>
+                                                                <button onClick={() => unlockHintTier(2)} className="px-2 py-1 rounded-md text-xs border border-indigo-300/30 bg-indigo-500/20 text-indigo-100">L2</button>
+                                                                <button onClick={() => unlockHintTier(3)} className="px-2 py-1 rounded-md text-xs border border-indigo-300/30 bg-indigo-500/20 text-indigo-100">L3</button>
+                                                            </div>
+                                                            <div className="mt-2 space-y-1 text-xs text-indigo-100/90">
+                                                                {currentHintLayer >= 1 ? effectiveHintTiers.l1.map((line, idx) => <div key={`l1-${idx}`}>L1 · {line}</div>) : null}
+                                                                {currentHintLayer >= 2 ? effectiveHintTiers.l2.map((line, idx) => <div key={`l2-${idx}`}>L2 · {line}</div>) : null}
+                                                                {currentHintLayer >= 3 ? effectiveHintTiers.l3.map((line, idx) => <div key={`l3-${idx}`}>L3 · {line}</div>) : null}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                                <textarea
+                                                    value={currentAnswer}
+                                                    onChange={(e) => setAnswers((prev) => ({ ...prev, [currentTask.id]: e.target.value }))}
+                                                    rows={9}
+                                                    placeholder="在这里输入你的译文..."
+                                                    className="mt-2 w-full rounded-xl border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text resize-y min-h-[220px]"
+                                                />
+                                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                    <button onClick={submitScore} disabled={loadingScore || (stage === 'rewrite' && !allSelfChecksDone)} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-60">
+                                                        {loadingScore ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                                                        {loadingScore ? '处理中...' : stage === 'rewrite' ? '提交二稿并评分' : '提交初稿'}
+                                                    </button>
+                                                    {latest ? <span className="text-xs text-phy-muted">最近得分：{latest.score100}/100 · {latest.score15}/15 · 尝试 {latest.attempt}</span> : null}
+                                                    {stage === 'rewrite' && !allSelfChecksDone ? <span className="text-xs text-amber-200">请先完成自检清单再提交二稿</span> : null}
+                                                    {practiceMode === 'scaffolded' && (
+                                                        <button onClick={() => setSubStage('phrases')} className="ml-auto text-[10px] text-phy-muted hover:text-indigo-300 underline underline-offset-2">返回阶梯练习</button>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
-                                    {(stage === 'feedback' || stage === 'rewrite') && latest ? (
+
+                                    {stage === 'feedback' && latest ? (
                                         <div className="glass-panel rounded-2xl border border-phy-border p-4">
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border bg-phy-glass border-phy-border"><CheckCircle2 size={12} className="text-emerald-300" />{latest.score100}/100</span>
                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border ${scoreBadgeClass}`}><CheckCircle2 size={12} />{latest.score15}/15</span>
                                                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border border-amber-400/30 bg-amber-500/10 text-amber-200"><Target size={12} />命中 {latest.hitCount}/{latest.requiredMinHit || 0}</span>
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border border-indigo-400/30 bg-indigo-500/10 text-indigo-100">修订增益 {latest.revisionGain100 >= 0 ? '+' : ''}{latest.revisionGain100 || 0} /100 · {latest.revisionGain15 >= 0 ? '+' : ''}{latest.revisionGain15 || 0} /15</span>
                                                 </div>
                                                 <button onClick={() => setFeedbackCollapsed((v) => !v)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-phy-border bg-phy-glass text-xs text-phy-text">
                                                     {feedbackCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
@@ -857,6 +1604,45 @@ const TranslationChallengeView = () => {
 
                                             {latest.overall_comment ? <p className="mt-3 text-sm text-phy-text whitespace-pre-wrap">{latest.overall_comment}</p> : null}
 
+                                            <div className="mt-3 rounded-lg border border-cyan-400/25 bg-cyan-500/10 p-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="text-xs font-semibold text-cyan-100">本题引用例句命中情况</div>
+                                                    {currentTaskRankedExamples.length > currentTaskExamples.length ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => rotateCurrentTaskExamples(true)}
+                                                            className="px-2.5 py-1 rounded-md border border-cyan-300/30 bg-cyan-500/15 text-cyan-100 text-[11px] font-bold"
+                                                        >
+                                                            换一组例句并再译
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                                {currentExampleHitSummary.length ? (
+                                                    <div className="mt-2 space-y-2">
+                                                        {currentExampleHitSummary.map((item, idx) => (
+                                                            <div key={item.sourceHash || `${item.sourceNoteId}-${idx}`} className="rounded-md border border-cyan-300/20 bg-black/10 px-2.5 py-2">
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div className="text-xs text-cyan-100 whitespace-pre-wrap break-words">{idx + 1}. {item.text}</div>
+                                                                    <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.hit ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200' : 'border-rose-400/30 bg-rose-500/15 text-rose-200'}`}>
+                                                                        {item.hit ? '命中' : '未命中'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-1 text-[11px] text-cyan-200/75">
+                                                                    来源：{item.sourceNoteTitle || '深度笔记'}{item.sourceSection ? ` · ${item.sourceSection}` : ''}
+                                                                </div>
+                                                                {!item.hit && item.matched?.length ? (
+                                                                    <div className="mt-1 text-[11px] text-cyan-200/80">
+                                                                        部分重合：{item.matched.join(' / ')}
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="mt-2 text-xs text-cyan-100/85">本题未纳入深度笔记例句。</div>
+                                                )}
+                                            </div>
+
                                             {!feedbackCollapsed ? (
                                                 <div className="mt-3 space-y-3">
                                                     {(latest.issues || []).length ? (latest.issues || []).slice(0, 8).map((issue, i) => (
@@ -865,6 +1651,16 @@ const TranslationChallengeView = () => {
                                                             <div className="text-sm text-phy-text/90 mt-1">{issue?.reason || issue?.description || '待改进'}</div>
                                                         </div>
                                                     )) : <div className="text-xs text-phy-muted">未检测到明显问题，建议再译一版冲高分。</div>}
+                                                    {(latest.action_plan || []).length ? (
+                                                        <div className="rounded-lg border border-indigo-400/20 bg-indigo-500/5 p-3">
+                                                            <div className="text-xs text-indigo-200">下一步动作</div>
+                                                            <ul className="mt-1 space-y-1 text-sm text-indigo-100">
+                                                                {latest.action_plan.slice(0, 4).map((line, idx) => (
+                                                                    <li key={`plan-${idx}`}>• {line}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    ) : null}
 
                                                     {latest.improved_version ? (
                                                         <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-3">
@@ -886,10 +1682,23 @@ const TranslationChallengeView = () => {
                                         <div className="glass-panel rounded-2xl border border-phy-border p-4">
                                             <h3 className="text-base font-black text-phy-text">挑战结算</h3>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">总分 (100)</div><div className="font-black text-phy-text">{(summary || buildSummary()).score100}</div></div>
-                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">总分 (15)</div><div className="font-black text-emerald-300">{(summary || buildSummary()).score15}</div></div>
-                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">目标词命中</div><div className="font-black text-amber-200">{(summary || buildSummary()).vocabHit}</div></div>
-                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">尝试次数</div><div className="font-black text-indigo-200">{(summary || buildSummary()).attempts}</div></div>
+                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">总分 (100)</div><div className="font-black text-phy-text">{settlementData.score100}</div></div>
+                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">总分 (15)</div><div className="font-black text-emerald-300">{settlementData.score15}</div></div>
+                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">目标词命中</div><div className="font-black text-amber-200">{settlementData.vocabHit}</div></div>
+                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">尝试次数</div><div className="font-black text-indigo-200">{settlementData.attempts}</div></div>
+                                                <div className="rounded-xl border border-phy-border bg-phy-glass p-3"><div className="text-[11px] text-phy-muted">修订增益 (100)</div><div className="font-black text-cyan-200">{avgRevisionGain100}</div></div>
+                                            </div>
+                                            <div className="mt-3 rounded-xl border border-phy-border bg-phy-glass p-3">
+                                                <div className="text-xs text-phy-muted">弱点画像（近7天 + 最近3次加权）</div>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {settlementData.weaknessSnapshot?.length
+                                                        ? settlementData.weaknessSnapshot.slice(0, 5).map((item) => (
+                                                            <span key={item.key} className="px-2 py-1 rounded-md text-xs border border-indigo-400/30 bg-indigo-500/10 text-indigo-100">
+                                                                {item.label}
+                                                            </span>
+                                                        ))
+                                                        : <span className="text-xs text-phy-muted">暂无足够历史，下一次结算后将生成画像。</span>}
+                                                </div>
                                             </div>
 
                                             <div className="mt-4 rounded-xl border border-phy-border bg-phy-glass p-3 space-y-2">
@@ -899,6 +1708,7 @@ const TranslationChallengeView = () => {
                                                     <button onClick={applyLinks} disabled={loadingLink} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1 disabled:opacity-60">{loadingLink ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}执行联动</button>
                                                     <button onClick={saveLog} disabled={logSaved} className="px-3 py-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold inline-flex items-center gap-1 disabled:opacity-60"><Save size={12} />{logSaved ? '记录已保存' : '保存结算记录'}</button>
                                                     <button onClick={() => startChallenge(challenge)} className="px-3 py-1.5 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">同题再练</button>
+                                                    <button onClick={generateTargetedChallenge} className="px-3 py-1.5 rounded-lg border border-amber-400/30 bg-amber-500/10 text-amber-100 text-xs font-bold">下一套针对练</button>
                                                     <button onClick={resetRuntime} className="px-3 py-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-200 text-xs font-bold">结束挑战</button>
                                                 </div>
                                                 {summary?.linkedResult ? <div className="text-xs text-phy-muted">上次联动：闪卡 +{summary.linkedResult.addedFlashcards || 0}，笔记 +{summary.linkedResult.addedNotes || 0}</div> : null}
@@ -934,6 +1744,17 @@ const TranslationChallengeView = () => {
                                 </div>
                             </div>
                         ) : null}
+
+                        <div className="mt-3 rounded-xl border border-phy-border bg-phy-glass p-3">
+                            <div className="text-xs font-semibold text-phy-text">弱点趋势（近7天 + 最近3次）</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {weaknessTrend.length ? weaknessTrend.slice(0, 4).map((item) => (
+                                    <span key={item.key} className="px-2 py-1 rounded-md text-[11px] border border-amber-400/30 bg-amber-500/10 text-amber-100">
+                                        {item.label}
+                                    </span>
+                                )) : <span className="text-xs text-phy-muted">暂无趋势数据</span>}
+                            </div>
+                        </div>
 
                         <div className="mt-3 min-h-0 overflow-y-auto custom-scrollbar pr-1 space-y-2">
                             {filteredLogs.length ? filteredLogs.map((log) => {

@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage, getFolders, saveFolder } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage, getFolders, saveFolder, getWritingMaterials, saveWritingMaterial, deleteWritingMaterial } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 import { resolveTodayNotesFolderName } from '../utils/noteFolders';
+import { parseKnowledgeBlocks, normalizeKnowledgeLinkingSettings, getDefaultKnowledgeLinkingSettings, upsertTranslationLinkedExamplesForNote, removeTranslationLinkedExamplesByNoteId } from '../utils/knowledgeLinking';
 import { FSRS, Rating, createEmptyCard, State, generatorParameters } from 'ts-fsrs';
 
 // ===== FSRS Algorithm Setup =====
@@ -123,7 +124,8 @@ Output Format: Markdown (Strictly follow this structure):
     showPomodoro: true,
     pomodoroFocus: 25,
     pomodoroBreak: 5,
-    customStyles: []
+    customStyles: [],
+    knowledgeLinking: getDefaultKnowledgeLinkingSettings()
 };
 
 // Initial Mock Analysis
@@ -155,7 +157,25 @@ export const AppProvider = ({ children }) => {
     // --- Persistent Settings ---
     const [settings, setSettings] = useState(() => {
         const saved = localStorage.getItem('smartlearn_settings');
-        return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+        if (!saved) {
+            return {
+                ...DEFAULT_SETTINGS,
+                knowledgeLinking: normalizeKnowledgeLinkingSettings(DEFAULT_SETTINGS.knowledgeLinking)
+            };
+        }
+        try {
+            const parsed = JSON.parse(saved);
+            return {
+                ...DEFAULT_SETTINGS,
+                ...parsed,
+                knowledgeLinking: normalizeKnowledgeLinkingSettings(parsed?.knowledgeLinking)
+            };
+        } catch {
+            return {
+                ...DEFAULT_SETTINGS,
+                knowledgeLinking: normalizeKnowledgeLinkingSettings(DEFAULT_SETTINGS.knowledgeLinking)
+            };
+        }
     });
 
     // --- Persistent Theme ---
@@ -408,6 +428,10 @@ export const AppProvider = ({ children }) => {
     }, []);
 
     const updateSetting = (key, value) => {
+        if (key === 'knowledgeLinking') {
+            setSettings(prev => ({ ...prev, [key]: normalizeKnowledgeLinkingSettings(value) }));
+            return;
+        }
         setSettings(prev => ({ ...prev, [key]: value }));
     };
 
@@ -452,6 +476,136 @@ export const AppProvider = ({ children }) => {
         await deleteFile(id);
     };
 
+    const getKnowledgeLinkingConfig = () => normalizeKnowledgeLinkingSettings(settings?.knowledgeLinking);
+
+    const inferGuidanceCategory = (text = '', section = '') => {
+        const hay = `${String(text || '')}\n${String(section || '')}`.toLowerCase();
+        if (/conclusion|summary|结论|总结/.test(hay)) return 'conclusion';
+        if (/transition|however|although|转折|让步/.test(hay)) return 'transition';
+        if (/thesis|opening|stance|立场|观点|开头/.test(hay)) return 'thesis';
+        if (/evidence|example|data|论据|举例|证据/.test(hay)) return 'evidence';
+        return 'argument';
+    };
+
+    const clearKnowledgeLinkedDataForNote = async (noteId) => {
+        const sourceNoteId = String(noteId || '').trim();
+        if (!sourceNoteId) return;
+
+        const allMaterials = await getWritingMaterials();
+        const linkedMaterials = (allMaterials || []).filter(
+            (item) => item?.source === 'deep_note' && String(item?.sourceNoteId || '').trim() === sourceNoteId
+        );
+        for (const item of linkedMaterials) {
+            try {
+                await deleteWritingMaterial(item.id);
+            } catch (error) {
+                console.warn('clear linked material failed', error);
+            }
+        }
+        removeTranslationLinkedExamplesByNoteId(sourceNoteId);
+    };
+
+    const syncKnowledgeLinksFromNote = async (noteRecord) => {
+        const sourceNoteId = String(noteRecord?.id || '').trim();
+        if (!sourceNoteId) return;
+
+        const normalizedConfig = getKnowledgeLinkingConfig();
+        if (!normalizedConfig.enabled) return;
+        await clearKnowledgeLinkedDataForNote(sourceNoteId);
+
+        const parsedBlocks = parseKnowledgeBlocks(noteRecord?.content || '', sourceNoteId);
+        if (!parsedBlocks.length) return;
+
+        if (normalizedConfig.rules.writingGuidanceToMaterials) {
+            const guidanceBlocks = parsedBlocks.filter((item) => item.type === 'writing_guidance');
+            for (let i = 0; i < guidanceBlocks.length; i += 1) {
+                const block = guidanceBlocks[i];
+                const safeHash = String(block.sourceHash || '').trim();
+                if (!safeHash) continue;
+                const isDirectiveMaterial = block?.meta?.directive === 'material';
+                const isDirectiveVocab = block?.meta?.directive === 'vocab';
+                const parsedCategory = String(block?.meta?.category || '').trim().toLowerCase();
+                const categoryMap = {
+                    argument: 'argument',
+                    thesis: 'thesis',
+                    transition: 'transition',
+                    evidence: 'evidence',
+                    conclusion: 'conclusion',
+                    vocabulary: 'vocabulary'
+                };
+                const materialCategory = isDirectiveVocab
+                    ? 'vocabulary'
+                    : (categoryMap[parsedCategory] || inferGuidanceCategory(block.text, block.section));
+                await saveWritingMaterial({
+                    id: `deep-note-${safeHash}`,
+                    title: String(block?.meta?.title || '').trim() || `${String(noteRecord?.title || 'Deep Note')} · ${String(block.section || 'Guidance').trim()} ${i + 1}`,
+                    content: String(block.text || '').trim(),
+                    rewrite: '',
+                    usage: String(block?.meta?.usage || '').trim() || `From note: ${String(noteRecord?.title || '')}`,
+                    caution: String(block?.meta?.caution || '').trim(),
+                    sourceTerm: String(block?.meta?.sourceTerm || '').trim(),
+                    targetTerm: String(block?.meta?.targetTerm || '').trim(),
+                    replaceReason: String(block?.meta?.replaceReason || '').trim(),
+                    beforeExample: '',
+                    afterExample: String(block?.meta?.afterExample || '').trim(),
+                    category: materialCategory,
+                    topic: String(block?.meta?.topic || '').trim() || String(noteRecord?.title || '').trim(),
+                    examType: settings?.writingLevel || 'CET-6',
+                    tags: ['deep-note', 'linked'],
+                    source: 'deep_note',
+                    sourceNoteId,
+                    sourceNoteTitle: String(noteRecord?.title || '').trim(),
+                    sourceHash: safeHash,
+                    sourceSection: String(block.section || '').trim()
+                });
+            }
+        }
+
+        if (normalizedConfig.rules.examplesToTranslation) {
+            const exampleBlocks = parsedBlocks.filter((item) => item.type === 'examples');
+            upsertTranslationLinkedExamplesForNote({
+                noteId: sourceNoteId,
+                noteTitle: String(noteRecord?.title || '').trim(),
+                blocks: exampleBlocks
+            });
+        }
+    };
+
+    useEffect(() => {
+        const bootstrapKey = 'smartlearn_knowledge_linking_bootstrap_v1';
+        const runBootstrap = async () => {
+            const cfg = getKnowledgeLinkingConfig();
+            if (!cfg.enabled || !cfg.autoSyncOnSave) return;
+            if (localStorage.getItem(bootstrapKey) === '1') return;
+
+            const notes = await getNotes();
+            for (const note of notes || []) {
+                await syncKnowledgeLinksFromNote(note);
+            }
+            localStorage.setItem(bootstrapKey, '1');
+        };
+        runBootstrap().catch((error) => {
+            console.warn('knowledge link bootstrap failed', error);
+        });
+    }, [settings?.knowledgeLinking?.enabled, settings?.knowledgeLinking?.autoSyncOnSave]);
+
+    const syncNoteKnowledgeLinks = async (noteInput) => {
+        if (!noteInput) return null;
+        const sourceNoteId = String(noteInput?.id || '').trim();
+        if (!sourceNoteId) return null;
+
+        const record = {
+            id: sourceNoteId,
+            title: String(noteInput?.title || '').trim(),
+            content: String(noteInput?.content || ''),
+            tags: Array.isArray(noteInput?.tags) ? noteInput.tags : [],
+            folder: String(noteInput?.folder || '').trim() || "Uncategorized",
+            updatedAt: Number(noteInput?.updatedAt || Date.now()) || Date.now()
+        };
+        await syncKnowledgeLinksFromNote(record);
+        return record;
+    };
+
     const saveToNotes = async (noteObj) => {
         // noteObj: { id, title, content, folder? }
         let folderName = noteObj.folder;
@@ -476,9 +630,18 @@ export const AppProvider = ({ children }) => {
             title: noteObj.title || "New Note",
             content: noteObj.content || "",
             folder: folderName || "Uncategorized",
+            tags: Array.isArray(noteObj.tags) ? noteObj.tags : [],
             updatedAt: Date.now()
         };
         await saveNote(record);
+        const cfg = getKnowledgeLinkingConfig();
+        if (cfg.enabled && cfg.autoSyncOnSave) {
+            try {
+                await syncKnowledgeLinksFromNote(record);
+            } catch (error) {
+                console.warn('syncKnowledgeLinksFromNote failed', error);
+            }
+        }
         return record;
     };
 
@@ -487,6 +650,11 @@ export const AppProvider = ({ children }) => {
     };
 
     const removeNoteItem = async (id) => {
+        try {
+            await clearKnowledgeLinkedDataForNote(id);
+        } catch (error) {
+            console.warn('clearKnowledgeLinkedDataForNote failed', error);
+        }
         await deleteNote(id);
     };
 
@@ -565,6 +733,7 @@ export const AppProvider = ({ children }) => {
         loadFiles,
         removeFileItem,
         saveToNotes,
+        syncNoteKnowledgeLinks,
         loadUserNotes,
         removeNoteItem,
         exportUserData,

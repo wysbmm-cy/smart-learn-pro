@@ -1510,6 +1510,156 @@ export const generateDeepWordAnalysis = async (word, context, settings) => {
   }
 };
 
+export const normalizeNoteForKnowledgeLinking = async (noteInput, instruction = '', settings) => {
+  if (!settings?.apiKey) throw new Error("Missing API Key");
+  const title = String(noteInput?.title || '').trim() || 'Untitled Note';
+  const content = String(noteInput?.content || '');
+  if (!content.trim()) throw new Error("Empty note content");
+
+  const prompt = `
+你是 SmartLearn 的知识结构化助手。请把下面这篇笔记整理为“人类可读 + 可同步”的 Markdown。
+
+要求：
+1) 保留原有主要内容，不要删掉核心信息。
+2) 在文末新增一个“知识关联区（可同步）”，仅使用这三种指令：
+   - @素材[category]{title=...}
+   - @翻译例句{scene=...}
+   - @替换词
+3) 每个 @素材 需要包含：
+   content:
+   #usage
+   #caution
+4) 每个 @翻译例句 需要包含：
+   EN:
+   CN:
+5) 每个 @替换词 需要包含：
+   source:
+   target:
+   reason:
+6) 不要输出代码块包裹（不要 \`\`\`markdown）。
+7) 如果内容不适合翻译例句，可少给或不给 @翻译例句；不要为了凑数硬造。
+
+用户额外要求：
+${String(instruction || '').trim() || '无'}
+
+笔记标题：
+${title}
+
+笔记正文：
+${content}
+`;
+
+  const result = await fetchFromAI([
+    { role: "system", content: "You are a precise educational content normalizer. Output Markdown only." },
+    { role: "user", content: prompt }
+  ], settings, false);
+
+  return String(result || '').trim();
+};
+
+export const chatNoteKnowledgeLinking = async (
+  noteInput,
+  conversation = [],
+  userMessage = '',
+  settings
+) => {
+  if (!settings?.apiKey) throw new Error("Missing API Key");
+
+  const title = String(noteInput?.title || '').trim() || 'Untitled Note';
+  const content = String(noteInput?.content || '').trim();
+  if (!content) throw new Error("Empty note content");
+
+  const history = Array.isArray(conversation)
+    ? conversation
+      .slice(-8)
+      .map((item) => ({
+        role: item?.role === 'assistant' ? 'assistant' : 'user',
+        content: String(item?.content || '').trim()
+      }))
+      .filter((item) => item.content)
+    : [];
+
+  const systemPrompt = `
+你是 SmartLearn 的“笔记接入教练”。
+目标：和用户多轮对话，帮用户从当前笔记中挑选“适合接入”的片段，而不是整篇全量接入。
+
+规则：
+1) 回答要先给简短建议（assistantReply）。
+2) 按用户意图返回候选接入项 candidates（可以为 0~6 条）。
+3) 每条候选项必须包含可直接落库的 directive 文本，只允许以下三种格式之一：
+   - @素材[category]{title=...}
+     content: ...
+     #usage ...
+     #caution ...
+   - @翻译例句{scene=...}
+     EN: ...
+     CN: ...
+     #keyword ...
+   - @替换词
+     source: ...
+     target: ...
+     reason: ...
+     example: ...
+4) 不要输出代码块，不要输出解释性前缀。
+5) 如果用户只想要一部分内容，就只返回那一部分候选。
+
+仅返回 JSON：
+{
+  "assistantReply": "string",
+  "candidates": [
+    {
+      "id": "string",
+      "type": "material|translation|vocab",
+      "title": "string",
+      "reason": "string",
+      "directive": "string"
+    }
+  ]
+}
+`;
+
+  const userPayload = `
+当前笔记标题：
+${title}
+
+当前笔记内容：
+${content}
+
+用户本轮要求：
+${String(userMessage || '').trim() || '请先给我可接入候选项'}
+`;
+
+  const messageList = [
+    { role: "system", content: systemPrompt },
+    ...history,
+    { role: "user", content: userPayload }
+  ];
+
+  const jsonStr = await fetchFromAI(messageList, settings, true);
+  const parsed = extractJSON(jsonStr);
+  if (!parsed) {
+    throw new Error("AI returned invalid linking chat JSON");
+  }
+
+  const assistantReply = String(parsed?.assistantReply || '').trim();
+  const candidates = Array.isArray(parsed?.candidates)
+    ? parsed.candidates
+      .map((item, idx) => ({
+        id: String(item?.id || `cand-${Date.now()}-${idx}`),
+        type: String(item?.type || '').trim().toLowerCase(),
+        title: String(item?.title || '').trim(),
+        reason: String(item?.reason || '').trim(),
+        directive: String(item?.directive || '').trim()
+      }))
+      .filter((item) => /^@(素材|翻译例句|替换词)/.test(item.directive))
+    : [];
+
+  return {
+    assistantReply: assistantReply || '我先给你整理了几条可接入候选，你可以按需勾选。',
+    candidates
+  };
+};
+
 // 🚀 Smart Coach 2.0: Advanced Planner
 export const generatePlanInsight = async (history, userGoal = null, recentLogs = [], settings) => {
   if (!settings.apiKey) return null;
@@ -1787,17 +1937,13 @@ const parseVocabResponse = (jsonStr) => {
   }
 };
 
-const TRANSLATION_SCENARIOS = [
-  '校园社团招新时向同学说明活动安排',
-  '项目汇报会里总结进度并回应质疑',
-  '地铁延误后给同伴解释改约方案',
-  '实习面试中介绍个人优势与目标岗位',
-  '周末出游时和朋友讨论预算与路线',
-  '跨部门协作时确认分工和截止时间',
-  '线上客服沟通退款与补偿流程',
-  '家庭聚会中讨论健康生活方式',
-  '课堂讨论时表达支持与反对观点',
-  '邮件回复中礼貌拒绝不合理请求'
+const TRANSLATION_SCENARIO_PROFILES = [
+  { key: 'email', label: '邮件沟通', scene: '你需要写一封英文邮件，语气要礼貌且信息完整。' },
+  { key: 'dialogue', label: '日常对话', scene: '你在真实对话中表达观点，需要自然口语和清晰逻辑。' },
+  { key: 'classroom', label: '课堂讨论', scene: '你在课堂中回答问题，表达要学术但不僵硬。' },
+  { key: 'workplace', label: '职场协作', scene: '你在团队协作场景里汇报进展并协调分工。' },
+  { key: 'travel', label: '旅行沟通', scene: '你在旅行场景中处理行程变动和沟通需求。' },
+  { key: 'social', label: '社交媒体', scene: '你在社交平台发帖或回复评论，语气要准确得体。' }
 ];
 
 const normalizeTranslationDifficulty = (value = 'medium') => {
@@ -1806,6 +1952,88 @@ const normalizeTranslationDifficulty = (value = 'medium') => {
   return 'medium';
 };
 
+const normalizeScenarioMode = (value = 'auto') => {
+  const raw = String(value || '').toLowerCase();
+  return raw === 'lock' ? 'lock' : 'auto';
+};
+
+const normalizeScenarioLock = (value = '') => String(value || '').trim().toLowerCase();
+
+const resolveScenarioProfile = (mode = 'auto', lock = '', seed = Date.now()) => {
+  const normalizedMode = normalizeScenarioMode(mode);
+  const normalizedLock = normalizeScenarioLock(lock);
+  if (normalizedMode === 'lock' && normalizedLock) {
+    const locked = TRANSLATION_SCENARIO_PROFILES.find((x) => x.key === normalizedLock || x.label === lock);
+    if (locked) return locked;
+  }
+  if (!TRANSLATION_SCENARIO_PROFILES.length) {
+    return { key: 'generic', label: '综合场景', scene: '请根据上下文完成自然、准确的表达。' };
+  }
+  const step = Math.floor(Number(seed || Date.now()) / (1000 * 60 * 60 * 24));
+  const idx = Math.abs(step) % TRANSLATION_SCENARIO_PROFILES.length;
+  return TRANSLATION_SCENARIO_PROFILES[idx];
+};
+
+const getDifficultyProfile = (difficulty = 'medium') => {
+  if (difficulty === 'easy') {
+    return {
+      languageComplexity: 'basic',
+      expressiveFreedom: 'guided',
+      registerControl: 'light',
+      compressionDemand: 'low'
+    };
+  }
+  if (difficulty === 'hard') {
+    return {
+      languageComplexity: 'advanced',
+      expressiveFreedom: 'open',
+      registerControl: 'strict',
+      compressionDemand: 'high'
+    };
+  }
+  return {
+    languageComplexity: 'intermediate',
+    expressiveFreedom: 'semi_open',
+    registerControl: 'moderate',
+    compressionDemand: 'medium'
+  };
+};
+
+const normalizeHintTierLines = (value, fallback = []) => {
+  const lines = Array.isArray(value)
+    ? value
+    : String(value || '')
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean);
+  return lines.length ? lines : fallback;
+};
+
+const buildFallbackHintTiers = (targetWords = []) => ({
+  l1: [
+    '先确认信息点是否齐全：人物、动作、因果和结果。',
+    '先译出主干，再补充修饰，避免逐词直译。'
+  ],
+  l2: [
+    '至少使用一个明确的逻辑连接词（however/therefore/meanwhile 等）。',
+    '检查时态和主谓一致，先保真再润色。'
+  ],
+  l3: [
+    targetWords.length
+      ? `尝试自然嵌入目标词中的 1-2 个：${targetWords.slice(0, 2).join(', ')}。`
+      : '将句子压缩为更地道的表达，避免重复结构。',
+    '最后通读一遍，确认语气与场景一致。'
+  ]
+});
+
+const normalizeHintTiers = (hintTiers, targetWords = []) => {
+  const fallback = buildFallbackHintTiers(targetWords);
+  return {
+    l1: normalizeHintTierLines(hintTiers?.l1, fallback.l1),
+    l2: normalizeHintTierLines(hintTiers?.l2, fallback.l2),
+    l3: normalizeHintTierLines(hintTiers?.l3, fallback.l3)
+  };
+};
 const pickRandomItems = (items = [], count = 1) => {
   const pool = Array.isArray(items) ? [...items] : [];
   for (let i = pool.length - 1; i > 0; i -= 1) {
@@ -1853,19 +2081,21 @@ const normalizeTaskItem = (task, fallbackType, fallbackId, fallbackScenario, fal
   scenario: String(task?.scenario || fallbackScenario || '').trim(),
   targetWords: Array.isArray(task?.targetWords) && task.targetWords.length
     ? task.targetWords.map((x) => String(x || '').trim()).filter(Boolean)
-    : [...fallbackTargets]
+    : [...fallbackTargets],
+  scaffold: task?.scaffold || null
 });
 
-const buildFallbackChallenge = ({ difficulty, mode, targetWords, requiredMinHit }) => {
-  const scenario = pickRandomItems(TRANSLATION_SCENARIOS, 1)[0] || '日常沟通';
+const buildFallbackChallenge = ({ difficulty, mode, targetWords, requiredMinHit, scenarioProfile }) => {
+  const safeScenario = scenarioProfile || resolveScenarioProfile('auto', '', Date.now());
+  const scenario = safeScenario.label || '综合场景';
   const warmupCount = difficulty === 'easy' ? 1 : 2;
   const warmups = Array.from({ length: warmupCount }).map((_, idx) => ({
     id: `warmup-${idx + 1}`,
     type: 'warmup',
     chinese: idx === 0
-      ? '请将这句话译成英文：虽然计划有变，但我们仍按时完成了任务。'
-      : '请将这句话译成英文：如果资源有限，我们就先解决最关键的问题。',
-    hint: '保持句法清晰，避免逐字直译。',
+      ? '请翻译：虽然计划有变，但我们仍按时完成了关键任务。'
+      : '请翻译：如果资源有限，我们先处理最关键的问题并持续复盘。',
+    hint: '保持句法清晰，避免逐词直译。',
     scenario,
     targetWords: targetWords.slice(0, Math.max(2, requiredMinHit))
   }));
@@ -1877,13 +2107,25 @@ const buildFallbackChallenge = ({ difficulty, mode, targetWords, requiredMinHit 
     mainTask: {
       id: 'main-task',
       type: 'main',
-      chinese: '你负责一次小组方案汇报。请将这段中文译成英文：我们原本担心进度拖延会影响整体交付，但在重新分配任务后，关键里程碑提前两天完成。接下来我们将持续跟踪风险并优化协作流程。',
-      hint: '主任务建议使用 2-3 个复合句，体现逻辑衔接。',
+      chinese: '你需要做一次英文进度汇报：我们曾担心延期会影响交付，但重新分工后关键节点提前完成。接下来将持续跟踪风险并优化协作流程。',
+      hint: '主任务建议使用 2-3 个复合句，体现因果与转折。',
       scenario,
       targetWords
     },
     requiredMinHit,
-    targetWords
+    targetWords,
+    progression: {
+      warmupGoal: '热身题训练核心表达动作与语气控制。',
+      bridge: '将热身中的连接逻辑迁移到主任务。',
+      mainGoal: '在完整情境中输出自然、准确且结构清晰的译文。'
+    },
+    hintTiers: buildFallbackHintTiers(targetWords),
+    difficultyProfile: getDifficultyProfile(difficulty),
+    scenarioProfile: {
+      key: safeScenario.key,
+      label: safeScenario.label,
+      scene: safeScenario.scene
+    }
   };
 };
 
@@ -1892,6 +2134,18 @@ export const generateTranslationChallenge = async (vocabList, settings, options 
 
   const difficulty = normalizeTranslationDifficulty(options?.difficulty);
   const mode = options?.mode === 'mixed' ? 'mixed' : 'mixed';
+  const scenarioMode = normalizeScenarioMode(options?.scenarioMode);
+  const scenarioLock = normalizeScenarioLock(options?.scenarioLock);
+  const scenarioProfile = resolveScenarioProfile(scenarioMode, scenarioLock, Date.now());
+  const difficultyProfile = getDifficultyProfile(difficulty);
+  const weaknessFocus = Array.isArray(options?.weaknessFocus) ? options.weaknessFocus.filter(Boolean) : [];
+  const linkedExamples = Array.from(
+    new Set(
+      (Array.isArray(options?.linkedExamples) ? options.linkedExamples : [])
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 8);
 
   const vocabWords = Array.from(
     new Set((Array.isArray(vocabList) ? vocabList : []).map(normalizeTargetWord).filter(Boolean))
@@ -1902,7 +2156,7 @@ export const generateTranslationChallenge = async (vocabList, settings, options 
     targetWords.length,
     difficulty === 'easy' ? 1 : difficulty === 'hard' ? 3 : 2
   );
-  const mainScenario = pickRandomItems(TRANSLATION_SCENARIOS, 1)[0] || '日常沟通';
+  const mainScenario = scenarioProfile.label || '综合场景';
 
   const systemPrompt = `
 Role: Advanced EN-CN translation trainer designer.
@@ -1910,24 +2164,55 @@ Task: Build a mixed translation challenge package for writing improvement.
 
 Difficulty: ${difficulty}
 Mode: ${mode}
+Scenario mode: ${scenarioMode}
+Scenario lock: ${scenarioLock || '(none)'}
+Scenario profile: ${scenarioProfile.scene}
 Warmup count: ${warmupCount}
 Main scenario: ${mainScenario}
 Target words: ${targetWords.length ? targetWords.join(', ') : 'none'}
 Required minimum target word hits: ${requiredMinHit}
+Weakness focus tags: ${weaknessFocus.length ? weaknessFocus.join(', ') : '(none)'}
+Linked examples from deep notes: ${linkedExamples.length ? linkedExamples.join(' || ') : '(none)'}
+Difficulty profile: ${JSON.stringify(difficultyProfile)}
 
 Requirements:
 1. Return a JSON object only, no markdown fences.
 2. Create warmup items and one main task, all in Chinese source text.
-3. Warmups should be short (15-28 Chinese characters), main task should be 55-110 Chinese characters.
-4. Ensure tasks are realistic and exam-oriented (CET/IELTS style).
-5. Keep hints concise and actionable.
-6. targetWords in each item should be a subset of global targetWords.
+3. Warmups should be short (15-32 Chinese characters), main task should be 60-130 Chinese characters.
+4. Warmups must scaffold the same storyline as main task (same role, information chain, or tone control).
+5. Ensure tasks are realistic and situational (email/dialogue/classroom/workplace/travel/social).
+6. Keep hints concise and actionable. Provide 3 hint tiers (L1/L2/L3), from broad to specific.
+7. targetWords in each item should be a subset of global targetWords and naturally embeddable.
+8. Avoid stuffing target words unnaturally. If unnatural, rewrite task content first.
+9. Return progression notes that explain warmup-main linkage.
+10. If linked examples are provided, keep tone/register consistent with them, but do not copy them verbatim.
 
 JSON Schema:
 {
   "challengeId": "string",
   "difficulty": "${difficulty}",
   "mode": "mixed",
+  "difficultyProfile": {
+    "languageComplexity": "basic|intermediate|advanced",
+    "expressiveFreedom": "guided|semi_open|open",
+    "registerControl": "light|moderate|strict",
+    "compressionDemand": "low|medium|high"
+  },
+  "scenarioProfile": {
+    "key": "email|dialogue|classroom|workplace|travel|social",
+    "label": "string",
+    "scene": "string"
+  },
+  "progression": {
+    "warmupGoal": "string",
+    "bridge": "string",
+    "mainGoal": "string"
+  },
+  "hintTiers": {
+    "l1": ["string"],
+    "l2": ["string"],
+    "l3": ["string"]
+  },
   "warmups": [
     {
       "id": "warmup-1",
@@ -1935,7 +2220,11 @@ JSON Schema:
       "chinese": "string",
       "hint": "string",
       "scenario": "string",
-      "targetWords": ["string"]
+      "targetWords": ["string"],
+      "scaffold": {
+        "phrases": [{ "cn": "string", "en": "string" }],
+        "cloze": "string with _____"
+      }
     }
   ],
   "mainTask": {
@@ -1944,7 +2233,11 @@ JSON Schema:
     "chinese": "string",
     "hint": "string",
     "scenario": "string",
-    "targetWords": ["string"]
+    "targetWords": ["string"],
+    "scaffold": {
+      "phrases": [{ "cn": "string", "en": "string" }],
+      "cloze": "string with _____"
+    }
   },
   "requiredMinHit": ${requiredMinHit},
   "targetWords": ["string"]
@@ -1952,9 +2245,12 @@ JSON Schema:
   `.trim();
 
   try {
+    const userPrompt = linkedExamples.length
+      ? `Generate challenge package now.\nReference examples:\n${linkedExamples.map((x, idx) => `${idx + 1}. ${x}`).join('\n')}`
+      : 'Generate challenge package now.';
     const jsonStr = await fetchFromAI([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Generate challenge package now.' }
+      { role: 'user', content: userPrompt }
     ], settings, true);
 
     const parsed = parseJsonObjectLoose(jsonStr) || {};
@@ -1981,7 +2277,8 @@ JSON Schema:
         difficulty,
         mode,
         targetWords: normalizedTargets,
-        requiredMinHit: normalizedRequiredMinHit
+        requiredMinHit: normalizedRequiredMinHit,
+        scenarioProfile
       }).warmups;
       warmups = [...warmups, ...fallbackWarmups.slice(0, warmupCount - warmups.length)];
     }
@@ -1998,9 +2295,26 @@ JSON Schema:
         difficulty,
         mode,
         targetWords: normalizedTargets,
-        requiredMinHit: normalizedRequiredMinHit
+        requiredMinHit: normalizedRequiredMinHit,
+        scenarioProfile
       });
     }
+
+    const progression = {
+      warmupGoal: String(parsed?.progression?.warmupGoal || '热身题用于建立表达动作与语气。').trim(),
+      bridge: String(parsed?.progression?.bridge || '将热身中的表达动作迁移到主任务。').trim(),
+      mainGoal: String(parsed?.progression?.mainGoal || '在真实情境中完成完整翻译输出。').trim()
+    };
+    const hintTiers = normalizeHintTiers(parsed?.hintTiers, normalizedTargets);
+    const normalizedDifficultyProfile = {
+      ...difficultyProfile,
+      ...(parsed?.difficultyProfile || {})
+    };
+    const normalizedScenarioProfile = {
+      key: String(parsed?.scenarioProfile?.key || scenarioProfile.key || '').trim(),
+      label: String(parsed?.scenarioProfile?.label || scenarioProfile.label || mainScenario).trim(),
+      scene: String(parsed?.scenarioProfile?.scene || scenarioProfile.scene || '').trim()
+    };
 
     return {
       challengeId: String(parsed?.challengeId || `challenge-${Date.now()}`),
@@ -2009,13 +2323,57 @@ JSON Schema:
       warmups,
       mainTask,
       requiredMinHit: normalizedRequiredMinHit,
-      targetWords: normalizedTargets
+      targetWords: normalizedTargets,
+      progression,
+      hintTiers,
+      difficultyProfile: normalizedDifficultyProfile,
+      scenarioProfile: normalizedScenarioProfile
     };
   } catch (e) {
     console.error('generateTranslationChallenge error:', e);
-    return buildFallbackChallenge({ difficulty, mode, targetWords, requiredMinHit });
+    return buildFallbackChallenge({ difficulty, mode, targetWords, requiredMinHit, scenarioProfile });
   }
 };
+/**
+ * Validates sub-components (phrases or cloze) in the scaffolded translation flow.
+ */
+export const checkTranslationComponents = async (type, context, userInput, settings) => {
+  if (!settings.apiKey) throw new Error('Missing API Key');
+
+  const { chinese, originalText } = context;
+
+  const systemPrompt = `
+Role: Specialized EN-CN translation validator.
+Task: Validate if the user's input correctly translates the specific sub-component of a translation task.
+
+Mode: ${type === 'phrases' ? 'Phrase Validation' : 'Cloze Completion Validation'}
+Context Chinese: ${chinese}
+Reference Target (of the specific component): ${originalText}
+
+${type === 'phrases' 
+  ? 'User is translating a specific phrase/chunk. Check for semantic correctness and collocation.' 
+  : 'User is completing a cloze sentence. Check if the inserted part fits grammatically and semantically.'
+}
+
+Output JSON only:
+{
+  "isCorrect": boolean,
+  "feedback": "string (Short, encouraging feedback in Chinese)",
+  "suggestion": "string (Correct or better version)",
+  "score": number (0-100)
+}
+  `.trim();
+
+  const jsonStr = await fetchFromAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Original Target Component: ${originalText}\nUser Input: ${userInput}` }
+  ], settings, true);
+
+  const parsed = parseJsonObjectLoose(jsonStr);
+  return parsed || { isCorrect: false, feedback: "解析失败", suggestion: "", score: 0 };
+};
+
+
 
 export const gradeTranslation = async (challengeItem, userEnglish, settings, options = {}) => {
   if (!settings.apiKey) throw new Error('Missing API Key');
@@ -2027,6 +2385,7 @@ export const gradeTranslation = async (challengeItem, userEnglish, settings, opt
   const requiredMinHit = Math.max(0, Number(options?.requiredMinHit ?? challengeItem?.requiredMinHit ?? 0) || 0);
   const difficulty = normalizeTranslationDifficulty(options?.difficulty || challengeItem?.difficulty);
   const mode = options?.mode === 'mixed' ? 'mixed' : 'mixed';
+  const round = String(options?.round || 'final').toLowerCase();
 
   const systemPrompt = `
 Role: Professional EN translation grader for exam preparation.
@@ -2037,23 +2396,26 @@ Mode: ${mode}
 Chinese source: ${sourceChinese || '(empty)'}
 Target words: ${targetWords.join(', ') || '(none)'}
 Required minimum target word hits: ${requiredMinHit}
+Current round: ${round}
 
 Output JSON only:
 {
   "score100": 0,
   "score15": 0,
   "subscores": {
-    "accuracy": 0,
-    "fluency": 0,
-    "vocabulary": 0,
-    "grammar": 0
+    "fidelity": 0,
+    "naturalness": 0,
+    "grammar": 0,
+    "targetUsage": 0,
+    "register": 0
   },
+  "acceptance": true,
   "vocab_hit": [
     { "word": "string", "used": true, "correctly": true, "evidence": "string" }
   ],
   "issues": [
     {
-      "type": "accuracy|grammar|vocabulary|style",
+      "type": "fidelity|naturalness|grammar|targetUsage|register|logic|omission",
       "severity": "critical|major|minor",
       "sentence_index": 0,
       "original": "string",
@@ -2061,15 +2423,19 @@ Output JSON only:
       "reason": "string"
     }
   ],
+  "action_plan": ["string"],
   "overall_comment": "string",
   "improved_version": "string",
   "pass": true
 }
 
 Rubric:
-- score100 should reflect semantic fidelity first, then language quality.
+- Weighted scoring: fidelity 35%, naturalness 25%, grammar 20%, targetUsage 10%, register 10%.
+- Score should be strict but tolerant to multiple valid answers with semantic equivalence.
+- Prefer semantic equivalence and register appropriateness over surface wording match.
 - score15 is mapped from score100 but can be adjusted for severe errors.
 - If target words miss requirement, apply score penalty but do not force pass=false automatically.
+- Mark critical when meaning is wrong, key logic is broken, or important info omitted.
   `.trim();
 
   try {
@@ -2079,10 +2445,27 @@ Rubric:
     ], settings, true, 3, { signal: options?.signal });
 
     const parsed = parseJsonObjectLoose(jsonStr) || {};
-    const score100 = Math.max(0, Math.min(100, Math.round(Number(parsed?.score100 ?? parsed?.score ?? 0) || 0)));
+    const subscores = parsed?.subscores || {};
+    const normalizedSubscores = {
+      fidelity: Number(subscores?.fidelity ?? subscores?.accuracy ?? 0),
+      naturalness: Number(subscores?.naturalness ?? subscores?.fluency ?? 0),
+      grammar: Number(subscores?.grammar ?? 0),
+      targetUsage: Number(subscores?.targetUsage ?? subscores?.vocabulary ?? 0),
+      register: Number(subscores?.register ?? subscores?.style ?? 0)
+    };
+    const weightedScore100 = (
+      normalizedSubscores.fidelity * 0.35
+      + normalizedSubscores.naturalness * 0.25
+      + normalizedSubscores.grammar * 0.2
+      + normalizedSubscores.targetUsage * 0.1
+      + normalizedSubscores.register * 0.1
+    );
+    const score100 = Math.max(
+      0,
+      Math.min(100, Math.round(Number(parsed?.score100 ?? parsed?.score ?? weightedScore100) || 0))
+    );
     const autoScore15 = Math.round((score100 / 100) * 15);
     const score15 = Math.max(0, Math.min(15, Math.round(Number(parsed?.score15 ?? autoScore15) || 0)));
-    const subscores = parsed?.subscores || {};
 
     const fallbackHit = targetWords.map((word) => {
       const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2102,8 +2485,12 @@ Rubric:
 
     const hitCount = vocab_hit.filter((x) => x.used && x.correctly).length;
     const issues = (Array.isArray(parsed?.issues) ? parsed.issues : []).map((issue) => ({
-      type: String(issue?.type || 'accuracy').trim(),
-      severity: String(issue?.severity || 'major').trim(),
+      type: String(issue?.type || 'fidelity').trim(),
+      severity: (() => {
+        const raw = String(issue?.severity || 'major').trim().toLowerCase();
+        if (raw === 'critical' || raw === 'major' || raw === 'minor') return raw;
+        return 'major';
+      })(),
       sentence_index: Math.max(0, Number(issue?.sentence_index || 0) || 0),
       original: String(issue?.original || '').trim(),
       fixed: String(issue?.fixed || '').trim(),
@@ -2111,26 +2498,34 @@ Rubric:
     }));
     const vocabPenalty = requiredMinHit > hitCount ? Math.min(3, requiredMinHit - hitCount) : 0;
     const normalizedScore15 = Math.max(0, Math.min(15, score15 - vocabPenalty));
+    const acceptance = parsed?.acceptance !== false;
+    const hasCriticalSemanticIssue = issues.some((issue) => {
+      const signal = `${issue.type} ${issue.reason}`.toLowerCase();
+      return issue.severity === 'critical' && /(fidelity|logic|omission|accuracy|meaning|语义|漏译|逻辑)/.test(signal);
+    });
     const pass = typeof parsed?.pass === 'boolean'
       ? parsed.pass
-      : (normalizedScore15 >= 9);
+      : (normalizedScore15 >= 9 && acceptance && !hasCriticalSemanticIssue);
+    const action_plan = Array.isArray(parsed?.action_plan)
+      ? parsed.action_plan.map((line) => String(line || '').trim()).filter(Boolean)
+      : String(parsed?.action_plan || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
 
     return {
       score100,
       score15: normalizedScore15,
-      subscores: {
-        accuracy: Number(subscores?.accuracy ?? 0),
-        fluency: Number(subscores?.fluency ?? 0),
-        vocabulary: Number(subscores?.vocabulary ?? 0),
-        grammar: Number(subscores?.grammar ?? 0)
-      },
+      subscores: normalizedSubscores,
       vocab_hit,
       level: normalizedScore15 >= 13 ? 'excellent' : normalizedScore15 >= 10 ? 'good' : normalizedScore15 >= 7 ? 'fair' : 'needs_work',
       issues,
       improved_version: String(parsed?.improved_version || parsed?.rewritten_text || '').trim(),
       overall_comment: String(parsed?.overall_comment || parsed?.comment || '').trim(),
       pass,
-      requiredMinHit
+      requiredMinHit,
+      acceptance,
+      action_plan
     };
   } catch (e) {
     if (e?.name === 'AbortError') throw e;
@@ -2138,7 +2533,7 @@ Rubric:
     return {
       score100: 0,
       score15: 0,
-      subscores: { accuracy: 0, fluency: 0, vocabulary: 0, grammar: 0 },
+      subscores: { fidelity: 0, naturalness: 0, grammar: 0, targetUsage: 0, register: 0 },
       vocab_hit: targetWords.map((word) => ({ word, used: false, correctly: false, evidence: '' })),
       level: 'needs_work',
       issues: [{
@@ -2150,9 +2545,11 @@ Rubric:
         reason: `评分失败：${e.message || '未知错误'}`
       }],
       improved_version: '',
-      overall_comment: '评分接口暂不可用，请稍后重试。',
+      overall_comment: '评分接口暂时不可用，请稍后重试。',
       pass: false,
-      requiredMinHit
+      requiredMinHit,
+      acceptance: false,
+      action_plan: ['稍后重试评分', '先自查信息完整度与语法准确性']
     };
   }
 };

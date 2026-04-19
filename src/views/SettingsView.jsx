@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash, Loader2, Sparkles, Wand2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection, optimizePromptTemplate } from '../services/ai';
+import KnowledgeLinkingSettingsCard from '../components/KnowledgeLinkingSettingsCard';
 
 // Navigation sections for quick jump
 const sections = [
@@ -1017,6 +1018,8 @@ const SettingsView = () => {
                         </div>
                     </div>
                 </div>
+
+                <KnowledgeLinkingSettingsCard />
 
                 {/* Data Management Card */}
                 <div id="general" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">

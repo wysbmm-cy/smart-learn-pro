@@ -184,8 +184,9 @@ input, textarea, select {
 }
 
 .mobile-safe-bottom {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); /* 60px nav + 16px buffer */
 }
+
 
 /* FAB (Floating Action Button) */
 .fab {

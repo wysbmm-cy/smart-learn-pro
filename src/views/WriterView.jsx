@@ -27,6 +27,9 @@ const WRITER_MATERIAL_VOCAB_VIEW_KEY = 'writer_material_vocab_view';
 const WRITER_MATERIAL_INSERT_MODE_KEY = 'writer_material_insert_last_mode';
 const WRITER_LEFT_PANEL_HIDDEN_KEY = 'writer_left_panel_hidden';
 const WRITER_LEFT_PANEL_WIDTH_KEY = 'writer_left_panel_width';
+const WRITER_MATERIAL_TAB_KEY = 'writer_material_tab';
+const WRITER_MATERIAL_HIDE_SOURCE_IDS_KEY = 'writer_material_hide_source_ids';
+const WRITER_MATERIAL_PIN_SOURCE_IDS_KEY = 'writer_material_pin_source_ids';
 const STEP_META = {
     prompt: { label: '审题', hint: '明确任务与评分目标' },
     outline: { label: '提纲', hint: '组织观点与证据链' },
@@ -93,10 +96,9 @@ const parseVocabularyPairs = (item) => {
 };
 
 const splitParagraphs = (text) => {
-    return String(text || '')
-        .split(/\n\s*\n/)
-        .map((p) => p.trim())
-        .filter(Boolean);
+    const raw = String(text || '');
+    if (raw === '') return [];
+    return raw.split(/\n\s*\n/).map(p => p.replace(/^\n+|\n+$/g, ''));
 };
 
 const normalizeCompareText = (text) => String(text || '').replace(/\s+/g, ' ').trim();
@@ -264,8 +266,20 @@ const getInitialMobileMaterialSheet = () => {
     return legacy === '1';
 };
 
+const readStringList = (key) => {
+    try {
+        const raw = localStorage.getItem(key);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map((x) => String(x || '').trim()).filter(Boolean) : [];
+    } catch {
+        return [];
+    }
+};
+
+const getMaterialSourceKey = (item) => String(item?.sourceHash || item?.id || '').trim();
+
 const WriterView = ({ params }) => {
-    const { settings, saveToNotes } = useApp();
+    const { settings, saveToNotes, navigateRef } = useApp();
     const [content, setContent] = useState(() => localStorage.getItem('draft_writer_content') || '');
     const [title, setTitle] = useState(() => localStorage.getItem('draft_writer_title') || '');
     const [examContext, setExamContext] = useState(() => {
@@ -305,8 +319,13 @@ const WriterView = ({ params }) => {
     const [materials, setMaterials] = useState([]);
     const [materialQuery, setMaterialQuery] = useState('');
     const [materialCategory, setMaterialCategory] = useState('all');
-    const [materialDrawerTab, setMaterialDrawerTab] = useState('recommend');
+    const [materialDrawerTab, setMaterialDrawerTab] = useState(() => {
+        const saved = localStorage.getItem(WRITER_MATERIAL_TAB_KEY);
+        return ['recommend', 'all', 'deep_note'].includes(saved) ? saved : 'recommend';
+    });
     const [activeMaterialId, setActiveMaterialId] = useState(null);
+    const [hiddenSourceIds, setHiddenSourceIds] = useState(() => readStringList(WRITER_MATERIAL_HIDE_SOURCE_IDS_KEY));
+    const [pinnedSourceIds, setPinnedSourceIds] = useState(() => readStringList(WRITER_MATERIAL_PIN_SOURCE_IDS_KEY));
     const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
     const [pendingInsert, setPendingInsert] = useState(null);
     const [insertAnchor, setInsertAnchor] = useState({ blockIndex: 0, offset: 0, selectedRange: null });
@@ -747,6 +766,9 @@ const WriterView = ({ params }) => {
     useEffect(() => { localStorage.setItem(WRITER_EDITOR_LAYOUT_KEY, editorLayoutMode); }, [editorLayoutMode]);
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_VOCAB_VIEW_KEY, vocabView); }, [vocabView]);
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_INSERT_MODE_KEY, insertModePreference); }, [insertModePreference]);
+    useEffect(() => { localStorage.setItem(WRITER_MATERIAL_TAB_KEY, materialDrawerTab); }, [materialDrawerTab]);
+    useEffect(() => { localStorage.setItem(WRITER_MATERIAL_HIDE_SOURCE_IDS_KEY, JSON.stringify(hiddenSourceIds)); }, [hiddenSourceIds]);
+    useEffect(() => { localStorage.setItem(WRITER_MATERIAL_PIN_SOURCE_IDS_KEY, JSON.stringify(pinnedSourceIds)); }, [pinnedSourceIds]);
     useEffect(() => { localStorage.setItem(WRITER_LEFT_PANEL_HIDDEN_KEY, isWriterLeftPanelHidden ? '1' : '0'); }, [isWriterLeftPanelHidden]);
     useEffect(() => { localStorage.setItem(WRITER_LEFT_PANEL_WIDTH_KEY, String(Math.round(writerLeftPanelWidth))); }, [writerLeftPanelWidth]);
     useEffect(() => {
@@ -923,9 +945,18 @@ const WriterView = ({ params }) => {
         });
     };
 
+    const visibleMaterials = useMemo(() => {
+        return (materials || []).filter((item) => {
+            if (item?.source !== 'deep_note') return true;
+            const key = getMaterialSourceKey(item);
+            if (!key) return true;
+            return !hiddenSourceIds.includes(key);
+        });
+    }, [materials, hiddenSourceIds]);
+
     const filteredMaterials = useMemo(() => {
-        return applyMaterialFilter(materials || []);
-    }, [materials, materialQuery, materialCategory]);
+        return applyMaterialFilter(visibleMaterials || []);
+    }, [visibleMaterials, materialQuery, materialCategory]);
     const materialManagerList = useMemo(() => {
         return (materials || [])
             .slice()
@@ -934,35 +965,93 @@ const WriterView = ({ params }) => {
 
     const categoryCounts = useMemo(() => {
         const map = new Map(WRITING_MATERIAL_CATEGORIES.map((c) => [c.value, 0]));
-        for (const item of materials || []) {
+        for (const item of visibleMaterials || []) {
             const key = normalizeMaterialCategory(item.category);
             map.set(key, (map.get(key) || 0) + 1);
         }
         return map;
-    }, [materials]);
+    }, [visibleMaterials]);
+
+    const outlineContextTokens = useMemo(() => {
+        const outlineText = [
+            examContext?.prompt || '',
+            outline?.thesis || '',
+            ...(outline?.paragraphs || []).flatMap((p) => [p?.topic_sentence || '', p?.evidence_hint || '']),
+            outline?.conclusion || ''
+        ].join(' ');
+        const tokens = String(outlineText || '').toLowerCase().match(/[a-z]{4,}|[\u4e00-\u9fa5]{2,}/g) || [];
+        return Array.from(new Set(tokens)).slice(0, 24);
+    }, [examContext?.prompt, outline]);
 
     const recommendedMaterials = useMemo(() => {
-        return (materials || [])
+        return (visibleMaterials || [])
             .map((item) => ({
                 ...item,
                 phaseWeight: preferredCategoryWeight[normalizeMaterialCategory(item.category)] || 0,
+                sourceKey: getMaterialSourceKey(item),
                 matchWeight: (() => {
-                    if (!currentParagraphTokens.length) return 0;
                     const hay = `${item.title || ''}\n${item.content || ''}\n${item.rewrite || ''}\n${item.usage || ''}`.toLowerCase();
-                    const hit = currentParagraphTokens.filter((token) => hay.includes(token)).length;
+                    const paragraphHit = currentParagraphTokens.filter((token) => hay.includes(token)).length;
+                    const outlineHit = outlineContextTokens.filter((token) => hay.includes(token)).length;
+                    const hit = paragraphHit + Math.min(2, outlineHit);
                     if (hit >= 4) return 3;
                     if (hit >= 2) return 2;
                     if (hit >= 1) return 1;
                     return 0;
+                })(),
+                deepNoteBoost: (() => {
+                    if (item?.source !== 'deep_note') return 0;
+                    const hay = `${item.title || ''}\n${item.content || ''}\n${item.rewrite || ''}\n${item.usage || ''}`.toLowerCase();
+                    const paragraphHit = currentParagraphTokens.filter((token) => hay.includes(token)).length;
+                    const outlineHit = outlineContextTokens.filter((token) => hay.includes(token)).length;
+                    const totalHit = paragraphHit + outlineHit;
+                    if (totalHit >= 4) return 2;
+                    if (totalHit >= 2) return 1.3;
+                    if (totalHit >= 1) return 0.8;
+                    return 0.3;
+                })(),
+                pinBoost: (() => {
+                    const key = getMaterialSourceKey(item);
+                    if (!key || item?.source !== 'deep_note') return 0;
+                    return pinnedSourceIds.includes(key) ? 4 : 0;
+                })(),
+                examWeight: item?.examType && examContext?.examType && item.examType === examContext.examType ? 0.4 : 0
+            }))
+            .map((item) => ({
+                ...item,
+                totalScore: item.matchWeight + item.phaseWeight + item.deepNoteBoost + item.pinBoost + item.examWeight,
+                recommendationReason: (() => {
+                    if (item.pinBoost > 0) return '已固定保留';
+                    if (item.source !== 'deep_note') return '';
+                    const score = item.matchWeight + item.deepNoteBoost;
+                    if (score >= 3.8) return '来自深度笔记 · 与当前题干高相关';
+                    if (score >= 2.2) return '来自深度笔记 · 与当前内容相关';
+                    return '来自深度笔记';
                 })()
             }))
-            .sort((a, b) => (b.matchWeight - a.matchWeight) || (b.phaseWeight - a.phaseWeight) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
-    }, [materials, preferredCategoryWeight, currentParagraphTokens]);
+            .sort((a, b) => (b.totalScore - a.totalScore) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
+    }, [visibleMaterials, preferredCategoryWeight, currentParagraphTokens, outlineContextTokens, pinnedSourceIds, examContext?.examType]);
+
+    const deepNoteMaterials = useMemo(() => {
+        return (visibleMaterials || [])
+            .filter((item) => item?.source === 'deep_note')
+            .map((item) => {
+                const sourceKey = getMaterialSourceKey(item);
+                const pinned = sourceKey ? pinnedSourceIds.includes(sourceKey) : false;
+                return { ...item, pinned };
+            })
+            .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || (b.updatedAt || 0) - (a.updatedAt || 0));
+    }, [visibleMaterials, pinnedSourceIds]);
 
     const drawerMaterials = useMemo(() => {
-        const base = materialDrawerTab === 'recommend' ? recommendedMaterials : (materials || []);
+        const base =
+            materialDrawerTab === 'recommend'
+                ? recommendedMaterials
+                : materialDrawerTab === 'deep_note'
+                    ? deepNoteMaterials
+                    : (visibleMaterials || []);
         return applyMaterialFilter(base);
-    }, [materialDrawerTab, recommendedMaterials, materials, materialQuery, materialCategory]);
+    }, [materialDrawerTab, recommendedMaterials, deepNoteMaterials, visibleMaterials, materialQuery, materialCategory]);
 
     const activeMaterial = useMemo(() => {
         if (!activeMaterialId) return null;
@@ -1103,6 +1192,41 @@ const WriterView = ({ params }) => {
         if (materialForm.id === item.id) resetMaterialForm();
         await refreshMaterials();
     };
+
+    const openSourceNote = (material) => {
+        const noteId = String(material?.sourceNoteId || '').trim();
+        if (!noteId) return;
+        if (navigateRef?.current) {
+            navigateRef.current({ view: 'notes', params: { id: noteId } });
+        }
+    };
+
+    const togglePinSourceMaterial = (material) => {
+        if (material?.source !== 'deep_note') return;
+        const sourceKey = getMaterialSourceKey(material);
+        if (!sourceKey) return;
+        setPinnedSourceIds((prev) => (
+            prev.includes(sourceKey)
+                ? prev.filter((id) => id !== sourceKey)
+                : [...prev, sourceKey]
+        ));
+    };
+
+    const toggleHideSourceMaterial = (material) => {
+        if (material?.source !== 'deep_note') return;
+        const sourceKey = getMaterialSourceKey(material);
+        if (!sourceKey) return;
+        setHiddenSourceIds((prev) => (
+            prev.includes(sourceKey)
+                ? prev.filter((id) => id !== sourceKey)
+                : [...prev, sourceKey]
+        ));
+        if (activeMaterialId === material.id) {
+            setActiveMaterialId(null);
+        }
+    };
+
+    const clearHiddenSourceMaterials = () => setHiddenSourceIds([]);
 
     const collectSelectionToMaterial = () => {
         if (!selection?.text) return toast.error('请先在写作区选中句子');
@@ -1311,7 +1435,15 @@ const WriterView = ({ params }) => {
         await deleteWriting(id);
         if (id === currentId) {
             activeDraftIdRef.current = null;
-            setCurrentId(null); setTitle(''); setContent(''); setContentOrigin('manual'); setIsContentDirty(false); setOutline(null); setAnalysis(null); setWorkflowStep('prompt');
+            setCurrentId(null); 
+            setTitle(''); 
+            setContent(''); 
+            setContentOrigin('manual'); 
+            setIsContentDirty(false); 
+            setOutline(null); 
+            setAnalysis(null); 
+            setExamContext({ ...DEFAULT_EXAM_CONTEXT });
+            setWorkflowStep('prompt');
         }
         await refreshWritings();
     };
@@ -1703,7 +1835,7 @@ const WriterView = ({ params }) => {
     };
     const appendUserParagraph = () => {
         const parts = splitParagraphs(content);
-        const nextText = [...parts, 'Write your paragraph here...'].join('\n\n');
+        const nextText = [...parts, ' '].join('\n\n');
         setContent(nextText);
         setContentOrigin('manual');
         setIsContentDirty(true);
@@ -1930,6 +2062,7 @@ const WriterView = ({ params }) => {
                                     <textarea
                                         value={p.text}
                                         onChange={(e) => updateParagraphFromEditor(p.index, e.target.value)}
+                                        placeholder="在此输入内容..."
                                         onSelect={(e) => {
                                             const s = e.target.selectionStart || 0;
                                             const t = e.target.selectionEnd || 0;
@@ -2160,6 +2293,12 @@ const WriterView = ({ params }) => {
                         >
                             全部素材
                         </button>
+                        <button
+                            onClick={() => setMaterialDrawerTab('deep_note')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'deep_note' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                        >
+                            深度笔记 ({deepNoteMaterials.length})
+                        </button>
                     </div>
                     {vocabularyMaterials.length && showVocabularyWorkbench ? (
                         <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1 ml-auto">
@@ -2189,12 +2328,26 @@ const WriterView = ({ params }) => {
                     />
                 </div>
 
+                {hiddenSourceIds.length ? (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-2.5 py-1.5">
+                        <div className="text-[11px] text-amber-200">
+                            已隐藏 {hiddenSourceIds.length} 条深度笔记素材
+                        </div>
+                        <button
+                            onClick={clearHiddenSourceMaterials}
+                            className="px-2 py-0.5 rounded-md border border-amber-300/30 text-[11px] font-bold text-amber-100 hover:bg-amber-400/10"
+                        >
+                            恢复全部
+                        </button>
+                    </div>
+                ) : null}
+
                 <div className="flex flex-wrap gap-1.5">
                     <button
                         onClick={() => setMaterialCategory('all')}
                         className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
                     >
-                        全部 ({materials.length})
+                        全部 ({visibleMaterials.length})
                     </button>
                     {WRITING_MATERIAL_CATEGORIES.map((c) => (
                         <button
@@ -2239,6 +2392,9 @@ const WriterView = ({ params }) => {
                     {drawerMaterials.map((item) => {
                         const itemCategory = normalizeMaterialCategory(item.category);
                         const vocabPairsPreview = itemCategory === 'vocabulary' ? parseVocabularyPairs(item) : [];
+                        const sourceKey = getMaterialSourceKey(item);
+                        const isDeepNoteSource = item?.source === 'deep_note';
+                        const isPinnedSource = isDeepNoteSource && sourceKey ? pinnedSourceIds.includes(sourceKey) : false;
                         const listPreview = itemCategory === 'vocabulary'
                             ? (vocabPairsPreview.length ? `${vocabPairsPreview[0].source} -> ${vocabPairsPreview[0].target}` : item.content)
                             : item.content;
@@ -2252,8 +2408,22 @@ const WriterView = ({ params }) => {
                                     <div className="text-[10px] text-phy-muted mt-1 flex items-center gap-1.5">
                                         <span>{WRITING_MATERIAL_CATEGORY_LABELS[item.category] || item.category}</span>
                                         {item.topic ? <span>· {item.topic}</span> : null}
+                                        {isDeepNoteSource ? (
+                                            <span className="px-1.5 py-0.5 rounded border border-emerald-400/25 bg-emerald-500/10 text-emerald-200">深度笔记</span>
+                                        ) : null}
+                                        {isPinnedSource ? (
+                                            <span className="px-1.5 py-0.5 rounded border border-amber-400/25 bg-amber-500/10 text-amber-200">已固定</span>
+                                        ) : null}
                                     </div>
                                     <div className="text-[11px] text-phy-muted mt-1 line-clamp-2">{listPreview}</div>
+                                    {item.recommendationReason ? (
+                                        <div className="text-[10px] text-emerald-200 mt-1 line-clamp-1">{item.recommendationReason}</div>
+                                    ) : null}
+                                    {isDeepNoteSource && item?.sourceNoteTitle ? (
+                                        <div className="text-[10px] text-phy-muted mt-1 truncate" title={item.sourceNoteTitle}>
+                                            来源：{item.sourceNoteTitle}{item.sourceSection ? ` / ${item.sourceSection}` : ''}
+                                        </div>
+                                    ) : null}
                                 </button>
                                 <div className="mt-2 flex gap-1.5">
                                     <button
@@ -2275,12 +2445,40 @@ const WriterView = ({ params }) => {
                                         插入
                                     </button>
                                 </div>
+                                {isDeepNoteSource ? (
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        <button
+                                            onClick={() => togglePinSourceMaterial(item)}
+                                            className={`px-2 py-1 rounded-md text-[10px] border ${isPinnedSource ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-phy-border text-phy-muted hover:text-phy-text'}`}
+                                        >
+                                            {isPinnedSource ? '取消固定' : '固定保留'}
+                                        </button>
+                                        <button
+                                            onClick={() => toggleHideSourceMaterial(item)}
+                                            className="px-2 py-1 rounded-md text-[10px] border border-rose-400/30 bg-rose-500/10 text-rose-200"
+                                        >
+                                            临时隐藏
+                                        </button>
+                                        {item?.sourceNoteId ? (
+                                            <button
+                                                onClick={() => openSourceNote(item)}
+                                                className="px-2 py-1 rounded-md text-[10px] border border-phy-border text-phy-muted hover:text-phy-text"
+                                            >
+                                                回到笔记
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
                         );
                     })}
                     {!drawerMaterials.length ? (
                         <div className="rounded-xl border border-dashed border-phy-border p-3 text-xs text-phy-muted text-center">
-                            {materialDrawerTab === 'recommend' ? '暂无推荐素材，可切到“全部素材”查看。' : '没有素材'}
+                            {materialDrawerTab === 'recommend'
+                                ? '暂无推荐素材，可切到“全部素材”查看。'
+                                : materialDrawerTab === 'deep_note'
+                                    ? '暂无深度笔记来源素材'
+                                    : '没有素材'}
                         </div>
                     ) : null}
                 </div>
@@ -2380,6 +2578,10 @@ const WriterView = ({ params }) => {
                         >
                             {(() => {
                                 const isVocab = normalizeMaterialCategory(activeMaterial.category) === 'vocabulary';
+                                const activeSourceKey = getMaterialSourceKey(activeMaterial);
+                                const activePinned = activeMaterial?.source === 'deep_note' && activeSourceKey
+                                    ? pinnedSourceIds.includes(activeSourceKey)
+                                    : false;
                                 return (
                                     <>
                                         <div className="flex items-start gap-2">
@@ -2390,6 +2592,53 @@ const WriterView = ({ params }) => {
                                                     {activeMaterial.topic ? ` · ${activeMaterial.topic}` : ''}
                                                 </div>
                                             </div>
+                                            {activeMaterial?.source === 'deep_note' ? (
+                                                <div className="mt-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/5 px-2.5 py-2 space-y-1">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="px-2 py-0.5 rounded-md text-[10px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200">
+                                                            来自深度笔记
+                                                        </span>
+                                                        {activePinned ? (
+                                                            <span className="px-2 py-0.5 rounded-md text-[10px] border border-amber-400/30 bg-amber-500/10 text-amber-200">
+                                                                已固定
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                    {activeMaterial?.sourceNoteTitle ? (
+                                                        <div className="text-[11px] text-phy-muted truncate max-w-[300px]" title={activeMaterial.sourceNoteTitle}>
+                                                            笔记：{activeMaterial.sourceNoteTitle}
+                                                            {activeMaterial.sourceSection ? ` / ${activeMaterial.sourceSection}` : ''}
+                                                        </div>
+                                                    ) : null}
+                                                    {activeMaterial?.updatedAt ? (
+                                                        <div className="text-[11px] text-phy-muted">
+                                                            最近同步：{new Date(activeMaterial.updatedAt).toLocaleString()}
+                                                        </div>
+                                                    ) : null}
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        {activeMaterial?.sourceNoteId ? (
+                                                            <button
+                                                                onClick={() => openSourceNote(activeMaterial)}
+                                                                className="px-2 py-0.5 rounded-md border border-phy-border text-[10px] text-phy-muted hover:text-phy-text"
+                                                            >
+                                                                回到笔记
+                                                            </button>
+                                                        ) : null}
+                                                        <button
+                                                            onClick={() => togglePinSourceMaterial(activeMaterial)}
+                                                            className={`px-2 py-0.5 rounded-md border text-[10px] ${activePinned ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-phy-border text-phy-muted hover:text-phy-text'}`}
+                                                        >
+                                                            {activePinned ? '取消固定' : '固定保留'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleHideSourceMaterial(activeMaterial)}
+                                                            className="px-2 py-0.5 rounded-md border border-rose-400/30 bg-rose-500/10 text-[10px] text-rose-200"
+                                                        >
+                                                            临时隐藏
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : null}
                                             <button
                                                 onClick={() => {
                                                     handleEditMaterial(activeMaterial);
