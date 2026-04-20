@@ -864,29 +864,83 @@ const ExamView = ({ params = {} }) => {
 
     const pushWordMarksToFlashcards = async () => {
         const wordsMap = new Map();
+        const wordsToTranslate = [];
+        
         wordMarks.forEach(m => {
             const t = normalizeText(m.text);
             if (!t) return;
+            const currentDef = m.definition || '';
             if (!wordsMap.has(t)) {
-                wordsMap.set(t, m.definition || '');
-            } else if (m.definition && !wordsMap.get(t)) {
-                wordsMap.set(t, m.definition);
+                wordsMap.set(t, currentDef);
+                if (!currentDef) wordsToTranslate.push(t);
+            } else if (currentDef && !wordsMap.get(t)) {
+                wordsMap.set(t, currentDef);
             }
         });
+
         const words = Array.from(wordsMap.keys());
         if (!words.length) return toast.error('请先标记生词');
+        
         setIsMarkingBusy(true);
+        const loadingId = toast.loading('正在整理并获取 AI 释义...');
+        
         try {
+            // 1. Batch AI Translation for missing definitions (Clean Format)
+            if (wordsToTranslate.length > 0) {
+                try {
+                    const prompt = `请为以下从文章中提取的生词提供精准的音标及中文释义。
+必须严格返回无包装的 JSON 数组。
+JSON 格式：[{"word": "word", "phonetic": "音标", "definition": "中文释义"}]
+
+文章上下文背景：
+${(paper?.passage || '').slice(0, 1500)}
+
+需要翻译的单词列表：
+${wordsToTranslate.join(', ')}`;
+
+                    const result = await sendChat([
+                        { role: 'system', content: 'You are a professional dictionary API. Reply strictly with a raw JSON array.' },
+                        { role: 'user', content: prompt }
+                    ], settings, false);
+
+                    let cleanJson = String(result || '').trim();
+                    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
+                    if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
+                    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
+                    
+                    const translatedList = JSON.parse(cleanJson.trim());
+                    translatedList.forEach(item => {
+                        const w = normalizeText(item.word);
+                        if (w && item.definition) {
+                            // Use object-based storage for refined formatting
+                            wordsMap.set(w.toLowerCase(), {
+                                word: w,
+                                phonetic: (item.phonetic || '').trim().replace(/^\/+|\/+$/g, ''),
+                                definition: item.definition
+                            });
+                        }
+                    });
+                } catch (aiErr) {
+                    console.error('Batch translation failed:', aiErr);
+                    toast.error('部分单词 AI 释义获取失败，将使用基础标记保存');
+                }
+            }
+
+            // 2. Folder Logic (Dated)
+            const today = new Date().toLocaleDateString();
+            const folderName = `今日阅读生词 (${today})`;
+            const folders = await getFolders();
+            let targetFolder = folders.find((f) => normalizeText(f.name) === folderName);
+            if (!targetFolder) {
+                targetFolder = { id: crypto.randomUUID(), name: folderName, type: 'user', createdAt: Date.now() };
+                await saveFolder(targetFolder);
+            }
+
+            // 3. Save Flashcards (Unified Format with ImportView)
             const allCards = await loadUserFlashcards();
             const existingFront = new Set(
                 allCards.map((c) => normalizeText(String(c.front || '').split('\n')[0]).toLowerCase()).filter(Boolean)
             );
-            const folders = await getFolders();
-            let targetFolder = folders.find((f) => normalizeText(f.name) === '阅读生词');
-            if (!targetFolder) {
-                targetFolder = { id: crypto.randomUUID(), name: '阅读生词', type: 'user', createdAt: Date.now() };
-                await saveFolder(targetFolder);
-            }
 
             let added = 0;
             let skipped = 0;
@@ -896,17 +950,27 @@ const ExamView = ({ params = {} }) => {
                     skipped += 1;
                     continue;
                 }
-                const def = wordsMap.get(word);
-                const backContent = def
-                    ? `【AI深度词解】\n${def}\n\n来源：文章阅读智能识别标记`
-                    : '来源：文章阅读手动人工标记\n建议：回顾原文上下文后再强化记忆';
+
+                const data = wordsMap.get(key);
+                // Unified front text: word + \n + /phonetic/
+                let frontText = word;
+                let backContent = '';
+
+                if (typeof data === 'object' && data !== null) {
+                    const cleanPhonetic = (data.phonetic || '').trim();
+                    frontText = cleanPhonetic ? `${data.word || word}\n/${cleanPhonetic}/` : (data.word || word);
+                    backContent = data.definition || '';
+                } else {
+                    // Fallback for marks that already had definitions (likely from AnalyzeVocab)
+                    backContent = data || '来源：文章阅读手动人工标记';
+                }
 
                 await addFlashcard({
                     id: crypto.randomUUID(),
-                    front: word,
+                    front: frontText,
                     back: backContent,
                     folderId: targetFolder.id,
-                    tags: ['reading-mark'],
+                    tags: ['reading-mark', today],
                     createdAt: Date.now(),
                     nextReview: Date.now(),
                     interval: 1,
@@ -915,9 +979,9 @@ const ExamView = ({ params = {} }) => {
                 existingFront.add(key);
                 added += 1;
             }
-            toast.success(`已加入闪卡：${added}，跳过重复：${skipped}`);
+            toast.success(`同步完成！入库：${added}，重复：${skipped}`, { id: loadingId });
         } catch (e) {
-            toast.error(`加入闪卡失败: ${e.message}`);
+            toast.error(`同步失败: ${e.message}`, { id: loadingId });
         } finally {
             setIsMarkingBusy(false);
         }

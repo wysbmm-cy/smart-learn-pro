@@ -1494,28 +1494,50 @@ const NotesView = ({ params }) => {
 
                 {/* Mobile More Options Backdrop */}
                 {showMobileListOptions && (
-                    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowMobileListOptions(false)}>
-                        <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-t-3xl p-6 pb-28 animate-in slide-in-from-bottom flex flex-col gap-4 shadow-2xl mobile-safe-bottom" onClick={e => e.stopPropagation()}>
+                    <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowMobileListOptions(false)}>
+                        <div className="w-full max-w-lg bg-phy-glassHeavy backdrop-blur-[40px] rounded-t-[2.5rem] p-6 pb-28 animate-in slide-in-from-bottom flex flex-col gap-4 shadow-[0_-15px_60px_rgba(0,0,0,0.4)] border-t border-phy-border/30 mobile-safe-bottom" onClick={e => e.stopPropagation()}>
                             <div className="w-12 h-1.5 bg-phy-muted/30 rounded-full mx-auto mb-2" />
-                            <h3 className="text-sm font-bold text-phy-muted uppercase tracking-widest px-2">Settings</h3>
+                            <h3 className="text-[11px] font-black text-phy-accent uppercase tracking-[0.2em] px-2 mb-2">Note Settings</h3>
                             <div className="grid grid-cols-1 gap-2">
-                                <button onClick={() => { handleExport(note); setShowMobileListOptions(false); }} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-phy-glass transition-colors">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600"><FileDown size={20} /></div>
-                                    <span className="font-bold">Export Markdown</span>
+                                <button 
+                                    onClick={() => { handleExport(note); setShowMobileListOptions(false); }} 
+                                    className="flex items-center gap-4 p-4 rounded-2xl bg-phy-glass border border-phy-border/30 hover:bg-phy-glassHover transition-all active:scale-95"
+                                >
+                                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                                        <FileDown size={24} />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-phy-text">Export Markdown</span>
+                                        <span className="text-[10px] text-phy-muted">Save as .md file</span>
+                                    </div>
                                 </button>
-                                <div className="p-4 rounded-2xl bg-phy-glass flex flex-col gap-2">
-                                    <span className="text-[10px] font-bold text-phy-muted px-1">TAGS (COMMA SEPARATED)</span>
+
+                                <div className="p-4 rounded-2xl bg-phy-glass/40 border border-phy-border/30 flex flex-col gap-2.5">
+                                    <div className="flex items-center gap-2 px-1">
+                                        <Tag size={12} className="text-phy-accent" />
+                                        <span className="text-[11px] font-bold text-phy-muted uppercase tracking-wider">Tags</span>
+                                    </div>
                                     <input 
                                         value={(note?.tags || []).join(', ')}
                                         onChange={(e) => handleUpdate({ tags: e.target.value.split(',').map(t=>t.trim()).filter(Boolean) })}
-                                        className="w-full bg-white dark:bg-black/20 border border-phy-border rounded-xl p-2 outline-none text-sm text-phy-text"
+                                        className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 outline-none text-sm text-phy-text placeholder:text-phy-muted/60 focus:ring-2 focus:ring-phy-accent/40 transition-all font-medium"
                                         placeholder="Tag 1, Tag 2"
                                     />
                                 </div>
-                                <div className="h-px bg-phy-border my-2" />
-                                <button onClick={() => { if(confirm('Delete note?')) { handleDelete(null, note.id); setShowMobileListOptions(false); } }} className="flex items-center gap-4 p-4 rounded-2xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors">
-                                    <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-rose-600"><Trash2 size={20} /></div>
-                                    <span className="font-bold">Delete Note</span>
+
+                                <div className="h-px bg-phy-border/50 my-2 mx-4" />
+
+                                <button 
+                                    onClick={() => { if(confirm('Delete note?')) { handleDelete(null, note.id); setShowMobileListOptions(false); } }} 
+                                    className="flex items-center gap-4 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 transition-all active:scale-95"
+                                >
+                                    <div className="w-12 h-12 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-600">
+                                        <Trash2 size={24} />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="font-bold">Delete Note</span>
+                                        <span className="text-[10px] opacity-70">Remove permanently</span>
+                                    </div>
                                 </button>
                             </div>
                         </div>
