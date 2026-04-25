@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
+import { useAuth } from '../context/AuthContext';
 import ChatSidebar from '../components/ChatSidebar';
 import PomodoroTimer from '../components/PomodoroTimer';
 import GlobalPlayer from '../components/GlobalPlayer';
@@ -8,7 +9,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones, LogIn
+    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones, LogIn, LogOut
 } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
@@ -41,6 +42,7 @@ const MobileTab = ({ icon: Icon, label, active, onClick }) => (
 const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, onOpenSplit, secondaryContent }) => {
     const { settings } = useApp();
     const { toggleChat, isChatOpen } = useChat();
+    const { user, isGuest, logout } = useAuth();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [isWriterMaterialPanelOpen, setIsWriterMaterialPanelOpen] = useState(false);
     const [showPomodoro, setShowPomodoro] = useState(false);
@@ -111,7 +113,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
     const navItems = [
         { id: 'dashboard', icon: BarChart2, label: '工作台' },
-        { id: 'login', icon: LogIn, label: '账号登录' },
+        { id: 'login', icon: LogIn, label: user ? '账号中心' : '账号登录' },
         { id: 'notes', icon: NotebookPen, label: '我的笔记' },
         { id: 'import', icon: Upload, label: '导入' },
         { id: 'video', icon: PlayCircle, label: '视频学习' },
@@ -226,6 +228,25 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 </nav>
 
                 <div className="p-4 border-t border-phy-border bg-phy-glassHeavy shrink-0" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
+                    <div className="mb-3 rounded-xl border border-phy-border bg-phy-bg/60 px-3 py-2 text-xs">
+                        <div className="font-bold text-phy-text truncate">
+                            {user ? (user.nickname || user.email) : isGuest ? '游客模式' : '未登录'}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (user) {
+                                    logout();
+                                }
+                                setCurrentView('login');
+                                setIsMobileMenuOpen(false);
+                            }}
+                            className="mt-1 inline-flex items-center gap-1 text-phy-muted hover:text-phy-accent transition-colors"
+                        >
+                            {user ? <LogOut size={13} /> : <LogIn size={13} />}
+                            <span>{user ? '退出登录' : '登录账号'}</span>
+                        </button>
+                    </div>
                     <button
                         onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-phy-accentGlass border border-phy-borderHover text-phy-accent transition-all text-sm font-medium"

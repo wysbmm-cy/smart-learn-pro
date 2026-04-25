@@ -2,6 +2,7 @@ import React, { useState, Suspense, lazy, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AppProvider, useApp } from './context/AppContext';
 import { ChatProvider } from './context/ChatContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './layouts/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import SkeletonLoader from './components/SkeletonLoader';
@@ -59,6 +60,7 @@ function AppContent() {
     const [secondaryView, setSecondaryView] = useState('notes');
     const [isSplit, setIsSplit] = useState(false);
     const { settings, navigateRef } = useApp();
+    const { loading: authLoading, canEnterApp } = useAuth();
 
     const handleNavigate = (viewOrObj) => {
         if (typeof viewOrObj === 'string') {
@@ -126,6 +128,18 @@ function AppContent() {
         setIsSplit(true);
     };
 
+    if (authLoading) {
+        return <LoadingFallback />;
+    }
+
+    if (!canEnterApp) {
+        return (
+            <Suspense fallback={<LoadingFallback />}>
+                <LoginView onNavigate={setCurrentView} />
+            </Suspense>
+        );
+    }
+
     return (
         <Layout
             currentView={currentView}
@@ -149,21 +163,23 @@ function AppContent() {
 export default function App() {
     return (
         <AppProvider>
-            <ChatProvider>
-                <Toaster
-                    position="top-center"
-                    toastOptions={{
-                        style: {
-                            background: '#1e293b',
-                            color: '#fff',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                        },
-                    }}
-                />
-                <ErrorBoundary>
-                    <AppContent />
-                </ErrorBoundary>
-            </ChatProvider>
+            <AuthProvider>
+                <ChatProvider>
+                    <Toaster
+                        position="top-center"
+                        toastOptions={{
+                            style: {
+                                background: '#1e293b',
+                                color: '#fff',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                            },
+                        }}
+                    />
+                    <ErrorBoundary>
+                        <AppContent />
+                    </ErrorBoundary>
+                </ChatProvider>
+            </AuthProvider>
         </AppProvider>
     );
 }
