@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Upload, CheckCircle, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X, Play } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import UserGuideModal from '../components/UserGuideModal';
@@ -49,9 +49,11 @@ const Dashboard = ({ onNavigate }) => {
 
     // Check if tasks are running globally
     const isGeneratingComic = bgTasks.storyComic?.status === 'loading';
+    const isGeneratingDailyImage = bgTasks.dailyImage?.status === 'loading';
 
     // Get results from global state
     const storyComic = bgTasks.storyComic?.data;
+    const dailyImageUrl = bgTasks.dailyImage?.url;
 
     useEffect(() => {
         const load = async () => {
@@ -143,7 +145,31 @@ const Dashboard = ({ onNavigate }) => {
             document.body.removeChild(link);
         } catch (e) {
             console.error('Save failed:', e);
-            alert('保存失败: ' + e.message);
+            alert('Save failed: ' + e.message);
+        }
+    };
+
+    const handleGenerateYesterdaySummary = async () => {
+        try {
+            await runDailyImageGeneration(undefined, 'auto');
+        } catch (e) {
+            console.error('Daily summary generation failed:', e);
+            alert('Generation failed: ' + e.message);
+        }
+    };
+
+    const handleSaveSummaryImage = async () => {
+        if (!dailyImageUrl) return;
+        try {
+            const link = document.createElement('a');
+            link.href = dailyImageUrl;
+            link.download = `daily-summary-${Date.now()}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (e) {
+            console.error('Summary save failed:', e);
+            alert('Save failed: ' + e.message);
         }
     };
 
@@ -213,6 +239,55 @@ const Dashboard = ({ onNavigate }) => {
                 }}
             />
 
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-6 md:p-8 rounded-[2rem] border border-indigo-500/20 shadow-xl shadow-indigo-500/10">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                    <div>
+                        <div className="flex items-center gap-2 text-white font-bold text-xl">
+                            <ImageIcon size={22} className="text-indigo-300" />
+                            昨日学习成果总结图
+                        </div>
+                        <div className="text-indigo-200/80 text-sm mt-1">
+                            自动读取昨天学习记录，结合主题内容生成总结海报。
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleGenerateYesterdaySummary}
+                            disabled={isGeneratingDailyImage}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${isGeneratingDailyImage ? 'bg-slate-700 text-phy-muted' : 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/30'}`}
+                        >
+                            {isGeneratingDailyImage ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                            {isGeneratingDailyImage ? '生成中...' : '生成昨日总结图'}
+                        </button>
+                    </div>
+                </div>
+
+                {bgTasks.dailyImage?.status === 'error' && (
+                    <div className="rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 text-sm px-4 py-3">
+                        生成失败：{bgTasks.dailyImage?.error || '未知错误'}
+                    </div>
+                )}
+
+                {dailyImageUrl ? (
+                    <div className="space-y-3">
+                        <div className="rounded-2xl overflow-hidden border border-indigo-400/20">
+                            <img src={dailyImageUrl} alt="Yesterday Study Summary" className="w-full h-auto object-cover" />
+                        </div>
+                        <button
+                            onClick={handleSaveSummaryImage}
+                            className="w-full md:w-auto px-4 py-2 rounded-xl bg-phy-glassHover border border-indigo-300/30 text-indigo-100 hover:bg-phy-glass text-sm font-bold flex items-center justify-center gap-2"
+                        >
+                            <Download size={16} />
+                            保存总结图
+                        </button>
+                    </div>
+                ) : (
+                    <div className="h-40 rounded-2xl border border-dashed border-indigo-400/20 bg-phy-glass0 flex items-center justify-center text-indigo-200/70 text-sm">
+                        点击上方按钮，生成昨日学习成果图。
+                    </div>
+                )}
+            </div>
+
             {/* ⭐ 3. Story Comic - With Style Selection */}
             <div className="bg-gradient-to-br from-rose-950 via-purple-950 to-indigo-950 p-6 md:p-8 rounded-[2rem] shadow-xl shadow-purple-500/10 border border-purple-500/20 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-64 h-64 bg-pink-500 opacity-5 rounded-full blur-3xl -ml-20 -mt-20 pointer-events-none"></div>
@@ -264,41 +339,9 @@ const Dashboard = ({ onNavigate }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs text-purple-300 mb-2">画风</label>
-                                <select
-                                    value={selectedComicStyle}
-                                    onChange={(e) => setSelectedComicStyle(e.target.value)}
-                                    className="w-full bg-phy-glassHover border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-pink-400"
-                                >
-                                    <option value="random" className="bg-phy-glassHeavy">🎲 随机</option>
-                                    <optgroup label="日漫" className="bg-phy-glassHeavy">
-                                        {Object.entries(COMIC_STYLES).slice(0, 7).map(([key, style]) => (
-                                            <option key={key} value={key} className="bg-phy-glassHeavy">{style.name}</option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="美漫" className="bg-phy-glassHeavy">
-                                        {Object.entries(COMIC_STYLES).slice(7, 12).map(([key, style]) => (
-                                            <option key={key} value={key} className="bg-phy-glassHeavy">{style.name}</option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="国漫/儿童卡通/特殊" className="bg-phy-glassHeavy">
-                                        {Object.entries(COMIC_STYLES).slice(12).map(([key, style]) => (
-                                            <option key={key} value={key} className="bg-phy-glassHeavy">{style.name}</option>
-                                        ))}
-                                    </optgroup>
-                                </select>
                             </div>
                             <div>
                                 <label className="block text-xs text-purple-300 mb-2">格式</label>
-                                <select
-                                    value={selectedComicFormat}
-                                    onChange={(e) => setSelectedComicFormat(e.target.value)}
-                                    className="w-full bg-phy-glassHover border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-pink-400"
-                                >
-                                    <option value="random" className="bg-phy-glassHeavy">🎲 随机</option>
-                                    <option value="single" className="bg-phy-glassHeavy">🖼️ 单图</option>
-                                    <option value="2panel" className="bg-phy-glassHeavy">📖 两格漫画</option>
-                                    <option value="4panel" className="bg-phy-glassHeavy">📚 四格漫画</option>
-                                </select>
                             </div>
                         </div>
                     </div>
@@ -338,3 +381,6 @@ const Dashboard = ({ onNavigate }) => {
 };
 
 export default Dashboard;
+
+
+

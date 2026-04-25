@@ -88,6 +88,7 @@ const FlashcardView = ({ params }) => {
 
     // New: Advanced Optimization State
     const [showSessionSummary, setShowSessionSummary] = useState(false);
+    const [isSessionCompleted, setIsSessionCompleted] = useState(false);
     const [lastAction, setLastAction] = useState(null); // { cardId, prevIndex, quality, timestamp }
     const [undoTimeout, setUndoTimeout] = useState(null);
     const [studyStreak, setStudyStreak] = useState({ current: 0, longest: 0 });
@@ -214,7 +215,7 @@ const FlashcardView = ({ params }) => {
     };
 
     const saveStudySession = () => {
-        if (mode === 'study' && studyQueue.length > 0) {
+        if (mode === 'study' && studyQueue.length > 0 && !showSessionSummary && !isSessionCompleted) {
             const sessionData = {
                 queueIds: studyQueue.map(c => c.id),
                 index: currentCardIndex,
@@ -237,7 +238,7 @@ const FlashcardView = ({ params }) => {
             saveStudySession(); // Save when component unmounts
             window.removeEventListener('beforeunload', handleBeforeUnload);
         };
-    }, [mode, studyQueue, currentCardIndex, sessionStats]);
+    }, [mode, studyQueue, currentCardIndex, sessionStats, showSessionSummary, isSessionCompleted]);
 
     // Restore study queue after allCards is loaded
     useEffect(() => {
@@ -816,6 +817,7 @@ const FlashcardView = ({ params }) => {
         setSessionStartTime(Date.now());
         setLastAction(null);
         setShowSessionSummary(false);
+        setIsSessionCompleted(false);
         setIsDrillMode(false);
         setCurrentDrill(null);
         setMode('study');
@@ -839,6 +841,7 @@ const FlashcardView = ({ params }) => {
 
             // Universal shortcuts
             if (e.key === 'Escape') {
+                clearStudySession();
                 setMode('manage');
                 return;
             }
@@ -1162,6 +1165,7 @@ const FlashcardView = ({ params }) => {
             await loadData();
             updateStreak(); // Update daily streak
             clearStudySession(); // Clear saved session
+            setIsSessionCompleted(true);
             setShowSessionSummary(true); // Show summary modal instead of alert
             setIsAdvancingCard(false);
         } catch (e) {
@@ -1851,7 +1855,10 @@ const FlashcardView = ({ params }) => {
                             {!isMobile && <span className="text-xs font-bold text-phy-muted">SESSION SCORE:</span>}
                             <span className="text-sm font-bold text-phy-accent">{sessionStats.correct}/{sessionStats.reviewed}</span>
                             <button
-                                onClick={() => setMode('manage')}
+                                onClick={() => {
+                                    clearStudySession();
+                                    setMode('manage');
+                                }}
                                 className={`${isMobile ? 'p-1.5' : 'ml-4 p-2'} hover:bg-phy-glassHover rounded-full text-phy-muted hover:text-phy-text transition-colors`}
                             >
                                 <XCircle size={isMobile ? 18 : 20} />
@@ -2320,7 +2327,11 @@ const FlashcardView = ({ params }) => {
 
                         <button
                             onClick={() => {
+                                clearStudySession();
                                 setShowSessionSummary(false);
+                                setIsSessionCompleted(false);
+                                setStudyQueue([]);
+                                setCurrentCardIndex(0);
                                 setMode('manage');
                             }}
                             className="w-full py-4 bg-phy-accent hover:opacity-90 text-white rounded-xl font-bold shadow-lg shadow-phy-accent/20 transition-all active:scale-95"

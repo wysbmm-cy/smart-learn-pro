@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash, Loader2, Sparkles, Wand2 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { BUILTIN_API_CONFIG, useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection, optimizePromptTemplate } from '../services/ai';
 import KnowledgeLinkingSettingsCard from '../components/KnowledgeLinkingSettingsCard';
 
@@ -25,6 +25,79 @@ const SettingsView = () => {
     const [audioConnectionStatus, setAudioConnectionStatus] = useState('idle');
     const [ttsConnectionStatus, setTtsConnectionStatus] = useState('idle');
     const [imageGenConnectionStatus, setImageGenConnectionStatus] = useState('idle');
+    const [showCustomMainKeyInput, setShowCustomMainKeyInput] = useState(false);
+    const [customMainKeyDraft, setCustomMainKeyDraft] = useState('');
+    const [apiProfileNameDraft, setApiProfileNameDraft] = useState('');
+    const [selectedApiProfileId, setSelectedApiProfileId] = useState(() => settings.activeApiProfileId || '');
+    const apiProfiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
+
+    useEffect(() => {
+        setSelectedApiProfileId(settings.activeApiProfileId || '');
+    }, [settings.activeApiProfileId]);
+
+    const safeHost = (url) => {
+        try {
+            const u = new URL(String(url || '').trim());
+            return u.host || 'custom-endpoint';
+        } catch {
+            return 'custom-endpoint';
+        }
+    };
+
+    const buildProfilePayload = (nameOverride = '') => {
+        const apiBaseUrl = String(settings.apiBaseUrl || '').trim();
+        const modelName = String(settings.modelName || '').trim();
+        const apiKey = String(settings.apiKey || '').trim();
+        const host = safeHost(apiBaseUrl);
+        const autoName = `${modelName || 'model'} @ ${host}`;
+        return {
+            id: `api_profile_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name: String(nameOverride || '').trim() || autoName,
+            apiBaseUrl,
+            modelName,
+            apiKey,
+            updatedAt: Date.now()
+        };
+    };
+
+    const commitApiProfiles = (nextProfiles, nextActiveId = '') => {
+        updateSetting('apiProfiles', nextProfiles);
+        updateSetting('activeApiProfileId', nextActiveId);
+        setSelectedApiProfileId(nextActiveId || '');
+    };
+
+    const upsertCurrentApiProfile = (nameOverride = '') => {
+        const payload = buildProfilePayload(nameOverride);
+        if (!payload.apiBaseUrl || !payload.modelName || !payload.apiKey) return null;
+
+        const sameConfigIndex = apiProfiles.findIndex((p) =>
+            String(p.apiBaseUrl || '').trim() === payload.apiBaseUrl &&
+            String(p.modelName || '').trim() === payload.modelName &&
+            String(p.apiKey || '').trim() === payload.apiKey
+        );
+        if (sameConfigIndex >= 0) {
+            const existing = apiProfiles[sameConfigIndex];
+            const updatedSame = [...apiProfiles];
+            updatedSame[sameConfigIndex] = { ...existing, updatedAt: Date.now() };
+            commitApiProfiles(updatedSame, existing.id);
+            return existing.id;
+        }
+
+        const sameNameIndex = apiProfiles.findIndex((p) =>
+            String(p.name || '').trim().toLowerCase() === payload.name.toLowerCase()
+        );
+        if (sameNameIndex >= 0) {
+            const existing = apiProfiles[sameNameIndex];
+            const updatedName = [...apiProfiles];
+            updatedName[sameNameIndex] = { ...existing, ...payload, id: existing.id };
+            commitApiProfiles(updatedName, existing.id);
+            return existing.id;
+        }
+
+        const next = [payload, ...apiProfiles].slice(0, 20);
+        commitApiProfiles(next, payload.id);
+        return payload.id;
+    };
 
     // Prompt Optimizer State
     const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false);
@@ -61,6 +134,7 @@ const SettingsView = () => {
         setConnectionStatus('testing');
         try {
             await checkConnection(settings);
+            upsertCurrentApiProfile();
             setConnectionStatus('success');
             setTimeout(() => setConnectionStatus('idle'), 3000);
         } catch (e) {
@@ -109,6 +183,64 @@ const SettingsView = () => {
             alert("生图 API 测试失败: " + e.message);
             setTimeout(() => setImageGenConnectionStatus('idle'), 3000);
         }
+    };
+
+    const maskApiKey = (value) => {
+        if (!value) return '未配置';
+        if (value.length <= 8) return '••••••••';
+        return `${value.slice(0, 4)}••••••••${value.slice(-4)}`;
+    };
+
+    const isUsingBuiltinMainKey = settings.apiKey === BUILTIN_API_CONFIG.mainApiKey;
+
+    const handleUseBuiltinMainKey = () => {
+        updateSetting('apiKey', BUILTIN_API_CONFIG.mainApiKey);
+        setShowCustomMainKeyInput(false);
+        setCustomMainKeyDraft('');
+        setTimeout(() => upsertCurrentApiProfile('Built-in API'), 0);
+    };
+
+    const handleEnableCustomMainKey = () => {
+        setShowCustomMainKeyInput(true);
+        setCustomMainKeyDraft('');
+    };
+
+    const handleSaveCustomMainKey = () => {
+        const trimmed = customMainKeyDraft.trim();
+        if (!trimmed) return;
+        updateSetting('apiKey', trimmed);
+        setShowCustomMainKeyInput(false);
+        setCustomMainKeyDraft('');
+        setTimeout(() => upsertCurrentApiProfile(), 0);
+    };
+
+    const handleSaveCurrentApiProfile = () => {
+        const id = upsertCurrentApiProfile(apiProfileNameDraft);
+        if (id) setApiProfileNameDraft('');
+    };
+
+    const handleApplySelectedApiProfile = () => {
+        const target = apiProfiles.find((p) => p.id === selectedApiProfileId);
+        if (!target) return;
+        updateSetting('apiBaseUrl', target.apiBaseUrl || '');
+        updateSetting('modelName', target.modelName || '');
+        updateSetting('apiKey', target.apiKey || '');
+        updateSetting('activeApiProfileId', target.id);
+    };
+
+    const handleDeleteSelectedApiProfile = () => {
+        if (!selectedApiProfileId) return;
+        const nextProfiles = apiProfiles.filter((p) => p.id !== selectedApiProfileId);
+        const nextActive = settings.activeApiProfileId === selectedApiProfileId ? '' : settings.activeApiProfileId || '';
+        commitApiProfiles(nextProfiles, nextActive);
+    };
+
+    const formatApiProfileOptionLabel = (profile) => {
+        if (!profile) return '';
+        const base = String(profile.name || 'Untitled profile');
+        const model = String(profile.modelName || '').trim();
+        const host = safeHost(profile.apiBaseUrl);
+        return model ? `${base} - ${model} @ ${host}` : `${base} @ ${host}`;
     };
 
     const Toggle = ({ title, checked, onChange }) => (
@@ -205,33 +337,140 @@ const SettingsView = () => {
                             <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
                                 API 密钥 (Key)
                             </label>
-                            <div className="flex gap-3">
+                            {!showCustomMainKeyInput ? (
+                                <div className="space-y-3">
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="text"
+                                            value={isUsingBuiltinMainKey ? '内置密钥已启用（默认）' : `自定义密钥已启用（${maskApiKey(settings.apiKey)}）`}
+                                            readOnly
+                                            className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm font-medium text-phy-muted"
+                                        />
+                                        <button
+                                            onClick={handleTest}
+                                            disabled={connectionStatus === 'testing' || !settings.apiKey}
+                                            className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 min-w-[140px] justify-center ${connectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
+                                                connectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
+                                                    'bg-phy-glassHeavy text-white hover:bg-phy-glassHeavy shadow-lg shadow-slate-200'
+                                                }`}
+                                        >
+                                            {connectionStatus === 'testing' ? (
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            ) : connectionStatus === 'success' ? (
+                                                <><CheckCircle size={16} /> 已验证</>
+                                            ) : connectionStatus === 'error' ? (
+                                                <><X size={16} /> 连接失败</>
+                                            ) : (
+                                                '测试连通性'
+                                            )}
+                                        </button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            onClick={handleEnableCustomMainKey}
+                                            className="px-3 py-2 text-xs font-semibold rounded-lg border border-phy-border text-phy-text hover:bg-phy-bg transition-colors"
+                                        >
+                                            改为自定义密钥
+                                        </button>
+                                        {!isUsingBuiltinMainKey && (
+                                            <button
+                                                onClick={handleUseBuiltinMainKey}
+                                                className="px-3 py-2 text-xs font-semibold rounded-lg border border-phy-border text-phy-muted hover:bg-phy-bg transition-colors"
+                                            >
+                                                恢复内置密钥
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-phy-muted ml-1">默认密钥已隐藏，用户可直接使用，不会在设置页明文显示。</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="password"
+                                            value={customMainKeyDraft}
+                                            onChange={(e) => setCustomMainKeyDraft(e.target.value)}
+                                            placeholder="输入自定义 API Key（不会显示默认内置 Key）"
+                                            className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-medium"
+                                        />
+                                        <button
+                                            onClick={handleSaveCustomMainKey}
+                                            disabled={!customMainKeyDraft.trim()}
+                                            className="px-4 py-3.5 rounded-xl text-sm font-bold bg-blue-600 text-white disabled:opacity-50"
+                                        >
+                                            保存并启用
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setShowCustomMainKeyInput(false);
+                                                setCustomMainKeyDraft('');
+                                            }}
+                                            className="px-4 py-3.5 rounded-xl text-sm font-bold border border-phy-border text-phy-muted hover:bg-phy-bg"
+                                        >
+                                            取消
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="md:col-span-2 rounded-xl border border-phy-border bg-phy-bg/50 p-4 space-y-3">
+                            <div className="text-xs font-bold text-phy-muted uppercase tracking-wider">
+                                API Profiles (Local)
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <input
-                                    type="password"
-                                    value={settings.apiKey}
-                                    onChange={(e) => updateSetting('apiKey', e.target.value)}
-                                    placeholder="sk-..."
-                                    className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-medium"
+                                    type="text"
+                                    value={apiProfileNameDraft}
+                                    onChange={(e) => setApiProfileNameDraft(e.target.value)}
+                                    placeholder="Profile name (optional)"
+                                    className="md:col-span-2 bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-phy-text"
                                 />
                                 <button
-                                    onClick={handleTest}
-                                    disabled={connectionStatus === 'testing' || !settings.apiKey}
-                                    className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 min-w-[140px] justify-center ${connectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
-                                        connectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
-                                            'bg-phy-glassHeavy text-white hover:bg-phy-glassHeavy shadow-lg shadow-slate-200'
-                                        }`}
+                                    onClick={handleSaveCurrentApiProfile}
+                                    disabled={!settings.apiBaseUrl || !settings.modelName || !settings.apiKey}
+                                    className="px-4 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                                 >
-                                    {connectionStatus === 'testing' ? (
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    ) : connectionStatus === 'success' ? (
-                                        <><CheckCircle size={16} /> 已验证</>
-                                    ) : connectionStatus === 'error' ? (
-                                        <><X size={16} /> 连接失败</>
-                                    ) : (
-                                        '测试连通性'
-                                    )}
+                                    <Save size={14} />
+                                    Save Current
                                 </button>
                             </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <select
+                                    value={selectedApiProfileId}
+                                    onChange={(e) => setSelectedApiProfileId(e.target.value)}
+                                    className="md:col-span-2 bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
+                                >
+                                    <option value="">Select saved profile</option>
+                                    {apiProfiles.map((profile) => (
+                                        <option key={profile.id} value={profile.id}>
+                                            {formatApiProfileOptionLabel(profile)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleApplySelectedApiProfile}
+                                        disabled={!selectedApiProfileId}
+                                        className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
+                                    >
+                                        Apply
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteSelectedApiProfile}
+                                        disabled={!selectedApiProfileId}
+                                        className="px-4 py-3 rounded-xl text-sm font-semibold border border-rose-500/40 text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                                        title="Delete selected profile"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <p className="text-[11px] text-phy-muted">
+                                Saved locally in this browser/app. Latest 20 profiles are kept for quick switching.
+                            </p>
                         </div>
                     </div>
                 </div>

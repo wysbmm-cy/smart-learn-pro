@@ -32,6 +32,7 @@ import ReactMarkdown from 'react-markdown';
 
 const STORAGE_KEY = 'exam_adversarial_session_v2';
 const HISTORY_KEY = 'exam_adversarial_history_v1';
+const HISTORY_FOLDER_KEY = 'exam_adversarial_history_folders_v1';
 const MOBILE_HEADER_MODE_KEY = 'exam_mobile_header_mode';
 const MOBILE_MARKS_COLLAPSED_KEY = 'exam_mobile_marks_collapsed';
 const HISTORY_LIMIT = 30;
@@ -51,6 +52,9 @@ const DEFAULT_SETUP = {
     passage: '',
     questionText: ''
 };
+
+const DEFAULT_HISTORY_FOLDER_ID = 'default';
+const DEFAULT_HISTORY_FOLDERS = [{ id: DEFAULT_HISTORY_FOLDER_ID, name: '默认文件夹' }];
 
 const splitParagraphs = (text = '') => {
     return String(text).split(/\n{1,}/).map((x) => x.trim()).filter(Boolean);
@@ -139,7 +143,7 @@ const toSafePaperSnapshot = (paper = {}) => {
     };
 };
 
-const buildHistoryRecord = ({ paper, setup, answers, result }) => {
+const buildHistoryRecord = ({ paper, setup, answers, result, folderId = DEFAULT_HISTORY_FOLDER_ID, entryType = 'submitted' }) => {
     const rows = [];
     (paper?.questions || []).forEach((q, idx) => {
         const userAnswer = toAnswer(answers[`mcq-${q.id}`] || '');
@@ -173,6 +177,8 @@ const buildHistoryRecord = ({ paper, setup, answers, result }) => {
     return {
         id: crypto.randomUUID(),
         createdAt: Date.now(),
+        folderId,
+        entryType,
         title: paper?.title || '阅读对抗训练',
         mode: setup?.mode || 'mixed',
         sourceType: setup?.sourceType || 'article',
@@ -223,6 +229,9 @@ const ExamView = ({ params = {} }) => {
         return saved === 'true';
     });
     const [examHistory, setExamHistory] = useState([]);
+    const [historyFolders, setHistoryFolders] = useState(DEFAULT_HISTORY_FOLDERS);
+    const [activeHistoryFolderId, setActiveHistoryFolderId] = useState('all');
+    const [newHistoryFolderName, setNewHistoryFolderName] = useState('');
     const [showHistory, setShowHistory] = useState(false);
     const [historyId, setHistoryId] = useState(null);
     const [wordMarks, setWordMarks] = useState([]);
@@ -308,10 +317,14 @@ const ExamView = ({ params = {} }) => {
             ? `提交并评分（${answeredCount}/${totalCount}，未答${unansweredCount}）`
             : `提交并评分（${answeredCount}/${totalCount}）`
     ), [answeredCount, totalCount, unansweredCount]);
+    const filteredHistory = useMemo(() => {
+        if (activeHistoryFolderId === 'all') return examHistory;
+        return examHistory.filter((x) => (x.folderId || DEFAULT_HISTORY_FOLDER_ID) === activeHistoryFolderId);
+    }, [examHistory, activeHistoryFolderId]);
     const selectedHistory = useMemo(() => {
-        if (!historyId) return examHistory[0] || null;
-        return examHistory.find((x) => x.id === historyId) || examHistory[0] || null;
-    }, [examHistory, historyId]);
+        if (!historyId) return filteredHistory[0] || null;
+        return filteredHistory.find((x) => x.id === historyId) || filteredHistory[0] || null;
+    }, [filteredHistory, historyId]);
     const selectedHistoryRows = useMemo(() => normalizeHistoryRows(selectedHistory), [selectedHistory]);
     const canRestoreSelectedHistory = useMemo(() => {
         const snap = selectedHistory?.paperSnapshot;
@@ -391,12 +404,42 @@ const ExamView = ({ params = {} }) => {
             if (!raw) return;
             const parsed = JSON.parse(raw);
             const list = Array.isArray(parsed) ? parsed : [];
-            setExamHistory(list.slice(0, HISTORY_LIMIT));
-            if (list[0]?.id) setHistoryId(list[0].id);
+            const normalized = list.slice(0, HISTORY_LIMIT).map((item) => ({
+                ...item,
+                folderId: item?.folderId || DEFAULT_HISTORY_FOLDER_ID
+            }));
+            setExamHistory(normalized);
+            if (normalized[0]?.id) setHistoryId(normalized[0].id);
         } catch (e) {
             console.error('Failed to load exam history:', e);
         }
     }, []);
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(HISTORY_FOLDER_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            const list = Array.isArray(parsed) ? parsed : [];
+            const normalized = list
+                .filter((x) => x?.id && x?.name)
+                .map((x) => ({ id: String(x.id), name: String(x.name) }));
+            const hasDefault = normalized.some((x) => x.id === DEFAULT_HISTORY_FOLDER_ID);
+            setHistoryFolders(hasDefault ? normalized : [...DEFAULT_HISTORY_FOLDERS, ...normalized]);
+        } catch (e) {
+            console.error('Failed to load exam history folders:', e);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!filteredHistory.length) {
+            setHistoryId(null);
+            return;
+        }
+        if (!filteredHistory.some((x) => x.id === historyId)) {
+            setHistoryId(filteredHistory[0].id);
+        }
+    }, [filteredHistory, historyId]);
 
     useEffect(() => {
         if (!paper) return;
@@ -565,6 +608,44 @@ const ExamView = ({ params = {} }) => {
         if (finalList[0]?.id) setHistoryId(finalList[0].id);
     };
 
+    const persistHistoryFolders = (foldersList) => {
+        const normalized = (Array.isArray(foldersList) ? foldersList : [])
+            .filter((x) => x?.id && x?.name)
+            .map((x) => ({ id: String(x.id), name: String(x.name) }));
+        const hasDefault = normalized.some((x) => x.id === DEFAULT_HISTORY_FOLDER_ID);
+        const finalFolders = hasDefault ? normalized : [...DEFAULT_HISTORY_FOLDERS, ...normalized];
+        setHistoryFolders(finalFolders);
+        localStorage.setItem(HISTORY_FOLDER_KEY, JSON.stringify(finalFolders));
+        return finalFolders;
+    };
+
+    const addHistoryFolder = () => {
+        const name = String(newHistoryFolderName || '').trim();
+        if (!name) return;
+        const exists = historyFolders.some((x) => x.name.toLowerCase() === name.toLowerCase());
+        if (exists) {
+            toast('该历史文件夹已存在');
+            return;
+        }
+        const id = crypto.randomUUID();
+        const next = [...historyFolders, { id, name }];
+        persistHistoryFolders(next);
+        setActiveHistoryFolderId(id);
+        setNewHistoryFolderName('');
+        toast.success('历史文件夹已创建');
+    };
+
+    const updateHistoryRecordFolder = (recordId, folderId) => {
+        const targetId = folderId || DEFAULT_HISTORY_FOLDER_ID;
+        const next = examHistory.map((item) => (
+            item.id === recordId
+                ? { ...item, folderId: targetId }
+                : item
+        ));
+        setExamHistory(next);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    };
+
     const removeHistoryItem = (id) => {
         const next = examHistory.filter((x) => x.id !== id);
         setExamHistory(next);
@@ -579,15 +660,35 @@ const ExamView = ({ params = {} }) => {
         localStorage.removeItem(HISTORY_KEY);
     };
 
-    const submitPaper = () => {
+    const getHistoryTargetFolderId = () => {
+        if (activeHistoryFolderId && activeHistoryFolderId !== 'all') return activeHistoryFolderId;
+        return DEFAULT_HISTORY_FOLDER_ID;
+    };
+
+    const addCurrentPaperToHistory = ({ markSubmitted }) => {
         if (!paper) return;
         const result = evaluatePaper(paper, answers);
-        setSubmitted(true);
-        setScore(result);
-        const record = buildHistoryRecord({ paper, setup, answers, result });
+        if (markSubmitted) {
+            setSubmitted(true);
+            setScore(result);
+        }
+        const record = buildHistoryRecord({
+            paper,
+            setup,
+            answers,
+            result,
+            folderId: getHistoryTargetFolderId(),
+            entryType: markSubmitted ? 'submitted' : 'saved'
+        });
         persistHistory([record, ...examHistory]);
-        toast.success(`已提交：${result.correct}/${result.total}，准确率 ${result.accuracy}%`);
+        if (markSubmitted) {
+            toast.success(`已提交：${result.correct}/${result.total}，准确率 ${result.accuracy}%`);
+        } else {
+            toast.success('已加入历史回顾，可随时回看');
+        }
     };
+
+    const submitPaper = () => addCurrentPaperToHistory({ markSubmitted: true });
 
     const restoreFromHistory = (record, retry = false) => {
         if (!record) return;
@@ -1306,9 +1407,41 @@ ${wordsToTranslate.join(', ')}`;
 
                 <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
                     <aside className="border-b md:border-b-0 md:border-r border-phy-border overflow-y-auto custom-scrollbar p-2">
-                        {examHistory.length === 0 ? (
+                        <div className="mb-2 space-y-2">
+                            <select
+                                value={activeHistoryFolderId}
+                                onChange={(e) => setActiveHistoryFolderId(e.target.value)}
+                                className="w-full bg-phy-bg border border-phy-border rounded-lg px-2.5 py-2 text-xs text-phy-text outline-none"
+                            >
+                                <option value="all">全部文件夹</option>
+                                {historyFolders.map((folder) => (
+                                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                ))}
+                            </select>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    value={newHistoryFolderName}
+                                    onChange={(e) => setNewHistoryFolderName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            addHistoryFolder();
+                                        }
+                                    }}
+                                    placeholder="新建历史文件夹"
+                                    className="flex-1 bg-phy-bg border border-phy-border rounded-lg px-2.5 py-1.5 text-xs text-phy-text outline-none"
+                                />
+                                <button
+                                    onClick={addHistoryFolder}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold border border-phy-border text-phy-text hover:bg-phy-bg"
+                                >
+                                    新建
+                                </button>
+                            </div>
+                        </div>
+                        {filteredHistory.length === 0 ? (
                             <div className="text-xs text-phy-muted p-3">暂无历史记录。提交第一份试卷后会显示在这里。</div>
-                        ) : examHistory.map((r) => (
+                        ) : filteredHistory.map((r) => (
                             <button
                                 key={r.id}
                                 onClick={() => setHistoryId(r.id)}
@@ -1334,6 +1467,18 @@ ${wordsToTranslate.join(', ')}`;
                                     <div className="text-sm text-phy-muted mt-1">
                                         得分 {selectedHistory.result.correct}/{selectedHistory.result.total} ({selectedHistory.result.accuracy}%)
                                         | 模式 {selectedHistory.mode === 'mixed' ? '混合' : selectedHistory.mode === 'reading' ? '阅读' : selectedHistory.mode === 'matching' ? '匹配' : '四六级标准'}
+                                    </div>
+                                    <div className="mt-2">
+                                        <label className="text-[11px] text-phy-muted">所属文件夹</label>
+                                        <select
+                                            value={selectedHistory.folderId || DEFAULT_HISTORY_FOLDER_ID}
+                                            onChange={(e) => updateHistoryRecordFolder(selectedHistory.id, e.target.value)}
+                                            className="mt-1 bg-phy-bg border border-phy-border rounded-lg px-2 py-1.5 text-xs text-phy-text outline-none"
+                                        >
+                                            {historyFolders.map((folder) => (
+                                                <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                     <div className="mt-3 flex flex-wrap gap-2">
                                         <button
@@ -1614,6 +1759,13 @@ ${wordsToTranslate.join(', ')}`;
                         重新训练
                     </button>
                     <button
+                        onClick={() => addCurrentPaperToHistory({ markSubmitted: false })}
+                        className="px-3 py-2 rounded-lg text-xs md:text-sm font-bold border border-amber-400/40 text-amber-100 bg-amber-500/15 hover:bg-amber-500/25 flex items-center gap-1.5"
+                    >
+                        <BookMarked size={14} />
+                        加入历史回顾
+                    </button>
+                    <button
                         onClick={submitPaper}
                         className="px-3 py-2 rounded-lg text-xs md:text-sm font-black bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5"
                     >
@@ -1706,6 +1858,13 @@ ${wordsToTranslate.join(', ')}`;
                                     保存到笔记
                                 </button>
                                 <button
+                                    onClick={() => addCurrentPaperToHistory({ markSubmitted: false })}
+                                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-amber-100 hover:bg-phy-glass inline-flex items-center gap-1.5"
+                                >
+                                    <BookMarked size={13} />
+                                    加入历史回顾
+                                </button>
+                                <button
                                     onClick={clearSession}
                                     className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold text-phy-muted hover:text-phy-text hover:bg-phy-glass inline-flex items-center gap-1.5"
                                 >
@@ -1740,6 +1899,13 @@ ${wordsToTranslate.join(', ')}`;
                             >
                                 <RotateCcw size={13} />
                                 重新训练
+                            </button>
+                            <button
+                                onClick={() => addCurrentPaperToHistory({ markSubmitted: false })}
+                                className="px-2.5 py-2 rounded-lg text-xs font-bold border border-amber-400/40 text-amber-100 bg-amber-500/15 hover:bg-amber-500/25 inline-flex items-center justify-center gap-1.5"
+                            >
+                                <BookMarked size={13} />
+                                加入历史
                             </button>
                             <button
                                 onClick={() => setMobileHeaderMode('compact')}

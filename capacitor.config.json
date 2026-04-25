@@ -1,6 +1,6 @@
 {
   "appId": "com.smartlearnpro.app",
-  "appName": "SmartLearn Pro",
+  "appName": "语脉 VerbaPath",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {

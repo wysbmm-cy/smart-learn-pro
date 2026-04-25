@@ -19,11 +19,15 @@ const TOOL_LABELS = {
     get_flashcard_stats: { label: 'Flashcard stats', icon: 'STAT' },
     get_study_history: { label: 'Study history', icon: 'HIS' },
     get_notes_summary: { label: 'Notes summary', icon: 'NOTE' },
+    get_note_detail: { label: 'Note detail', icon: 'NOTE+' },
     get_study_logs: { label: 'Study logs', icon: 'LOG' },
     get_user_goal: { label: 'User goal', icon: 'GOAL' },
     get_drill_performance: { label: 'Drill performance', icon: 'DRILL' },
     get_writing_history: { label: 'Writing history', icon: 'WRITE' },
     list_writing_materials: { label: 'Writing materials', icon: 'PACK' },
+    list_flashcard_folders: { label: 'Flashcard folders', icon: 'FOLD' },
+    list_flashcards: { label: 'Flashcard list', icon: 'CARD' },
+    organize_flashcards_to_note: { label: 'Folder to note', icon: 'SYNC' },
     create_writing_material: { label: 'Create material', icon: 'NEW' },
     update_writing_material: { label: 'Update material', icon: 'EDIT' },
     delete_writing_materials: { label: 'Delete material', icon: 'DEL' },
@@ -32,6 +36,11 @@ const TOOL_LABELS = {
     create_flashcards: { label: 'Create flashcards', icon: 'NEW' },
     update_flashcard: { label: 'Update flashcard', icon: 'EDIT' },
     delete_flashcards: { label: 'Delete flashcards', icon: 'DEL' },
+    flashcard_batch_delete: { label: 'Batch delete cards', icon: 'BDEL' },
+    flashcard_batch_move_folder: { label: 'Batch move folder', icon: 'MOVE' },
+    flashcard_batch_edit: { label: 'Batch edit cards', icon: 'BEDIT' },
+    flashcard_delete_by_rule: { label: 'Delete by rule', icon: 'RULE' },
+    flashcard_undo_last_batch: { label: 'Undo batch op', icon: 'UNDO' },
     create_note: { label: 'Create note', icon: 'NEW' },
     update_note: { label: 'Update note', icon: 'EDIT' },
     delete_notes: { label: 'Delete notes', icon: 'DEL' },
@@ -44,6 +53,9 @@ const TOOL_LABELS = {
     review_flashcards: { label: 'Quick review cards', icon: 'CARD' },
     create_interactive_quiz: { label: 'Interactive quiz', icon: 'QUIZ' },
     generate_deep_note: { label: 'Generate deep note', icon: 'NOTE+' },
+    note_create_deep_note: { label: 'Create deep note+', icon: 'NOTE+' },
+    note_append_today_folder: { label: 'Append today note', icon: 'NAPP' },
+    note_partial_sync_to_materials: { label: 'Sync note links', icon: 'SYNC' },
 };
 
 // View ID -> display info
@@ -58,6 +70,32 @@ const VIEW_INFO = {
     dashboard: { label: '仪表盘', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
     knowledge: { label: '知识图谱', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
     review: { label: '复习中心', icon: Brain, color: 'text-sky-600 bg-sky-50 border-sky-200' },
+};
+
+const formatToolArgs = (args) => {
+    if (!args || typeof args !== 'object') return '';
+    const keys = Object.keys(args).slice(0, 4);
+    if (!keys.length) return '';
+    return keys
+        .map((key) => {
+            const value = args[key];
+            const str = typeof value === 'string' ? value : JSON.stringify(value);
+            const clipped = String(str || '').replace(/\s+/g, ' ').slice(0, 36);
+            return `${key}: ${clipped}${String(str || '').length > 36 ? '...' : ''}`;
+        })
+        .join(' | ');
+};
+
+const summarizeToolResult = (tc) => {
+    if (tc?.error) return `Error: ${tc.error}`;
+    const result = tc?.result;
+    if (!result || typeof result !== 'object') return '';
+    if (result.error) return `Error: ${result.error}`;
+    if (result.message) return String(result.message);
+    if (result._action) return `Action: ${result._action}`;
+    const keys = Object.keys(result).slice(0, 3);
+    if (!keys.length) return '';
+    return keys.map((k) => `${k}=${String(result[k]).slice(0, 28)}`).join(' | ');
 };
 
 const ChatSidebar = ({ isMobileSheet = false }) => {
@@ -284,9 +322,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         const pureText = String(msgText || '').trim();
         if ((!pureText && attachments.length === 0) || isSending) return;
 
-        let aiUserMessage = pureText || '请分析我上传的图片内容。';
+        let aiUserMessage = pureText || 'Please analyze the uploaded image content.';
         const uiUserMessage = attachments.length > 0
-            ? `${aiUserMessage}\n\n[附加图片 ${attachments.length} 张]`
+            ? `${aiUserMessage}\n\n[Attached images: ${attachments.length}]`
             : aiUserMessage;
 
         addChatMessage('user', uiUserMessage);
@@ -301,13 +339,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                     const summary = await analyzeImagesForChat(
                         attachments.map((x) => x.dataUrl),
                         settings,
-                        '请提取图片里的文字并给出简洁内容说明，方便后续英语学习问答。'
+                        'Please extract key text from the image and provide a concise summary for follow-up Q&A.'
                     );
                     if (summary?.trim()) {
-                        aiUserMessage = `${aiUserMessage}\n\n[图片识别结果]\n${summary.trim()}`;
+                        aiUserMessage = `${aiUserMessage}\n\n[Image OCR Summary]\n${summary.trim()}`;
                     }
                 } catch (e) {
-                    aiUserMessage = `${aiUserMessage}\n\n[图片识别失败：${e.message}]`;
+                    aiUserMessage = `${aiUserMessage}\n\n[Image OCR failed: ${e.message}]`;
                 }
             }
 
@@ -332,19 +370,41 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             if (chatMode === 'agent') {
                 let fullResponse = "";
                 const collectedActions = [];
+                let planInjected = false;
+                let contentDeltaSeen = false;
 
                 await streamAgentChat(history, settings, (delta) => {
+                    if (delta) {
+                        contentDeltaSeen = true;
+                    }
                     fullResponse += delta;
                     scheduleStreamCommit(fullResponse);
                 }, (toolInfo) => {
+                    if (toolInfo?.status === 'plan') {
+                        const planText = String(toolInfo.planMarkdown || '').trim();
+                        if (planText) {
+                            if (!planInjected) {
+                                fullResponse = `${planText}\n\n`;
+                                planInjected = true;
+                            } else if (!fullResponse.includes(planText)) {
+                                fullResponse = `${planText}\n\n${fullResponse}`;
+                            }
+                            scheduleStreamCommit(fullResponse);
+                        }
+                        return;
+                    }
+
                     setToolCalls(prev => {
-                        const existing = prev.findIndex(t => t.name === toolInfo.name && t.status === 'calling');
+                        const existing = prev.findIndex(t =>
+                            (toolInfo.id && t.id && t.id === toolInfo.id) ||
+                            (!toolInfo.id && t.name === toolInfo.name && t.status === 'calling')
+                        );
                         if (existing >= 0) {
                             const updated = [...prev];
-                            updated[existing] = { ...updated[existing], status: toolInfo.status };
+                            updated[existing] = { ...updated[existing], ...toolInfo };
                             return updated;
                         }
-                        return [...prev, toolInfo];
+                        return [...prev, { ...toolInfo, createdAt: Date.now() }];
                     });
 
                     if (toolInfo.status === 'done' && toolInfo.result && toolInfo.result._action) {
@@ -353,11 +413,14 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                 });
 
                 // Agent fallback: ensure user still gets feedback when model returns empty text
-                if (!fullResponse.trim()) {
+                if (!contentDeltaSeen) {
                     const fallbackMsg = collectedActions.length > 0
                         ? 'Done. I completed the requested action.'
                         : 'Done. What should I help with next?'
-                    await flushStreamCommit(fallbackMsg, true);
+                    const merged = planInjected && fullResponse.trim()
+                        ? `${fullResponse}${fallbackMsg}`
+                        : fallbackMsg;
+                    await flushStreamCommit(merged, true);
                 } else {
                     await flushStreamCommit(fullResponse, true);
                 }
@@ -460,9 +523,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                         {chatMode === 'agent' ? <Zap size={18} /> : <Bot size={18} />}
                     </div>
                     <div className="flex flex-col -space-y-0.5">
-                        <span className="text-sm font-bold text-phy-text">{chatMode === 'agent' ? 'AI 智能体' : 'AI 导师'}</span>
+                        <span className="text-sm font-bold text-phy-text">{chatMode === 'agent' ? 'AI Agent' : 'AI Tutor'}</span>
                         <span className="text-[10px] text-phy-muted font-medium uppercase tracking-wider">
-                            {chatMode === 'agent' ? '全能助手' : '学习导航'}
+                            {chatMode === 'agent' ? '鍏ㄨ兘鍔╂墜' : '瀛︿範瀵艰埅'}
                         </span>
                     </div>
                 </div>
@@ -476,10 +539,10 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                 ? 'bg-phy-accent text-white shadow-sm'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="导师模式"
+                            title="瀵煎笀妯″紡"
                         >
                             <MessageCircle size={14} />
-                            <span className="text-[11px] font-bold">聊天</span>
+                            <span className="text-[11px] font-bold">鑱婂ぉ</span>
                         </button>
                         <button
                             onClick={() => setChatMode('agent')}
@@ -487,10 +550,10 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                 ? 'bg-phy-accent text-white shadow-sm'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="智能体模式"
+                            title="Agent mode"
                         >
                             <Zap size={14} />
-                            <span className="text-[11px] font-bold">智能体</span>
+                            <span className="text-[11px] font-bold">Agent</span>
                         </button>
                     </div>
 
@@ -499,7 +562,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                     <button
                         onClick={() => setViewMode(prev => prev === 'chat' ? 'history' : 'chat')}
                         className={`p-1.5 rounded-lg transition-colors ${viewMode === 'history' ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glassHeavy text-phy-muted'}`}
-                        title="对话历史"
+                        title="瀵硅瘽鍘嗗彶"
                     >
                         <History size={18} />
                     </button>
@@ -524,13 +587,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                         }}
                         className="w-full flex items-center justify-center gap-2 py-3 bg-phy-glass border border-dashed border-indigo-300 text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors font-bold text-sm shadow-sm"
                     >
-                        <Plus size={16} /> 开启新对话
+                        <Plus size={16} /> Start New Chat
                     </button>
 
-                    <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mt-4 px-2">最近对话</div>
+                    <div className="text-xs font-bold text-phy-muted uppercase tracking-wider mt-4 px-2">Recent Chats</div>
 
                     {(!chatSessions || chatSessions.length === 0) && (
-                        <div className="text-center py-8 text-phy-muted text-sm italic">未找到历史记录。</div>
+                        <div className="text-center py-8 text-phy-muted text-sm italic">No chat history yet.</div>
                     )}
 
                     {(chatSessions || []).map(session => (
@@ -544,19 +607,19 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                     ? 'bg-phy-glass border-phy-accent shadow-md ring-2 ring-phy-accent/20'
                                     : 'bg-phy-bg border-phy-border hover:border-phy-accentHover hover:bg-phy-glassHeavy'}`}
                             >
-                                <div className="font-bold text-phy-text text-sm truncate pr-6">{session.title || "新对话"}</div>
+                                <div className="font-bold text-phy-text text-sm truncate pr-6">{session.title || "New chat"}</div>
                                 <div className="text-[10px] text-phy-muted mt-1 flex justify-between items-center">
                                     <span>{new Date(session.updatedAt || Date.now()).toLocaleDateString()}</span>
-                                    <span>{session.messages?.length || 0} 条消息</span>
+                                    <span>{session.messages?.length || 0} messages</span>
                                 </div>
                             </button>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm("确定要删除此对话吗？")) removeChatSession(session.id);
+                                    if (confirm("纭畾瑕佸垹闄ゆ瀵硅瘽鍚楋紵")) removeChatSession(session.id);
                                 }}
                                 className="absolute right-2 top-3 p-1.5 text-phy-text hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                                title="删除"
+                                title="鍒犻櫎"
                             >
                                 <Trash2 size={14} />
                             </button>
@@ -580,12 +643,12 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         {chatMode === 'agent' ? <Zap size={28} /> : <Bot size={28} />}
                                     </div>
                                     <h2 className="text-lg font-bold text-phy-text mb-1">
-                                        {chatMode === 'agent' ? 'AI 学习助手' : '英语学习导师'}
+                                        {chatMode === 'agent' ? 'VerbaPath Agent' : 'VerbaPath Tutor'}
                                     </h2>
                                     <p className="text-xs text-phy-muted max-w-[240px] mx-auto leading-relaxed">
                                         {chatMode === 'agent'
-                                            ? '我可以分析你的学习数据、整理闪卡，并为你提供个性化的学习建议。'
-                                            : '我可以回答你关于语法、词汇或学习方法的所有问题。'
+                                            ? 'I can read your learning data and execute in-app actions for you.'
+                                            : 'Ask me anything about grammar, vocabulary, and learning methods.'
                                         }
                                     </p>
                                 </div>
@@ -593,11 +656,11 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                 {chatMode === 'agent' && (
                                     <div className="grid grid-cols-1 gap-2.5">
                                         {[
-                                            { label: '生成每日计划', hint: '根据数据定制学习日程', cmd: '请根据我的学习数据生成一个实用的每日学习计划。' },
-                                            { label: '闪卡表现分析', hint: '查看统计数据与薄弱词汇', cmd: '我想看看我的闪卡统计数据和薄弱单词。' },
-                                            { label: '单词深度笔记', hint: '深度解析单词 "ephemeral"', cmd: '为单词 ephemeral 生成一份深度学习笔记。' },
-                                            { label: '阅读强化练习', hint: '根据最新文章生成测验', cmd: '根据我最近读的文章生成一份阅读测验。' },
-                                            { label: '写作表达特训', hint: '针对生词生成造句练习', cmd: '针对我最近学习的一些难词生成造句练习。' }
+                                            { label: 'Generate daily plan', hint: 'Create a focused study schedule', cmd: 'Generate a practical daily study plan from my recent learning data.' },
+                                            { label: 'Analyze flashcards', hint: 'Show stats and weak words', cmd: 'Show my flashcard stats and weak words.' },
+                                            { label: 'Create deep note', hint: 'Deep note for "ephemeral"', cmd: 'Create a deep note for the word ephemeral and sync useful parts.' },
+                                            { label: 'Reading quiz', hint: 'Build quiz from latest article', cmd: 'Create a reading quiz from my latest article.' },
+                                            { label: 'Sentence practice', hint: 'Practice with difficult words', cmd: 'Create sentence practice using my recent difficult words.' }
                                         ].map((item, i) => (
                                             <button
                                                 key={i}
@@ -645,27 +708,47 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             </div>
                         ))}
 
-                        {/* Tool Call Visualization (Agent Mode) */}
-                        {isSending && chatMode === 'agent' && toolCalls.length > 0 && (
+                                                {/* Tool Call Visualization (Agent Mode) */}
+                        {chatMode === 'agent' && toolCalls.length > 0 && (
                             <div className="mx-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 animate-fade-in">
                                 <div className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
                                     <Database size={12} />
-                                    智能体正在调用工具...
+                                    {isSending ? 'Agent tool calls running...' : 'Latest Agent tool calls'}
                                 </div>
-                                {toolCalls.map((tc, i) => {
-                                    const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '*' };
-                                    return (
-                                        <div key={i} className="flex items-center gap-2 text-xs text-amber-600">
-                                            <span>{toolInfo.icon}</span>
-                                            <span>{toolInfo.label}</span>
-                                            {tc.status === 'calling' ? (
-                                                <Loader2 size={12} className="animate-spin ml-auto text-amber-400" />
-                                            ) : (
-                                                <CheckCircle2 size={12} className="ml-auto text-green-500" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                    {toolCalls.map((tc, i) => {
+                                        const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '*' };
+                                        const argsText = formatToolArgs(tc.args);
+                                        const resultText = summarizeToolResult(tc);
+                                        const isError = tc.status === 'error';
+                                        return (
+                                            <div key={`${tc.id || tc.name}-${i}`} className="rounded-lg border border-amber-200/80 bg-white/70 px-2.5 py-2 text-xs text-amber-700 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{toolInfo.icon}</span>
+                                                    <span className="font-semibold">{toolInfo.label}</span>
+                                                    <span className="text-[10px] text-amber-500 font-mono">{tc.name}</span>
+                                                    {tc.status === 'calling' ? (
+                                                        <Loader2 size={12} className="animate-spin ml-auto text-amber-400" />
+                                                    ) : isError ? (
+                                                        <X size={12} className="ml-auto text-red-500" />
+                                                    ) : (
+                                                        <CheckCircle2 size={12} className="ml-auto text-green-500" />
+                                                    )}
+                                                </div>
+                                                {argsText && (
+                                                    <div className="text-[10px] text-amber-700/90">
+                                                        Args: {argsText}
+                                                    </div>
+                                                )}
+                                                {resultText && (
+                                                    <div className={`text-[10px] ${isError ? 'text-red-600' : 'text-emerald-700'}`}>
+                                                        {resultText}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 
@@ -674,7 +757,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             <div className="mx-2 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl space-y-3 animate-fade-in">
                                 <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
                                     <CheckCircle2 size={14} />
-                                    任务已完成。请点击下方目标前往查看：
+                                    浠诲姟宸插畬鎴愩€傝鐐瑰嚮涓嬫柟鐩爣鍓嶅線鏌ョ湅锛?
                                 </div>
                                 <div className="space-y-2">
                                     {pendingActions.map((action, i) => {
@@ -772,7 +855,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                         {showSuggestions && suggestions.length > 0 && (
                             <div className="absolute bottom-full left-4 right-4 mb-2 bg-phy-glass rounded-xl shadow-2xl border border-phy-border overflow-hidden max-h-60 overflow-y-auto animate-fade-in z-50">
                                 <div className="px-3 py-2 bg-phy-bg border-b border-phy-border text-xs font-bold text-phy-muted uppercase tracking-wider">
-                                    引用上下文
+                                    寮曠敤涓婁笅鏂?
                                 </div>
                                 {suggestions.map((item, idx) => (
                                     <button
@@ -805,9 +888,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         <button
                                             onClick={() => removeImageAttachment(img.id)}
                                             className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] flex items-center justify-center"
-                                            title="移除"
+                                            title="绉婚櫎"
                                         >
-                                            ×
+                                            脳
                                         </button>
                                     </div>
                                 ))}
@@ -853,13 +936,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                     }
                                     if (e.key === 'Escape') setShowSuggestions(false);
                                 }}
-                                placeholder={chatMode === 'agent' ? '让 Agent 读取数据、导航页面或执行操作（创建闪卡、笔记等）...' : '问我任何问题... (输入 @ 引用上下文)'}
+                                placeholder={chatMode === 'agent' ? 'Ask the Agent to read data and do actions (create/edit/delete/navigate)...' : 'Ask me anything... (use @ to reference context)'}
                                 className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-20 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
                             />
                             <button
                                 onClick={() => imageInputRef.current?.click()}
                                 className="absolute right-11 top-2 p-2 text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy rounded-lg transition-colors"
-                                title="上传图片或粘贴截图"
+                                title="Upload image or paste screenshot"
                             >
                                 <ImagePlus size={16} />
                             </button>
@@ -879,5 +962,6 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
 };
 
 export default ChatSidebar;
+
 
 

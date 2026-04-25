@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage, getFolders, saveFolder, getWritingMaterials, saveWritingMaterial, deleteWritingMaterial } from '../services/db';
+import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage, getFolders, saveFolder, getWritingMaterials, saveWritingMaterial, deleteWritingMaterial, getWritings, getTranslationLogs, getChatSessions } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 import { resolveTodayNotesFolderName } from '../utils/noteFolders';
 import { parseKnowledgeBlocks, normalizeKnowledgeLinkingSettings, getDefaultKnowledgeLinkingSettings, upsertTranslationLinkedExamplesForNote, removeTranslationLinkedExamplesByNoteId } from '../utils/knowledgeLinking';
@@ -57,11 +57,26 @@ const AppContext = createContext();
 
 export const useApp = () => useContext(AppContext);
 
+export const BUILTIN_API_CONFIG = {
+    mainApiBaseUrl: 'https://api.moonshot.cn/v1',
+    mainModelName: 'kimi-k2-0905-preview',
+    mainApiKey: 'sk-oZJYOSFELAIMihGSsTILis6FDgWTUB0xnujShpivalzUr9Ci',
+    audioApiBaseUrl: 'https://api.siliconflow.cn/v1',
+    audioApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
+    audioModelName: 'TeleAI/TeleSpeechASR',
+    ttsApiBaseUrl: 'https://api.siliconflow.cn/v1',
+    ttsApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
+    ttsModelName: 'fnlp/MOSS-TTSD-v0.5',
+    ttsVoice: 'fnlp/MOSS-TTSD-v0.5:alex',
+};
+
 // Initial default settings
 const DEFAULT_SETTINGS = {
-    apiBaseUrl: 'https://api.moonshot.cn/v1',
-    modelName: 'kimi-k2-0905-preview',
-    apiKey: 'sk-oZJYOSFELAIMihGSsTILis6FDgWTUB0xnujShpivalzUr9Ci',
+    apiBaseUrl: BUILTIN_API_CONFIG.mainApiBaseUrl,
+    modelName: BUILTIN_API_CONFIG.mainModelName,
+    apiKey: BUILTIN_API_CONFIG.mainApiKey,
+    apiProfiles: [],
+    activeApiProfileId: '',
     preloadAll: true,
     maxReviewCards: 0,  // 0 = unlimited, otherwise cap per session
     writingLevel: "CET-6",
@@ -102,18 +117,18 @@ Output Format: Markdown (Strictly follow this structure):
 ### 6. 考试应用与备考策略
 - **考察频率：** [High/Medium]
 - **写作/翻译提分点：** [Tips]`,
-    systemPrompt: "You are SmartLearn AI, an intelligent and helpful English tutor. You are powered by advanced AI technology. Answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
+    systemPrompt: "You are VerbaPath AI, an intelligent and helpful English tutor inside the 语脉 VerbaPath learning platform. You are powered by advanced AI technology. Answer questions in Markdown format, using bolding and lists to optimize the reading experience.",
 
     // Audio API Settings (Separate)
-    audioApiBaseUrl: 'https://api.siliconflow.cn/v1', // TeleAI endpoint is usually standard OpenAI format
-    audioApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
-    audioModelName: 'TeleAI/TeleSpeechASR',
+    audioApiBaseUrl: BUILTIN_API_CONFIG.audioApiBaseUrl, // TeleAI endpoint is usually standard OpenAI format
+    audioApiKey: BUILTIN_API_CONFIG.audioApiKey,
+    audioModelName: BUILTIN_API_CONFIG.audioModelName,
 
     // TTS Settings (SiliconFlow / MOSS)
-    ttsApiBaseUrl: 'https://api.siliconflow.cn/v1',
-    ttsApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr', // Same as audioApiKey
-    ttsModelName: 'fnlp/MOSS-TTSD-v0.5',
-    ttsVoice: 'fnlp/MOSS-TTSD-v0.5:alex',
+    ttsApiBaseUrl: BUILTIN_API_CONFIG.ttsApiBaseUrl,
+    ttsApiKey: BUILTIN_API_CONFIG.ttsApiKey, // Same as audioApiKey
+    ttsModelName: BUILTIN_API_CONFIG.ttsModelName,
+    ttsVoice: BUILTIN_API_CONFIG.ttsVoice,
 
     // Appearance (Zen Mode)
     backgroundImage: 'https://images.unsplash.com/photo-1497436072909-60f360e1d4b0?q=80&w=2560&auto=format&fit=crop', // Nature by default
@@ -232,11 +247,183 @@ export const AppProvider = ({ children }) => {
         });
     };
 
+    const toLocalDateKey = (value = Date.now()) => {
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
+
+    const parseTimeValue = (value) => {
+        if (value === null || value === undefined) return null;
+        if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+        if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) return null;
+            if (/^\d+$/.test(trimmed)) {
+                const asNumber = Number(trimmed);
+                return Number.isFinite(asNumber) ? asNumber : null;
+            }
+            const parsed = new Date(trimmed);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+        }
+        return null;
+    };
+
+    const isOnLocalDay = (value, dayKey) => {
+        const ts = parseTimeValue(value);
+        if (ts === null) return false;
+        return toLocalDateKey(ts) === dayKey;
+    };
+
+    const getWordCount = (text = '') => String(text || '').trim().split(/\s+/).filter(Boolean).length;
+
+    const extractKeywordsFromTexts = (texts = [], limit = 12) => {
+        const stopwords = new Set([
+            'the', 'and', 'for', 'with', 'that', 'this', 'from', 'your', 'you', 'are', 'was', 'were', 'have', 'has',
+            'had', 'into', 'about', 'what', 'when', 'where', 'which', 'while', 'they', 'them', 'their', 'our', 'out',
+            'can', 'could', 'should', 'would', 'will', 'than', 'then', 'there', 'also', 'very', 'more', 'most', 'some',
+            'such', 'using', 'used', 'being', 'been', 'over', 'under', 'between', 'across', 'today', 'yesterday'
+        ]);
+        const counts = new Map();
+        texts.forEach((item) => {
+            const words = String(item || '').toLowerCase().match(/[a-z][a-z-]{2,}/g) || [];
+            words.forEach((word) => {
+                if (stopwords.has(word)) return;
+                counts.set(word, (counts.get(word) || 0) + 1);
+            });
+        });
+        return [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, limit)
+            .map(([word]) => word);
+    };
+
+    const inferTopicTheme = (keywords = [], sourceText = '') => {
+        const combined = `${keywords.join(' ')} ${String(sourceText || '').toLowerCase()}`;
+        const themeMap = {
+            technology: ['ai', 'technology', 'digital', 'internet', 'platform', 'algorithm', 'software', 'data'],
+            humanities: ['history', 'culture', 'society', 'ethics', 'philosophy', 'literature', 'art'],
+            business: ['business', 'market', 'economy', 'finance', 'trade', 'management', 'startup'],
+            science: ['science', 'research', 'experiment', 'biology', 'physics', 'chemistry', 'climate'],
+            education: ['education', 'learning', 'classroom', 'student', 'teacher', 'exam', 'vocabulary', 'translation', 'writing']
+        };
+
+        let bestTheme = 'general';
+        let bestScore = 0;
+        Object.entries(themeMap).forEach(([theme, words]) => {
+            const score = words.reduce((sum, w) => sum + (combined.includes(w) ? 1 : 0), 0);
+            if (score > bestScore) {
+                bestTheme = theme;
+                bestScore = score;
+            }
+        });
+
+        const hintMap = {
+            technology: 'futuristic interfaces, digital networks, neon data streams',
+            humanities: 'editorial collage, books, people, cultural motifs',
+            business: 'clean dashboard, strategy board, city lights, confident structure',
+            science: 'laboratory precision, molecules, charts, discovery energy',
+            education: 'study desk, notebooks, language symbols, growth trajectory',
+            general: 'balanced study atmosphere, progress, focus, calm energy'
+        };
+
+        return {
+            topicTheme: bestTheme,
+            topicHint: hintMap[bestTheme] || hintMap.general
+        };
+    };
+
+    const buildYesterdayStudyProfile = async () => {
+        const now = new Date();
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = toLocalDateKey(yesterday);
+
+        const [
+            allCards,
+            allNotes,
+            allHistory,
+            allChats,
+            allWritings,
+            allTranslationLogs,
+            yesterdayHighlights
+        ] = await Promise.all([
+            getFlashcards(),
+            getNotes(),
+            getHistory(),
+            getChatSessions(),
+            getWritings(),
+            getTranslationLogs(300),
+            getHighlightsByDate(yesterdayKey)
+        ]);
+
+        const reviewedCards = (allCards || []).filter((card) =>
+            isOnLocalDay(card?.lastReviewed ?? card?.lastReview ?? card?.fsrs_last_review, yesterdayKey)
+        );
+        const newCards = (allCards || []).filter((card) =>
+            isOnLocalDay(card?.createdAt ?? card?.timestamp ?? card?.id, yesterdayKey)
+        );
+        const noteRows = (allNotes || []).filter((note) =>
+            isOnLocalDay(note?.updatedAt ?? note?.date ?? note?.createdAt, yesterdayKey)
+        );
+        const readingRows = (allHistory || []).filter((row) =>
+            isOnLocalDay(row?.timestamp ?? row?.date ?? row?.createdAt, yesterdayKey)
+        );
+        const writingRows = (allWritings || []).filter((row) =>
+            isOnLocalDay(row?.updatedAt ?? row?.createdAt, yesterdayKey)
+        );
+        const translationRows = (allTranslationLogs || []).filter((row) =>
+            isOnLocalDay(row?.createdAt ?? row?.updatedAt, yesterdayKey)
+        );
+        const chatRows = (allChats || []).filter((row) =>
+            isOnLocalDay(row?.updatedAt, yesterdayKey)
+        );
+
+        const keywordTexts = [
+            ...(readingRows || []).map((row) => `${row?.summary || ''} ${row?.article || ''}`),
+            ...(writingRows || []).map((row) => `${row?.title || ''} ${row?.content || ''}`),
+            ...(noteRows || []).map((row) => `${row?.title || ''} ${row?.content || ''}`),
+            ...(translationRows || []).map((row) => `${row?.scenario || ''} ${(row?.targetWords || []).join(' ')}`),
+            ...(yesterdayHighlights || []).map((row) => row?.content || '')
+        ].filter(Boolean);
+
+        const keywords = extractKeywordsFromTexts(keywordTexts, 12);
+        const { topicTheme, topicHint } = inferTopicTheme(keywords, keywordTexts.join(' ').slice(0, 2400));
+
+        return {
+            date: yesterdayKey,
+            wordsLearned: reviewedCards.length,
+            flashcardsReviewed: reviewedCards.length,
+            newFlashcards: newCards.length,
+            articlesRead: readingRows.length,
+            notesCreated: noteRows.length,
+            writingSessions: writingRows.length,
+            writingCount: writingRows.reduce((sum, row) => sum + getWordCount(row?.content || ''), 0),
+            translationCount: translationRows.length,
+            questionsAsked: chatRows.length,
+            highlightsCount: (yesterdayHighlights || []).length,
+            keywords,
+            topicTheme,
+            topicHint,
+            highlights: yesterdayHighlights || []
+        };
+    };
+
     // --- Global Task Runners ---
-    const runDailyImageGeneration = async (highlights, style, todayStats) => {
+    const runDailyImageGeneration = async (highlights, style = 'auto', todayStats) => {
         setBgTasks(prev => ({ ...prev, dailyImage: { status: 'loading', url: null } }));
         try {
-            const url = await generateDailySummaryImage(highlights, settings, style, todayStats);
+            const profile = (todayStats && Object.keys(todayStats || {}).length)
+                ? todayStats
+                : await buildYesterdayStudyProfile();
+            const effectiveHighlights = Array.isArray(highlights)
+                ? highlights
+                : (profile?.highlights || []);
+            const url = await generateDailySummaryImage(effectiveHighlights, settings, style, profile);
             setBgTasks(prev => ({ ...prev, dailyImage: { status: 'done', url } }));
 
             if (url) {
@@ -256,11 +443,15 @@ export const AppProvider = ({ children }) => {
 
                 await saveDailyImage({
                     id: Date.now().toString(),
-                    date: new Date().toISOString().split('T')[0],
+                    date: profile?.date || toLocalDateKey(Date.now()),
                     type: 'summary',
                     url: savedUrl,
                     style: style,
-                    metadata: { stats: todayStats },
+                    metadata: {
+                        stats: profile,
+                        keywords: profile?.keywords || [],
+                        topicTheme: profile?.topicTheme || 'general'
+                    },
                     createdAt: new Date().toISOString()
                 });
             }

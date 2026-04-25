@@ -23,6 +23,11 @@ import {
 } from './db';
 import { resolveTodayNotesFolderName } from '../utils/noteFolders';
 import { normalizeMaterialCategory } from '../data/writingMaterials';
+import {
+    parseKnowledgeBlocks,
+    upsertTranslationLinkedExamplesForNote,
+    removeTranslationLinkedExamplesByNoteId
+} from '../utils/knowledgeLinking';
 
 const id = (p) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const firstLine = (t) => (t || '').split('\n')[0].split('/')[0].trim();
@@ -30,6 +35,7 @@ const today = () => new Date().toISOString().split('T')[0];
 const isDue = (c, now = Date.now()) => !c.nextReview || c.nextReview <= now;
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 const clean = (v) => String(v ?? '').trim();
+const AGENT_FLASHCARD_BATCH_UNDO_KEY = 'agent_flashcard_last_batch_undo_v1';
 const byCount = (list, pick) => {
     const m = new Map();
     for (const item of list || []) {
@@ -37,6 +43,73 @@ const byCount = (list, pick) => {
         m.set(k, (m.get(k) || 0) + 1);
     }
     return Array.from(m.entries()).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
+};
+
+const readUndoSnapshot = () => {
+    try {
+        const raw = localStorage.getItem(AGENT_FLASHCARD_BATCH_UNDO_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
+
+const writeUndoSnapshot = (payload) => {
+    try {
+        if (!payload) {
+            localStorage.removeItem(AGENT_FLASHCARD_BATCH_UNDO_KEY);
+            return;
+        }
+        localStorage.setItem(AGENT_FLASHCARD_BATCH_UNDO_KEY, JSON.stringify(payload));
+    } catch {
+        // ignore
+    }
+};
+
+const normalizeWordNeedles = (values = []) =>
+    arr(values).map((x) => clean(x).toLowerCase()).filter(Boolean);
+
+const clampBatchLimit = (value, fallback = 200) =>
+    Math.max(1, Math.min(500, Number(value) || fallback));
+
+const pickCardsByCriteria = async (params = {}, now = Date.now()) => {
+    const [cards, folders] = await Promise.all([getFlashcards(), getFolders()]);
+    const allCards = arr(cards);
+    const folderById = new Map(arr(folders).map((f) => [String(f.id), String(f.name || '')]));
+    const folderByName = new Map(arr(folders).map((f) => [String(f.name || '').toLowerCase(), String(f.id)]));
+
+    const ids = new Set(arr(params.ids).map((x) => clean(x)).filter(Boolean));
+    const words = normalizeWordNeedles(params.words);
+    const query = clean(params.query).toLowerCase();
+    const folderIdInput = clean(params.folderId);
+    const folderNameInput = clean(params.folderName).toLowerCase();
+    const resolvedFolderId = folderIdInput || folderByName.get(folderNameInput) || '';
+    const onlyDue = params.onlyDue === true;
+    const onlyMastered = params.onlyMastered === true;
+    const onlyFlagged = params.onlyFlagged === true;
+    const limit = clampBatchLimit(params.limit, 200);
+
+    const matched = allCards.filter((c) => {
+        const cardId = String(c.id || '');
+        const front = String(c.front || '');
+        const back = String(c.back || '');
+        const word = firstLine(front).toLowerCase();
+        const folderId = String(c.folderId || '');
+        const folderName = String(folderById.get(folderId) || '').toLowerCase();
+        const hay = `${front}\n${back}\n${arr(c.tags).join(' ')}`.toLowerCase();
+
+        if (ids.size > 0 && !ids.has(cardId)) return false;
+        if (words.length > 0 && !words.some((w) => word === w || word.includes(w) || hay.includes(w))) return false;
+        if (query && !hay.includes(query)) return false;
+        if (resolvedFolderId && folderId !== resolvedFolderId) return false;
+        if (!resolvedFolderId && folderNameInput && folderName !== folderNameInput) return false;
+        if (onlyDue && !isDue(c, now)) return false;
+        if (onlyMastered && !c.isMastered) return false;
+        if (onlyFlagged && !c.isFlagged) return false;
+        return true;
+    });
+
+    return matched.slice(0, limit);
 };
 
 const ensureFolder = async (name) => {
@@ -52,6 +125,177 @@ const ensureFolder = async (name) => {
 const getDefaultNoteFolderName = async () => {
     const folders = await getFolders();
     return resolveTodayNotesFolderName(folders, today());
+};
+
+const inferGuidanceCategory = (text = '', section = '') => {
+    const hay = `${String(text || '')}\n${String(section || '')}`.toLowerCase();
+    if (/conclusion|summary|closing/.test(hay)) return 'conclusion';
+    if (/transition|however|although|concession|contrast/.test(hay)) return 'transition';
+    if (/thesis|opening|stance|introduction/.test(hay)) return 'thesis';
+    if (/evidence|example|data|proof/.test(hay)) return 'evidence';
+    if (/vocabulary|replace|lexical/.test(hay)) return 'vocabulary';
+    return 'argument';
+};
+
+const clearLinkedWritingMaterialsByNoteId = async (noteId) => {
+    const sourceNoteId = clean(noteId);
+    if (!sourceNoteId) return 0;
+    const all = arr(await getWritingMaterials());
+    const linked = all.filter(
+        (item) => item?.source === 'deep_note' && String(item?.sourceNoteId || '').trim() === sourceNoteId
+    );
+    for (const item of linked) {
+        await deleteWritingMaterial(item.id);
+    }
+    return linked.length;
+};
+
+const resolveFlashcardFolder = async ({ folderId, folderName } = {}) => {
+    const idNeedle = clean(folderId);
+    const nameNeedle = clean(folderName).toLowerCase();
+    const folders = arr(await getFolders());
+    if (idNeedle) {
+        return folders.find((f) => String(f.id) === idNeedle) || null;
+    }
+    if (nameNeedle) {
+        return folders.find((f) => clean(f.name).toLowerCase() === nameNeedle) || null;
+    }
+    return null;
+};
+
+const stringifyCardContent = (card = {}) => {
+    const front = String(card.front || '').trim();
+    const back = String(card.back || '').trim();
+    const word = firstLine(front) || '(untitled card)';
+    return {
+        id: String(card.id || ''),
+        word,
+        front,
+        back,
+        folderId: clean(card.folderId) || null,
+        updatedAt: Number(card.updatedAt || card.createdAt || 0) || null
+    };
+};
+
+const buildFlashcardsMarkdownBlock = (cards = [], folderName = '', heading = '') => {
+    const title = clean(heading) || `Flashcards from ${folderName || 'Selected Folder'}`;
+    const lines = [
+        `## ${title}`,
+        ``,
+        `Total cards: ${cards.length}`,
+        ``
+    ];
+    cards.forEach((card, idx) => {
+        const normalized = stringifyCardContent(card);
+        lines.push(`${idx + 1}. **${normalized.word}**`);
+        lines.push(`   - Front: ${normalized.front || '(empty)'}`);
+        lines.push(`   - Back: ${normalized.back || '(empty)'}`);
+        lines.push('');
+    });
+    return lines.join('\n').trim();
+};
+
+const readNoteById = async (noteId) => {
+    const allNotes = arr(await getNotes());
+    return allNotes.find((n) => String(n.id) === String(noteId)) || null;
+};
+
+const verifyNoteWrite = async ({ noteId, expectedMinLength = 1 } = {}) => {
+    const saved = await readNoteById(noteId);
+    if (!saved) {
+        return { ok: false, reason: 'Note write verification failed: note not found after save.' };
+    }
+    const length = String(saved.content || '').trim().length;
+    if (length < Math.max(0, Number(expectedMinLength) || 0)) {
+        return { ok: false, reason: `Note write verification failed: content length ${length} is below expected minimum.` };
+    }
+    return { ok: true, note: saved, contentLength: length };
+};
+
+const syncNoteKnowledgeToTargets = async ({
+    noteRecord,
+    includeWriting = true,
+    includeTranslation = true,
+    clearExisting = false,
+    maxItems = 30,
+    settings = {}
+} = {}) => {
+    const noteId = clean(noteRecord?.id);
+    if (!noteId) return { writingSaved: 0, translationSaved: 0, parsedCount: 0, removed: 0 };
+
+    const parsedBlocks = arr(parseKnowledgeBlocks(noteRecord?.content || '', noteId));
+    const limit = Math.max(1, Math.min(200, Number(maxItems) || 30));
+    let removed = 0;
+    let writingSaved = 0;
+    let translationSaved = 0;
+
+    if (clearExisting) {
+        if (includeWriting) {
+            removed += await clearLinkedWritingMaterialsByNoteId(noteId);
+        }
+        if (includeTranslation) {
+            removeTranslationLinkedExamplesByNoteId(noteId);
+        }
+    }
+
+    if (includeWriting) {
+        const guidanceBlocks = parsedBlocks.filter((item) => item.type === 'writing_guidance').slice(0, limit);
+        for (let i = 0; i < guidanceBlocks.length; i += 1) {
+            const block = guidanceBlocks[i];
+            const safeHash = clean(block?.sourceHash);
+            if (!safeHash) continue;
+
+            const directive = clean(block?.meta?.directive).toLowerCase();
+            const parsedCategory = clean(block?.meta?.category).toLowerCase();
+            const category = directive === 'vocab'
+                ? 'vocabulary'
+                : (parsedCategory ? normalizeMaterialCategory(parsedCategory) : inferGuidanceCategory(block.text, block.section));
+
+            await saveWritingMaterial({
+                id: `deep-note-${safeHash}`,
+                title: clean(block?.meta?.title) || `${clean(noteRecord?.title) || 'Deep Note'} / ${clean(block.section) || `Guidance ${i + 1}`}`,
+                content: clean(block.text),
+                rewrite: '',
+                usage: clean(block?.meta?.usage) || `From note: ${clean(noteRecord?.title)}`,
+                caution: clean(block?.meta?.caution),
+                sourceTerm: clean(block?.meta?.sourceTerm),
+                targetTerm: clean(block?.meta?.targetTerm),
+                replaceReason: clean(block?.meta?.replaceReason),
+                beforeExample: '',
+                afterExample: clean(block?.meta?.afterExample),
+                category,
+                topic: clean(block?.meta?.topic) || clean(noteRecord?.title),
+                examType: clean(settings?.writingLevel) || 'CET-6',
+                tags: ['deep-note', 'linked'],
+                source: 'deep_note',
+                sourceNoteId: noteId,
+                sourceNoteTitle: clean(noteRecord?.title),
+                sourceHash: safeHash,
+                sourceSection: clean(block?.section)
+            });
+            writingSaved += 1;
+        }
+    }
+
+    if (includeTranslation) {
+        const exampleBlocks = parsedBlocks.filter((item) => item.type === 'examples').slice(0, limit);
+        const merged = upsertTranslationLinkedExamplesForNote({
+            noteId,
+            noteTitle: clean(noteRecord?.title),
+            blocks: exampleBlocks
+        });
+        translationSaved = exampleBlocks.length;
+        if (!Array.isArray(merged) && exampleBlocks.length > 0) {
+            translationSaved = 0;
+        }
+    }
+
+    return {
+        parsedCount: parsedBlocks.length,
+        writingSaved,
+        translationSaved,
+        removed
+    };
 };
 
 const normalizeCard = (raw = {}) => {
@@ -134,6 +378,11 @@ export const AGENT_TOOLS = [
     fn('get_flashcard_stats', 'Get flashcard statistics.'),
     fn('get_study_history', 'Get recent study/import history.', { limit: { type: 'number' } }),
     fn('get_notes_summary', 'Get notes summary.', { limit: { type: 'number' } }),
+    fn('get_note_detail', 'Get one note detail (including full content) by id or title.', {
+        id: { type: 'string' },
+        title: { type: 'string' },
+        query: { type: 'string' }
+    }),
     fn('get_study_logs', 'Get study logs summary.', { limit: { type: 'number' } }),
     fn('get_user_goal', 'Get user goal.'),
     fn('get_drill_performance', 'Get drill performance.', { days: { type: 'number' } }),
@@ -168,6 +417,16 @@ export const AGENT_TOOLS = [
     }),
     fn('get_highlights', 'Get highlights.', { limit: { type: 'number' } }),
     fn('get_tasks', 'Get task list.', { includeCompleted: { type: 'boolean' } }),
+    fn('list_flashcard_folders', 'List flashcard folders and optional card counts.', {
+        includeCounts: { type: 'boolean' }
+    }),
+    fn('list_flashcards', 'List flashcards with folder/name/query filters and full front/back content.', {
+        folderId: { type: 'string' },
+        folderName: { type: 'string' },
+        query: { type: 'string' },
+        words: { type: 'array', items: { type: 'string' } },
+        limit: { type: 'number' }
+    }),
     fn('create_flashcards', 'Create flashcards.', {
         cards: {
             type: 'array',
@@ -204,6 +463,67 @@ export const AGENT_TOOLS = [
         words: { type: 'array', items: { type: 'string' } },
         limit: { type: 'number' }
     }),
+    fn('flashcard_batch_delete', 'Batch delete flashcards by mixed filters (ids/words/query/folder/due/mastered/flagged).', {
+        ids: { type: 'array', items: { type: 'string' } },
+        words: { type: 'array', items: { type: 'string' } },
+        query: { type: 'string' },
+        folderId: { type: 'string' },
+        folderName: { type: 'string' },
+        onlyDue: { type: 'boolean' },
+        onlyMastered: { type: 'boolean' },
+        onlyFlagged: { type: 'boolean' },
+        limit: { type: 'number' },
+        dryRun: { type: 'boolean' }
+    }),
+    fn('flashcard_batch_move_folder', 'Batch move flashcards to another folder with mixed filters.', {
+        ids: { type: 'array', items: { type: 'string' } },
+        words: { type: 'array', items: { type: 'string' } },
+        query: { type: 'string' },
+        folderId: { type: 'string' },
+        folderName: { type: 'string' },
+        onlyDue: { type: 'boolean' },
+        onlyMastered: { type: 'boolean' },
+        onlyFlagged: { type: 'boolean' },
+        limit: { type: 'number' },
+        targetFolderId: { type: 'string' },
+        targetFolderName: { type: 'string' },
+        dryRun: { type: 'boolean' }
+    }),
+    fn('flashcard_batch_edit', 'Batch edit flashcards (tags, mastered/flagged, append/replace front/back).', {
+        ids: { type: 'array', items: { type: 'string' } },
+        words: { type: 'array', items: { type: 'string' } },
+        query: { type: 'string' },
+        folderId: { type: 'string' },
+        folderName: { type: 'string' },
+        onlyDue: { type: 'boolean' },
+        onlyMastered: { type: 'boolean' },
+        onlyFlagged: { type: 'boolean' },
+        limit: { type: 'number' },
+        setTags: { type: 'array', items: { type: 'string' } },
+        addTags: { type: 'array', items: { type: 'string' } },
+        removeTags: { type: 'array', items: { type: 'string' } },
+        setMastered: { type: 'boolean' },
+        setFlagged: { type: 'boolean' },
+        prependFront: { type: 'string' },
+        appendFront: { type: 'string' },
+        prependBack: { type: 'string' },
+        appendBack: { type: 'string' },
+        replaceFrontFrom: { type: 'string' },
+        replaceFrontTo: { type: 'string' },
+        replaceBackFrom: { type: 'string' },
+        replaceBackTo: { type: 'string' },
+        dryRun: { type: 'boolean' }
+    }),
+    fn('flashcard_delete_by_rule', 'Delete flashcards by strict rules (duplicate/empty/no_front/no_back/mastered/flagged/weakness_above).', {
+        rule: {
+            type: 'string',
+            enum: ['duplicate', 'empty', 'no_front', 'no_back', 'mastered', 'flagged', 'weakness_above']
+        },
+        threshold: { type: 'number' },
+        limit: { type: 'number' },
+        dryRun: { type: 'boolean' }
+    }, ['rule']),
+    fn('flashcard_undo_last_batch', 'Undo last flashcard batch operation executed by agent.'),
     fn('create_note', 'Create note.', { title: { type: 'string' }, content: { type: 'string' }, folder: { type: 'string' } }, ['title', 'content']),
     fn('update_note', 'Update note by id.', { id: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' }, folder: { type: 'string' } }, ['id']),
     fn('delete_notes', 'Delete notes by ids or titles.', {
@@ -258,6 +578,44 @@ export const AGENT_TOOLS = [
         translation: { type: 'string' },
         folder: { type: 'string' },
         title: { type: 'string' }
+    }),
+    fn('note_create_deep_note', 'Create a deep note (word/topic), save to today folder by default, and optionally sync to writing materials/translation examples.', {
+        word: { type: 'string' },
+        topic: { type: 'string' },
+        flashcardId: { type: 'string' },
+        context: { type: 'string' },
+        translation: { type: 'string' },
+        folder: { type: 'string' },
+        title: { type: 'string' },
+        syncToWriting: { type: 'boolean' },
+        syncToTranslation: { type: 'boolean' },
+        clearExistingLinks: { type: 'boolean' }
+    }),
+    fn('note_append_today_folder', 'Append or prepend content into a note in today folder (auto-create if missing).', {
+        noteId: { type: 'string' },
+        title: { type: 'string' },
+        heading: { type: 'string' },
+        content: { type: 'string' },
+        mode: { type: 'string', enum: ['append', 'prepend'] },
+        syncKnowledge: { type: 'boolean' },
+        syncToWriting: { type: 'boolean' },
+        syncToTranslation: { type: 'boolean' }
+    }, ['content']),
+    fn('note_partial_sync_to_materials', 'Sync one note to writing materials and/or translation linked examples.', {
+        noteId: { type: 'string' },
+        title: { type: 'string' },
+        toWriting: { type: 'boolean' },
+        toTranslation: { type: 'boolean' },
+        clearExisting: { type: 'boolean' },
+        maxItems: { type: 'number' }
+    }),
+    fn('organize_flashcards_to_note', 'Collect flashcards from a folder and write them into one note with verification.', {
+        sourceFolderId: { type: 'string' },
+        sourceFolderName: { type: 'string' },
+        noteId: { type: 'string' },
+        noteTitle: { type: 'string' },
+        noteFolder: { type: 'string' },
+        mode: { type: 'string', enum: ['append', 'replace'] }
     })
 ];
 
@@ -294,6 +652,31 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             const limit = Math.max(1, Math.min(100, Number(params.limit) || 20));
             const notes = (await getNotes()) || [];
             return { total: notes.length, latest: notes.slice(0, limit).map((n) => ({ id: n.id, title: n.title, folder: n.folder || null, updatedAt: n.updatedAt })) };
+        }
+        case 'get_note_detail': {
+            const notes = arr(await getNotes());
+            const idNeedle = clean(params.id);
+            const titleNeedle = clean(params.title).toLowerCase();
+            const queryNeedle = clean(params.query).toLowerCase();
+            const note = notes.find((n) => {
+                if (idNeedle && String(n.id) === idNeedle) return true;
+                if (titleNeedle && String(n.title || '').trim().toLowerCase() === titleNeedle) return true;
+                if (queryNeedle) {
+                    const hay = `${n.title || ''}\n${n.content || ''}`.toLowerCase();
+                    return hay.includes(queryNeedle);
+                }
+                return false;
+            });
+            if (!note) {
+                return { error: 'Note not found. Provide id, title, or query.' };
+            }
+            return {
+                id: note.id,
+                title: note.title || '',
+                folder: note.folder || null,
+                content: String(note.content || ''),
+                updatedAt: note.updatedAt || null
+            };
         }
         case 'get_study_logs': {
             const limit = Math.max(1, Math.min(200, Number(params.limit) || 50));
@@ -428,6 +811,145 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             const tasks = ((await getTasks()) || []).filter((t) => includeCompleted || !t.completed);
             return { total: tasks.length, pending: tasks.filter((t) => !t.completed).length, completed: tasks.filter((t) => t.completed).length, items: tasks.slice(0, 100) };
         }
+        case 'list_flashcard_folders': {
+            const includeCounts = params.includeCounts !== false;
+            const [folders, cards] = await Promise.all([getFolders(), getFlashcards()]);
+            const cardRows = arr(cards);
+            const folderRows = arr(folders);
+            const counts = new Map();
+            if (includeCounts) {
+                for (const card of cardRows) {
+                    const key = clean(card.folderId) || '__uncategorized__';
+                    counts.set(key, (counts.get(key) || 0) + 1);
+                }
+            }
+            const items = folderRows.map((folder) => ({
+                id: String(folder.id),
+                name: clean(folder.name),
+                count: includeCounts ? (counts.get(String(folder.id)) || 0) : undefined
+            }));
+            if (includeCounts && (counts.get('__uncategorized__') || 0) > 0) {
+                items.push({
+                    id: '',
+                    name: 'Uncategorized',
+                    count: counts.get('__uncategorized__') || 0
+                });
+            }
+            return { total: items.length, items };
+        }
+        case 'list_flashcards': {
+            const limit = Math.max(1, Math.min(500, Number(params.limit) || 100));
+            const folder = await resolveFlashcardFolder({
+                folderId: params.folderId,
+                folderName: params.folderName
+            });
+            const words = normalizeWordNeedles(params.words);
+            const queryNeedle = clean(params.query).toLowerCase();
+            const cards = arr(await getFlashcards());
+            const filtered = cards.filter((card) => {
+                const normalized = stringifyCardContent(card);
+                if (folder && clean(normalized.folderId) !== clean(folder.id)) return false;
+                const hay = `${normalized.word}\n${normalized.front}\n${normalized.back}`.toLowerCase();
+                if (words.length > 0 && !words.some((w) => hay.includes(w))) return false;
+                if (queryNeedle && !hay.includes(queryNeedle)) return false;
+                return true;
+            });
+            const rows = filtered
+                .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+                .slice(0, limit)
+                .map(stringifyCardContent);
+            return {
+                totalMatched: filtered.length,
+                returned: rows.length,
+                folder: folder ? { id: String(folder.id), name: clean(folder.name) } : null,
+                items: rows
+            };
+        }
+        case 'organize_flashcards_to_note': {
+            const sourceFolder = await resolveFlashcardFolder({
+                folderId: params.sourceFolderId,
+                folderName: params.sourceFolderName
+            });
+            if (!sourceFolder) {
+                return { error: 'Source folder not found. Provide sourceFolderId or sourceFolderName.' };
+            }
+
+            const allCards = arr(await getFlashcards());
+            const sourceCards = allCards
+                .filter((c) => clean(c.folderId) === clean(sourceFolder.id))
+                .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+
+            if (!sourceCards.length) {
+                return { error: `No flashcards found in folder "${clean(sourceFolder.name)}".` };
+            }
+
+            const noteBlock = buildFlashcardsMarkdownBlock(
+                sourceCards,
+                clean(sourceFolder.name),
+                clean(params.heading) || `${clean(sourceFolder.name)} Flashcards`
+            );
+
+            const mode = clean(params.mode).toLowerCase() === 'replace' ? 'replace' : 'append';
+            const noteIdNeedle = clean(params.noteId);
+            const noteTitleNeedle = clean(params.noteTitle).toLowerCase();
+            const allNotes = arr(await getNotes());
+
+            let targetNote = noteIdNeedle
+                ? allNotes.find((n) => String(n.id) === noteIdNeedle) || null
+                : null;
+            if (!targetNote && noteTitleNeedle) {
+                targetNote = allNotes.find((n) => clean(n.title).toLowerCase() === noteTitleNeedle) || null;
+            }
+
+            const noteFolder = clean(params.noteFolder)
+                || clean(targetNote?.folder)
+                || await getDefaultNoteFolderName();
+            await ensureFolder(noteFolder);
+
+            const nextTitle = clean(params.noteTitle)
+                || clean(targetNote?.title)
+                || `${clean(sourceFolder.name)} Learning Review`;
+            const previous = String(targetNote?.content || '').trim();
+            const nextContent = mode === 'replace' || !previous
+                ? noteBlock
+                : `${previous}\n\n---\n\n${noteBlock}`;
+
+            const nextNote = {
+                ...(targetNote || {
+                    id: id('agent_note_pack'),
+                    date: new Date().toISOString()
+                }),
+                title: nextTitle,
+                folder: noteFolder,
+                content: nextContent,
+                updatedAt: Date.now()
+            };
+
+            await saveNote(nextNote);
+            const verified = await verifyNoteWrite({
+                noteId: nextNote.id,
+                expectedMinLength: Math.max(1, String(nextContent).trim().length)
+            });
+            if (!verified.ok) return { error: verified.reason };
+
+            return {
+                _action: 'organized_flashcards_to_note',
+                _navigateTo: 'notes',
+                _navigateToParams: { id: nextNote.id },
+                noteId: nextNote.id,
+                noteTitle: nextNote.title,
+                noteFolder: nextNote.folder,
+                sourceFolder: {
+                    id: String(sourceFolder.id),
+                    name: clean(sourceFolder.name)
+                },
+                cardsCount: sourceCards.length,
+                sampleWords: sourceCards.slice(0, 12).map((c) => firstLine(c.front)),
+                contentLength: verified.contentLength,
+                mode,
+                message: `Organized ${sourceCards.length} flashcards from "${clean(sourceFolder.name)}" into note "${nextNote.title}".`
+            };
+        }
         case 'create_flashcards': {
             const cards = arr(params.cards);
             if (!cards.length) return { error: 'cards is required and must be a non-empty array.' };
@@ -493,6 +1015,250 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             for (const x of targetIds) await deleteFlashcard(x);
             return { _action: 'deleted_flashcards', _navigateTo: 'flashcards', deleted: targetIds.length, ids: targetIds, message: `Deleted ${targetIds.length} flashcards.` };
         }
+        case 'flashcard_batch_delete': {
+            const dryRun = params.dryRun === true;
+            const matched = await pickCardsByCriteria(params, now);
+            if (!matched.length) return { error: 'No flashcards matched the batch delete filters.' };
+
+            const snapshot = {
+                op: 'batch_delete',
+                createdAt: Date.now(),
+                cards: matched
+            };
+
+            if (dryRun) {
+                return {
+                    _action: 'flashcard_batch_delete_preview',
+                    _navigateTo: 'flashcards',
+                    count: matched.length,
+                    ids: matched.map((c) => c.id),
+                    words: matched.map((c) => firstLine(c.front)).slice(0, 20),
+                    message: `Preview: ${matched.length} flashcards would be deleted.`
+                };
+            }
+
+            for (const c of matched) await deleteFlashcard(c.id);
+            writeUndoSnapshot(snapshot);
+            return {
+                _action: 'flashcard_batch_delete',
+                _navigateTo: 'flashcards',
+                deleted: matched.length,
+                ids: matched.map((c) => c.id),
+                message: `Deleted ${matched.length} flashcards in batch. You can undo this operation.`
+            };
+        }
+        case 'flashcard_batch_move_folder': {
+            const dryRun = params.dryRun === true;
+            const targetFolderIdInput = clean(params.targetFolderId);
+            const targetFolderNameInput = clean(params.targetFolderName);
+            if (!targetFolderIdInput && !targetFolderNameInput) {
+                return { error: 'targetFolderId or targetFolderName is required.' };
+            }
+
+            const matched = await pickCardsByCriteria(params, now);
+            if (!matched.length) return { error: 'No flashcards matched the batch move filters.' };
+
+            let targetFolderId = targetFolderIdInput;
+            let targetFolderName = targetFolderNameInput;
+            if (!targetFolderId) {
+                const folder = await ensureFolder(targetFolderNameInput);
+                targetFolderId = folder?.id || null;
+                targetFolderName = folder?.name || targetFolderNameInput;
+            } else if (!targetFolderName) {
+                const folders = await getFolders();
+                const found = arr(folders).find((f) => String(f.id) === String(targetFolderId));
+                targetFolderName = found?.name || '';
+            }
+
+            const before = matched.map((c) => ({ ...c }));
+            const updated = matched.map((c) => ({
+                ...c,
+                folderId: targetFolderId,
+                updatedAt: Date.now()
+            }));
+
+            if (dryRun) {
+                return {
+                    _action: 'flashcard_batch_move_preview',
+                    _navigateTo: 'flashcards',
+                    count: updated.length,
+                    targetFolderId,
+                    targetFolderName,
+                    message: `Preview: ${updated.length} flashcards would be moved to ${targetFolderName || targetFolderId}.`
+                };
+            }
+
+            for (const c of updated) await saveFlashcard(c);
+            writeUndoSnapshot({
+                op: 'batch_move_folder',
+                createdAt: Date.now(),
+                cards: before
+            });
+            return {
+                _action: 'flashcard_batch_move_folder',
+                _navigateTo: 'flashcards',
+                moved: updated.length,
+                targetFolderId,
+                targetFolderName,
+                message: `Moved ${updated.length} flashcards to ${targetFolderName || targetFolderId}.`
+            };
+        }
+        case 'flashcard_batch_edit': {
+            const dryRun = params.dryRun === true;
+            const matched = await pickCardsByCriteria(params, now);
+            if (!matched.length) return { error: 'No flashcards matched the batch edit filters.' };
+
+            const setTags = params.setTags !== undefined ? arr(params.setTags).map(clean).filter(Boolean) : null;
+            const addTags = arr(params.addTags).map(clean).filter(Boolean);
+            const removeTags = new Set(arr(params.removeTags).map((x) => clean(x).toLowerCase()).filter(Boolean));
+
+            const replaceFrontFrom = clean(params.replaceFrontFrom);
+            const replaceFrontTo = String(params.replaceFrontTo ?? '');
+            const replaceBackFrom = clean(params.replaceBackFrom);
+            const replaceBackTo = String(params.replaceBackTo ?? '');
+
+            const before = matched.map((c) => ({ ...c }));
+            const updated = matched.map((card) => {
+                let front = String(card.front || '');
+                let back = String(card.back || '');
+                if (clean(params.prependFront)) front = `${String(params.prependFront)}${front}`;
+                if (clean(params.appendFront)) front = `${front}${String(params.appendFront)}`;
+                if (clean(params.prependBack)) back = `${String(params.prependBack)}${back}`;
+                if (clean(params.appendBack)) back = `${back}${String(params.appendBack)}`;
+
+                if (replaceFrontFrom) front = front.split(replaceFrontFrom).join(replaceFrontTo);
+                if (replaceBackFrom) back = back.split(replaceBackFrom).join(replaceBackTo);
+
+                let nextTags = setTags ? [...setTags] : arr(card.tags);
+                if (addTags.length) {
+                    const s = new Set(nextTags.map((x) => String(x)));
+                    addTags.forEach((x) => s.add(x));
+                    nextTags = Array.from(s);
+                }
+                if (removeTags.size > 0) {
+                    nextTags = nextTags.filter((x) => !removeTags.has(String(x).toLowerCase()));
+                }
+
+                const next = {
+                    ...card,
+                    front,
+                    back,
+                    tags: nextTags,
+                    updatedAt: Date.now()
+                };
+                if (params.setMastered !== undefined) next.isMastered = !!params.setMastered;
+                if (params.setFlagged !== undefined) next.isFlagged = !!params.setFlagged;
+                return next;
+            });
+
+            if (dryRun) {
+                return {
+                    _action: 'flashcard_batch_edit_preview',
+                    _navigateTo: 'flashcards',
+                    count: updated.length,
+                    sample: updated.slice(0, 3).map((c) => ({ id: c.id, word: firstLine(c.front), tags: c.tags || [] })),
+                    message: `Preview: ${updated.length} flashcards would be edited.`
+                };
+            }
+
+            for (const c of updated) await saveFlashcard(c);
+            writeUndoSnapshot({
+                op: 'batch_edit',
+                createdAt: Date.now(),
+                cards: before
+            });
+            return {
+                _action: 'flashcard_batch_edit',
+                _navigateTo: 'flashcards',
+                edited: updated.length,
+                message: `Edited ${updated.length} flashcards in batch.`
+            };
+        }
+        case 'flashcard_delete_by_rule': {
+            const dryRun = params.dryRun === true;
+            const rule = clean(params.rule).toLowerCase();
+            const limit = clampBatchLimit(params.limit, 200);
+            const allCards = arr(await getFlashcards());
+            let matched = [];
+
+            if (rule === 'duplicate') {
+                const groups = new Map();
+                for (const card of allCards) {
+                    const key = firstLine(card.front).toLowerCase();
+                    if (!key) continue;
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(card);
+                }
+                for (const group of groups.values()) {
+                    if (group.length <= 1) continue;
+                    const sorted = [...group].sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+                    matched.push(...sorted.slice(1));
+                }
+            } else if (rule === 'empty') {
+                matched = allCards.filter((c) => !clean(c.front) || !clean(c.back));
+            } else if (rule === 'no_front') {
+                matched = allCards.filter((c) => !clean(c.front));
+            } else if (rule === 'no_back') {
+                matched = allCards.filter((c) => !clean(c.back));
+            } else if (rule === 'mastered') {
+                matched = allCards.filter((c) => !!c.isMastered);
+            } else if (rule === 'flagged') {
+                matched = allCards.filter((c) => !!c.isFlagged);
+            } else if (rule === 'weakness_above') {
+                const threshold = Number(params.threshold);
+                const floor = Number.isFinite(threshold) ? threshold : 80;
+                matched = allCards.filter((c) => Number(c.weaknessScore || 0) >= floor);
+            } else {
+                return { error: `Unsupported rule: ${rule}` };
+            }
+
+            matched = matched.slice(0, limit);
+            if (!matched.length) return { error: `No flashcards matched rule: ${rule}` };
+
+            if (dryRun) {
+                return {
+                    _action: 'flashcard_delete_by_rule_preview',
+                    _navigateTo: 'flashcards',
+                    rule,
+                    count: matched.length,
+                    words: matched.map((c) => firstLine(c.front)).slice(0, 20),
+                    message: `Preview: ${matched.length} flashcards would be deleted by rule ${rule}.`
+                };
+            }
+
+            for (const c of matched) await deleteFlashcard(c.id);
+            writeUndoSnapshot({
+                op: 'delete_by_rule',
+                rule,
+                createdAt: Date.now(),
+                cards: matched
+            });
+            return {
+                _action: 'flashcard_delete_by_rule',
+                _navigateTo: 'flashcards',
+                rule,
+                deleted: matched.length,
+                message: `Deleted ${matched.length} flashcards by rule ${rule}.`
+            };
+        }
+        case 'flashcard_undo_last_batch': {
+            const snapshot = readUndoSnapshot();
+            if (!snapshot?.cards || !Array.isArray(snapshot.cards) || snapshot.cards.length === 0) {
+                return { error: 'No undo snapshot available for flashcard batch operations.' };
+            }
+            for (const card of snapshot.cards) {
+                await saveFlashcard(card);
+            }
+            const restored = snapshot.cards.length;
+            writeUndoSnapshot(null);
+            return {
+                _action: 'flashcard_undo_last_batch',
+                _navigateTo: 'flashcards',
+                restored,
+                op: snapshot.op || 'unknown',
+                message: `Undo completed. Restored ${restored} flashcards from last batch operation.`
+            };
+        }
         case 'create_note': {
             const { title, content } = params;
             if (!title || !content) return { error: 'title and content are required.' };
@@ -507,7 +1273,16 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 updatedAt: Date.now()
             };
             await saveNote(note);
-            return { _action: 'created_note', _navigateTo: 'notes', id: note.id, message: `Created note: ${note.title}` };
+            const verified = await verifyNoteWrite({ noteId: note.id, expectedMinLength: 1 });
+            if (!verified.ok) return { error: verified.reason };
+            return {
+                _action: 'created_note',
+                _navigateTo: 'notes',
+                _navigateToParams: { id: note.id },
+                id: note.id,
+                contentLength: verified.contentLength,
+                message: `Created note: ${note.title}`
+            };
         }
         case 'update_note': {
             const { id: noteId } = params;
@@ -524,7 +1299,17 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 updatedAt: Date.now()
             };
             await saveNote(updated);
-            return { _action: 'updated_note', _navigateTo: 'notes', id: noteId, message: `Updated note: ${updated.title || noteId}` };
+            const expectedMinLength = params.content !== undefined ? Math.max(1, String(params.content || '').trim().length) : 1;
+            const verified = await verifyNoteWrite({ noteId, expectedMinLength });
+            if (!verified.ok) return { error: verified.reason };
+            return {
+                _action: 'updated_note',
+                _navigateTo: 'notes',
+                _navigateToParams: { id: noteId },
+                id: noteId,
+                contentLength: verified.contentLength,
+                message: `Updated note: ${updated.title || noteId}`
+            };
         }
         case 'delete_notes': {
             const ids = arr(params.ids);
@@ -689,13 +1474,158 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 message: `Generated deep note for ${word}.`
             };
         }
+        case 'note_create_deep_note': {
+            const deepNoteParams = {
+                ...params,
+                word: clean(params.word) || clean(params.topic),
+                folder: clean(params.folder) || await getDefaultNoteFolderName()
+            };
+            if (!deepNoteParams.word && !deepNoteParams.flashcardId) {
+                return { error: 'Provide word/topic or flashcardId to create deep note.' };
+            }
+
+            const generated = await executeAgentTool('generate_deep_note', deepNoteParams, options);
+            if (generated?.error) return generated;
+
+            const includeWriting = params.syncToWriting !== false;
+            const includeTranslation = params.syncToTranslation !== false;
+            if (includeWriting || includeTranslation) {
+                const note = arr(await getNotes()).find((n) => String(n.id) === String(generated.noteId));
+                if (note) {
+                    const synced = await syncNoteKnowledgeToTargets({
+                        noteRecord: note,
+                        includeWriting,
+                        includeTranslation,
+                        clearExisting: params.clearExistingLinks === true,
+                        maxItems: 30,
+                        settings
+                    });
+                    return {
+                        ...generated,
+                        _action: 'note_create_deep_note',
+                        synced,
+                        message: `${generated.message} Synced ${synced.writingSaved} materials and ${synced.translationSaved} translation examples.`
+                    };
+                }
+            }
+            return {
+                ...generated,
+                _action: 'note_create_deep_note'
+            };
+        }
+        case 'note_append_today_folder': {
+            const content = String(params.content || '').trim();
+            if (!content) return { error: 'content is required.' };
+
+            const mode = clean(params.mode).toLowerCase() === 'prepend' ? 'prepend' : 'append';
+            const todayFolder = await getDefaultNoteFolderName();
+            await ensureFolder(todayFolder);
+
+            const allNotes = arr(await getNotes());
+            let targetNote = null;
+            const noteId = clean(params.noteId);
+            if (noteId) {
+                targetNote = allNotes.find((n) => String(n.id) === noteId) || null;
+            }
+            if (!targetNote) {
+                const title = clean(params.title) || `Today Notes ${today()}`;
+                targetNote = allNotes.find(
+                    (n) => clean(n.title).toLowerCase() === title.toLowerCase() && clean(n.folder).toLowerCase() === clean(todayFolder).toLowerCase()
+                ) || null;
+                if (!targetNote) {
+                    targetNote = {
+                        id: id('agent_note_today'),
+                        title,
+                        content: '',
+                        folder: todayFolder,
+                        date: new Date().toISOString(),
+                        updatedAt: Date.now()
+                    };
+                }
+            }
+
+            const heading = clean(params.heading);
+            const block = heading ? `\n\n### ${heading}\n${content}\n` : `\n\n${content}\n`;
+            const current = String(targetNote.content || '').trim();
+            const nextContent = mode === 'prepend'
+                ? `${content}\n\n${current}`.trim()
+                : `${current}${block}`.trim();
+
+            const updated = {
+                ...targetNote,
+                folder: todayFolder,
+                content: nextContent,
+                updatedAt: Date.now()
+            };
+            await saveNote(updated);
+
+            const syncKnowledge = params.syncKnowledge === true;
+            let synced = null;
+            if (syncKnowledge) {
+                synced = await syncNoteKnowledgeToTargets({
+                    noteRecord: updated,
+                    includeWriting: params.syncToWriting !== false,
+                    includeTranslation: params.syncToTranslation !== false,
+                    clearExisting: false,
+                    maxItems: 30,
+                    settings
+                });
+            }
+
+            return {
+                _action: 'note_append_today_folder',
+                _navigateTo: 'notes',
+                _navigateToParams: { id: updated.id },
+                noteId: updated.id,
+                folder: todayFolder,
+                mode,
+                synced,
+                message: `Updated note "${updated.title}" in today folder.`
+            };
+        }
+        case 'note_partial_sync_to_materials': {
+            const includeWriting = params.toWriting !== false;
+            const includeTranslation = params.toTranslation !== false;
+            if (!includeWriting && !includeTranslation) {
+                return { error: 'Enable at least one target: toWriting or toTranslation.' };
+            }
+
+            const allNotes = arr(await getNotes());
+            const noteId = clean(params.noteId);
+            const titleNeedle = clean(params.title).toLowerCase();
+            const note = noteId
+                ? allNotes.find((n) => String(n.id) === noteId)
+                : allNotes.find((n) => clean(n.title).toLowerCase() === titleNeedle || clean(n.title).toLowerCase().includes(titleNeedle));
+
+            if (!note) {
+                return { error: 'Note not found. Provide a valid noteId or title.' };
+            }
+
+            const synced = await syncNoteKnowledgeToTargets({
+                noteRecord: note,
+                includeWriting,
+                includeTranslation,
+                clearExisting: params.clearExisting === true,
+                maxItems: Number(params.maxItems) || 30,
+                settings
+            });
+
+            return {
+                _action: 'note_partial_sync_to_materials',
+                _navigateTo: includeWriting ? 'writer' : 'translation',
+                noteId: note.id,
+                noteTitle: note.title,
+                ...synced,
+                message: `Synced note "${note.title}": ${synced.writingSaved} materials, ${synced.translationSaved} translation examples.`
+            };
+        }
         default:
             return { error: `Unknown tool: ${toolName}` };
     }
 }
 
 export const AGENT_SYSTEM_PROMPT = `
-You are SmartLearn Pro Agent.
+You are VerbaPath Agent for the 语脉 VerbaPath learning platform.
 
 Your role:
 - Use tools to read the user's learning data.
@@ -704,8 +1634,14 @@ Your role:
 
 Execution policy:
 - If a user asks to do something in-app, call the matching tool.
+- Before write operations, prefer read/list tools first to confirm target ids or names.
 - For deletion, prefer precise ids and keep scope limited when matching by names/words.
+- For batch flashcard deletes, prefer dryRun=true first, then execute after user confirmation intent is clear.
 - For deep note requests, prefer generate_deep_note and save results into Notes.
+- For note linking requests, use note_partial_sync_to_materials or note_create_deep_note with sync options.
+- For note editing, first read existing content with get_note_detail, then update with update_note or note_append_today_folder.
+- Never claim write success until tool result confirms verification fields (for notes: noteId/contentLength).
+- If user asks to sync selected note knowledge into writing/translation, include @material / @translation_example / @vocab_replace style directives in note content, then call note_partial_sync_to_materials.
 - For coaching/writing/quiz tasks, produce practical, user-level content.
 
 Response style:

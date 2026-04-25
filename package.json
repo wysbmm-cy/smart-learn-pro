@@ -2,7 +2,7 @@
   "name": "smartlearnpro",
   "private": true,
   "version": "0.1.8",
-  "description": "AI English Learning Assistant",
+  "description": "VerbaPath AI English learning platform",
   "author": "User <user@example.com>",
   "type": "module",
   "main": "electron/main.cjs",
@@ -22,7 +22,7 @@
   },
   "build": {
     "appId": "com.smartlearnpro.app",
-    "productName": "SmartLearn Pro",
+    "productName": "语脉 VerbaPath",
     "publish": null,
     "directories": {
       "output": "release"

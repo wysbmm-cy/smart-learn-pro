@@ -13,7 +13,7 @@ const UserGuideModal = ({ onClose }) => {
                             <div className="absolute -right-4 -top-4 text-blue-500/10 group-hover:scale-110 transition-transform duration-700">
                                 <Sparkles size={120} />
                             </div>
-                            <h3 className="text-2xl font-black text-phy-text mb-2 tracking-tight">👋 欢迎来到 SmartLearn Pro</h3>
+                            <h3 className="text-2xl font-black text-phy-text mb-2 tracking-tight">👋 欢迎来到语脉 VerbaPath</h3>
                             <p className="text-phy-muted leading-relaxed max-w-lg font-medium">
                                 这不仅仅是一个软件，而是您的<strong>私人 AI 英语导师</strong>。它基于深度学习与艾宾浩斯遗忘曲线，为您打造从阅读到口语的全闭环提升。
                             </p>
@@ -42,7 +42,7 @@ const UserGuideModal = ({ onClose }) => {
                                 </div>
                                 <div className="flex items-center gap-3 mt-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100/50 text-blue-700 text-xs font-bold leading-tight">
                                     <Shield size={16} className="shrink-0" />
-                                    <span>您的 API Key 仅加密存储于您本地的 IndexedDB 中，SmartLearn 无法也永远不会访问您的密钥。</span>
+                                    <span>您的 API Key 仅加密存储于您本地的 IndexedDB 中，语脉 VerbaPath 无法也永远不会访问您的密钥。</span>
                                 </div>
                             </div>
                         </div>
@@ -337,7 +337,7 @@ const UserGuideModal = ({ onClose }) => {
                             </div>
                             <div>
                                 <h2 className="font-black text-phy-text text-xl tracking-tight leading-none">新手指南</h2>
-                                <p className="text-[10px] text-phy-muted mt-1 font-bold uppercase tracking-widest opacity-60">SmartLearn Pro v1.0.2</p>
+                                <p className="text-[10px] text-phy-muted mt-1 font-bold uppercase tracking-widest opacity-60">语脉 VerbaPath v1.0.2</p>
                             </div>
                         </div>
                     </div>

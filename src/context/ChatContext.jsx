@@ -5,7 +5,7 @@ const ChatContext = createContext(null);
 
 const DEFAULT_MSG = {
     role: 'assistant',
-    content: 'Hello! I am your AI English tutor. Ask me anything about grammar, vocabulary, or learning methods.'
+    content: 'Hello! I am your VerbaPath AI English tutor. Ask me anything about grammar, vocabulary, or learning methods.'
 };
 
 const SAVE_THROTTLE_MS = 1200;

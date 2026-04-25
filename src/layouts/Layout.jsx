@@ -8,7 +8,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones
+    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones, LogIn
 } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
@@ -111,6 +111,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
     const navItems = [
         { id: 'dashboard', icon: BarChart2, label: '工作台' },
+        { id: 'login', icon: LogIn, label: '账号登录' },
         { id: 'notes', icon: NotebookPen, label: '我的笔记' },
         { id: 'import', icon: Upload, label: '导入' },
         { id: 'video', icon: PlayCircle, label: '视频学习' },
@@ -200,7 +201,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 <div className="h-16 flex items-center justify-between px-5 shrink-0">
                     <div className="flex items-center gap-3 text-phy-accent font-extrabold text-xl tracking-tight">
                         <Brain size={26} strokeWidth={2.5} />
-                        <span>AI English</span>
+                        <span>语脉</span>
                     </div>
                     <button
                         onClick={() => setIsMobileMenuOpen(false)}

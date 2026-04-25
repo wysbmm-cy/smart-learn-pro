@@ -1,6 +1,6 @@
 
 /**
- * AI Service for SmartLearn Pro
+ * AI Service for VerbaPath
  * Handles API communication using Parallel Requests for performance.
  */
 
@@ -1517,7 +1517,7 @@ export const normalizeNoteForKnowledgeLinking = async (noteInput, instruction = 
   if (!content.trim()) throw new Error("Empty note content");
 
   const prompt = `
-你是 SmartLearn 的知识结构化助手。请把下面这篇笔记整理为“人类可读 + 可同步”的 Markdown。
+你是语脉 VerbaPath 的知识结构化助手。请把下面这篇笔记整理为“人类可读 + 可同步”的 Markdown。
 
 要求：
 1) 保留原有主要内容，不要删掉核心信息。
@@ -1580,7 +1580,7 @@ export const chatNoteKnowledgeLinking = async (
     : [];
 
   const systemPrompt = `
-你是 SmartLearn 的“笔记接入教练”。
+你是语脉 VerbaPath 的“笔记接入教练”。
 目标：和用户多轮对话，帮用户从当前笔记中挑选“适合接入”的片段，而不是整篇全量接入。
 
 规则：
@@ -2869,7 +2869,7 @@ export const checkImageGenConnection = async (settings) => {
  * @param {string} style - 'cyberpunk' or 'popart'
  * @param {Object} todayStats - Today's learning stats
  */
-export const generateDailySummaryImage = async (highlights, settings, style = 'cyberpunk', todayStats = {}) => {
+export const generateDailySummaryImage = async (highlights, settings, style = 'auto', todayStats = {}) => {
   const apiUrl = settings.imageGenApiUrl || settings.apiBaseUrl;
   const apiKey = settings.imageGenApiKey || settings.apiKey;
   const model = settings.imageGenModel || 'dall-e-3';
@@ -2882,84 +2882,132 @@ export const generateDailySummaryImage = async (highlights, settings, style = 'c
   const isOpenRouter = cleanUrl.includes('openrouter');
   const isSiliconFlow = cleanUrl.includes('siliconflow');
 
-  // Build stats display text
-  const statsText = `Words: ${todayStats.wordsLearned || 0}, Articles: ${todayStats.articlesRead || 0}, Notes: ${todayStats.notesCreated || 0} (${todayStats.writingCount || 0} words), Chats: ${todayStats.questionsAsked || 0}`;
+  const stats = {
+    date: todayStats?.date || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    wordsLearned: Number(todayStats?.wordsLearned || 0),
+    flashcardsReviewed: Number(todayStats?.flashcardsReviewed || 0),
+    newFlashcards: Number(todayStats?.newFlashcards || 0),
+    articlesRead: Number(todayStats?.articlesRead || 0),
+    notesCreated: Number(todayStats?.notesCreated || 0),
+    writingSessions: Number(todayStats?.writingSessions || 0),
+    writingCount: Number(todayStats?.writingCount || 0),
+    translationCount: Number(todayStats?.translationCount || 0),
+    questionsAsked: Number(todayStats?.questionsAsked || 0),
+    keywords: Array.isArray(todayStats?.keywords) ? todayStats.keywords.slice(0, 12) : [],
+    topicTheme: String(todayStats?.topicTheme || 'general'),
+    topicHint: String(todayStats?.topicHint || 'balanced study atmosphere')
+  };
 
-  // === STEP 1: Use Main AI to Analyze Highlights ===
-  const highlightContent = highlights?.length
-    ? highlights.map(h => `- [${h.type}] ${h.content}`).join('\n')
-    : '今日未标记特定重点，但用户进行了大量基于数据的学习活动。请根据统计数据生成抽象总结。';
+  const highlightContent = Array.isArray(highlights) && highlights.length
+    ? highlights.slice(0, 8).map((h) => `- [${h?.type || 'note'}] ${String(h?.content || '').slice(0, 220)}`).join('\n')
+    : '- No explicit highlight records. Build scene from activity stats and topic keywords.';
 
-  const analysisPrompt = `你是一个学习助手，请分析以下今日学习内容，并提取用于生成图片的关键元素。
+  const statsText = [
+    `Date: ${stats.date}`,
+    `Flashcards reviewed: ${stats.flashcardsReviewed}`,
+    `New flashcards: ${stats.newFlashcards}`,
+    `Articles read: ${stats.articlesRead}`,
+    `Notes created: ${stats.notesCreated}`,
+    `Writing sessions: ${stats.writingSessions}`,
+    `Words written: ${stats.writingCount}`,
+    `Translation sessions: ${stats.translationCount}`,
+    `Chat interactions: ${stats.questionsAsked}`
+  ].join('\n');
 
-今日学习统计：
-- 学习单词数: ${todayStats.wordsLearned || 0}
-- 阅读文章数: ${todayStats.articlesRead || 0}
-- 创建笔记数: ${todayStats.notesCreated || 0} (写作量: ${todayStats.writingCount || 0} 词)
-- 对话互动数: ${todayStats.questionsAsked || 0} (次会话)
+  const keywordLine = stats.keywords.length ? stats.keywords.join(', ') : 'learning, focus, progress';
 
-今日标记内容：
-${highlightContent}
+  let analysisResult = {
+    mainSubject: 'knowledge lighthouse',
+    motion: 'radiating upward progress',
+    palette: 'deep navy + electric cyan accents',
+    atmosphere: 'focused, confident, future-oriented'
+  };
 
-即使没有具体标记内容，也请根据统计数据（学习量的多少）来构建画面。
-如果学习量很大，画面应体现“充实、爆发、能量”；如果量小，体现“积累、起步、精致”。
-
-请以JSON格式返回以下信息：
-{
-  "mainObject": "代表今日学习的标志性物品(如: 一本发光的书、一座知识灯塔、一把打开思维的钥匙)",
-  "objectName": "给这个物品的炫酷名称(如: 知识核心、智慧水晶)",
-  "taskIcon1": "第一个学习任务的图标(如: 阅读卷轴、词汇宝石)",
-  "taskIcon2": "第二个学习任务的图标(如: 写作羽毛笔、笔记本)",
-  "actionVerb": "动态动作描述(如: 闪耀、爆发能量、释放光芒)"
-}`;
-
-  let analysisResult;
   try {
     const analysisJson = await fetchFromAI([
-      { role: "system", content: "你是一个创意助手，只输出JSON格式。" },
-      { role: "user", content: analysisPrompt }
+      {
+        role: 'system',
+        content: 'Return strict JSON only. No markdown. Keys: mainSubject, motion, palette, atmosphere.'
+      },
+      {
+        role: 'user',
+        content: `Create a visual brief for a daily study achievement image.\nStats:\n${statsText}\n\nTheme hint: ${stats.topicTheme}\nKeywords: ${keywordLine}\nHighlights:\n${highlightContent}`
+      }
     ], settings, true);
-    analysisResult = JSON.parse(analysisJson);
-  } catch (e) {
-    console.error("Analysis error:", e);
+    const parsed = JSON.parse(analysisJson);
     analysisResult = {
-      mainObject: "a glowing crystal brain representing knowledge",
-      objectName: "Knowledge Core",
-      taskIcon1: "scrolls of wisdom",
-      taskIcon2: "golden pen",
-      actionVerb: "radiating energy"
+      mainSubject: String(parsed?.mainSubject || analysisResult.mainSubject),
+      motion: String(parsed?.motion || analysisResult.motion),
+      palette: String(parsed?.palette || analysisResult.palette),
+      atmosphere: String(parsed?.atmosphere || analysisResult.atmosphere)
     };
+  } catch (error) {
+    console.error('Daily summary analysis fallback:', error);
   }
 
-  // === STEP 2: Build Prompt from Template with Stats ===
-  // Battlefield 1 Stats Screen Layout: "Newspaper/Report" Header, Two-Column Grid, Data Lists
-  const bf1Layout = `LAYOUT STRUCTURE: Strictly follows the 'Battlefield 1 End of Round' stats screen. 
-  1. HEADER: Top section is a newspaper-style header bar with big text "DAILY REPORT" and the Date "${new Date().toISOString().split('T')[0]}".
-  2. TWO COLUMNS: Below header, split into Left (40%) and Right (60%) columns with a vertical divider line.
-  3. LEFT COLUMN (Main Stat): Large prominent display of "${analysisResult.mainObject}" as the 'Most Valuable Item'. Below it, a big Kill/Score-style stat: "${todayStats.wordsLearned} WORDS".
-  4. RIGHT COLUMN (Detailed Stats): A vertical list of 'Weapon Stats' style rows. Each row has an Icon, a Title (e.g. Reading, Writing), and a progress bar or number.
-  5. FOOTER: Small text at bottom "Generated by SmartLearn AI".`;
+  const autoStyleByTheme = {
+    technology: 'futuristic cinematic dashboard, deep navy base, holographic accents, precision UI typography',
+    science: 'clean scientific poster, premium infographic composition, cool lighting, technical elegance',
+    humanities: 'editorial illustration with museum-grade paper texture, warm tones, literary atmosphere',
+    business: 'executive strategic visual board, minimalist luxury composition, strong data hierarchy',
+    education: 'modern learning studio illustration, hopeful lighting, clear pedagogy-oriented information blocks',
+    general: 'cinematic editorial learning poster, refined composition, premium contrast and depth'
+  };
 
-  let prompt;
-  if (style === 'popart') {
-    prompt = `Vertical UI design. ${bf1Layout}
-    AESTHETIC STYLE: Vibrant POP ART COMIC BOOK style. 
-    - The 'Paper' texture is replaced by a comic book halftone pattern background.
-    - Colors: High-contrast bright yellow, red, electric blue, and deep black outlines.
-    - The Main Object in left column is a bold cel-shaded illustration.
-    - Fonts: Comic book block letters.
-    - Atmosphere: Energetic, explosive, 'Kapow!' visual effects. 8k resolution. --ar 9:16`;
-  } else {
-    // Cyberpunk Default
-    prompt = `Vertical UI design. ${bf1Layout}
-    AESTHETIC STYLE: CYBERPUNK NEON NOIR.
-    - The 'Paper' texture is replaced by a dark, gritty holographic screen with digital noise/glitch effects.
-    - Colors: Dark blue/purple background, glowing neon cyan/magenta text and UI lines.
-    - The Main Object in left column is a glowing wireframe or 3D hologram.
-    - Fonts: Futuristic digital readout fonts, glowing numbers.
-    - Atmosphere: High-tech, futuristic military interface, Blade Runner vibes. 8k resolution, ray tracing. --ar 9:16`;
-  }
+  const styleGuide = style === 'auto'
+    ? (autoStyleByTheme[stats.topicTheme] || autoStyleByTheme.general)
+    : style === 'popart'
+      ? 'high-contrast pop-art poster, halftone texture, bold outlines'
+      : style === 'cyberpunk'
+        ? 'cyberpunk neon noir, holographic panels, glowing accents'
+        : `${style} visual style with premium finish`;
 
+  const prompt = `Create a premium "Yesterday Learning Achievement" visual poster (1:1 square, 1024x1024).
+
+Quality bar:
+- ultra polished, production-ready artwork
+- crisp edges, balanced lighting, clean hierarchy
+- premium color grading, subtle depth, no muddy shadows
+- modern editorial + dashboard fusion style
+
+Hard readability constraints:
+- all visible text must be short, clean, and highly legible
+- avoid dense paragraphs, avoid tiny text, avoid clutter
+- no random symbols, no gibberish, no watermark, no logo spam
+
+Data panel (must include):
+- Date: ${stats.date}
+- Flashcards reviewed: ${stats.flashcardsReviewed}
+- New flashcards: ${stats.newFlashcards}
+- Articles read: ${stats.articlesRead}
+- Notes created: ${stats.notesCreated}
+- Writing sessions: ${stats.writingSessions}
+- Translation sessions: ${stats.translationCount}
+- Chat interactions: ${stats.questionsAsked}
+
+Narrative:
+- Topic theme: ${stats.topicTheme}
+- Topic art hint: ${stats.topicHint}
+- Keywords: ${keywordLine}
+- Highlights: ${highlightContent}
+
+Visual core:
+- Main subject: ${analysisResult.mainSubject}
+- Motion: ${analysisResult.motion}
+- Palette: ${analysisResult.palette}
+- Atmosphere: ${analysisResult.atmosphere}
+- Style direction: ${styleGuide}
+
+Composition blueprint:
+- Left 60%: key hero visual + one dominant achievement number.
+- Right 40%: compact metric cards (reading / writing / flashcards / translation).
+- Keep generous breathing space; align to a clean grid.
+- Footer micro label: "Generated by VerbaPath AI".
+
+Art direction detail:
+- emphasize cinematic depth, tasteful highlights, and coherent storytelling
+- blend the learning topic into background motifs (not noisy, not cartoonish)
+- maintain elegant contrast for both dark and light regions`;
 
   let response;
   if (isOpenRouter) {
@@ -2968,8 +3016,8 @@ ${highlightContent}
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: model,
-        messages: [{ role: "user", content: prompt }],
-        modalities: ["image", "text"]
+        messages: [{ role: 'user', content: prompt }],
+        modalities: ['image', 'text']
       })
     });
   } else {
@@ -2977,7 +3025,7 @@ ${highlightContent}
     response = await fetch(`${cleanUrl}${endpoint}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: model, prompt: prompt, n: 1, size: "1024x1024" })
+      body: JSON.stringify({ model: model, prompt, n: 1, size: '1024x1024' })
     });
   }
 
@@ -2987,14 +3035,11 @@ ${highlightContent}
   }
 
   const data = await response.json();
-  // OpenRouter returns in choices[0].message.images
   if (isOpenRouter && data.choices?.[0]?.message?.images) {
     return data.choices[0].message.images[0]?.image_url?.url;
   }
   return data.data?.[0]?.url || data.data?.[0]?.b64_json;
 };
-
-// Generate Semantic Knowledge Graph Connections
 export const generateKnowledgeGraphReferences = async (vocabList, settings) => {
   if (!settings.apiKey) throw new Error("API Key required");
 
@@ -3046,6 +3091,73 @@ export const generateKnowledgeGraphReferences = async (vocabList, settings) => {
 // AGENT MODE: Function Calling Chat
 // =====================================================
 import { AGENT_TOOLS, AGENT_SYSTEM_PROMPT, executeAgentTool } from './agentTools';
+
+const AGENT_TOOL_PLAN_PURPOSE = {
+  list_flashcard_folders: 'Locate candidate flashcard folders.',
+  list_flashcards: 'Read full flashcard content by filters.',
+  organize_flashcards_to_note: 'Write folder cards into one note with verification.',
+  create_note: 'Create a new note in Notes.',
+  update_note: 'Update existing note content.',
+  get_note_detail: 'Read note detail before/after editing.',
+  note_append_today_folder: 'Append content into today note folder.',
+  note_partial_sync_to_materials: 'Sync note blocks into writing/translation links.',
+  create_flashcards: 'Create flashcards from provided items.',
+  update_flashcard: 'Edit flashcard content or metadata.',
+  delete_flashcards: 'Delete selected flashcards.',
+  flashcard_batch_delete: 'Batch delete cards by mixed filters.',
+  flashcard_batch_move_folder: 'Batch move cards to another folder.',
+  flashcard_batch_edit: 'Batch edit card content/tags/status.',
+  get_flashcard_stats: 'Read flashcard statistics.',
+  get_study_history: 'Read recent study/import history.',
+  get_writing_history: 'Read writing records.',
+  list_writing_materials: 'Read writing materials in the pack.'
+};
+
+const parseToolArgsSafe = (raw) => {
+  try {
+    return JSON.parse(raw || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const summarizeToolInputs = (args = {}) => {
+  if (!args || typeof args !== 'object') return '-';
+  const keys = Object.keys(args).slice(0, 3);
+  if (!keys.length) return '-';
+  return keys.map((k) => {
+    const v = args[k];
+    const asText = typeof v === 'string' ? v : JSON.stringify(v);
+    return `${k}=${String(asText || '').replace(/\|/g, '/').slice(0, 32)}`;
+  }).join('; ');
+};
+
+const getLatestUserGoal = (messages = []) => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      return String(messages[i]?.content || '').trim();
+    }
+  }
+  return '';
+};
+
+const buildAgentPlanMarkdown = (toolCalls = [], userGoal = '') => {
+  const lines = ['### Agent Tool Plan'];
+  if (userGoal) {
+    lines.push(`Goal: ${userGoal.slice(0, 180)}`);
+  }
+  lines.push('');
+  lines.push('| Step | Tool | Purpose | Key Inputs |');
+  lines.push('| --- | --- | --- | --- |');
+  toolCalls.forEach((call, idx) => {
+    const name = call?.function?.name || 'unknown_tool';
+    const args = parseToolArgsSafe(call?.function?.arguments);
+    const purpose = AGENT_TOOL_PLAN_PURPOSE[name] || 'Execute requested in-app action.';
+    const inputs = summarizeToolInputs(args);
+    lines.push(`| ${idx + 1} | \`${name}\` | ${purpose} | ${inputs} |`);
+  });
+  return lines.join('\n');
+};
 
 /**
  * Stream an Agent chat with function calling support.
@@ -3143,32 +3255,79 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall) =
     // Step 1: Call AI with tools enabled (non-streaming to capture tool_calls)
     let assistantMsg = await callWithTools(finalMessages);
     let loopMessages = [...finalMessages, assistantMsg];
+    let planPushed = false;
 
     // Step 2: Loop to handle tool calls (max 5 rounds)
     let rounds = 0;
     while (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0 && rounds < 5) {
       rounds++;
 
+      if (!planPushed && onToolCall) {
+        onToolCall({
+          status: 'plan',
+          planMarkdown: buildAgentPlanMarkdown(assistantMsg.tool_calls, getLatestUserGoal(messages)),
+          toolCount: assistantMsg.tool_calls.length,
+          createdAt: Date.now()
+        });
+        planPushed = true;
+      }
+
       for (const toolCall of assistantMsg.tool_calls) {
         const toolName = toolCall.function.name;
-        let toolArgs = {};
+        const toolCallId = toolCall.id;
+        const toolArgs = parseToolArgsSafe(toolCall.function.arguments);
+
+        const startedAt = Date.now();
+
+        // Notify UI (calling)
+        if (onToolCall) {
+          onToolCall({
+            id: toolCallId,
+            name: toolName,
+            args: toolArgs,
+            status: 'calling',
+            startedAt
+          });
+        }
+
+        let result = null;
         try {
-          toolArgs = JSON.parse(toolCall.function.arguments || '{}');
-        } catch (e) { /* empty args */ }
+          // Execute tool
+          result = await executeAgentTool(toolName, toolArgs, { settings });
 
-        // Notify UI
-        if (onToolCall) onToolCall({ name: toolName, status: 'calling' });
+          // Notify UI done (pass result for action detection)
+          if (onToolCall) {
+            onToolCall({
+              id: toolCallId,
+              name: toolName,
+              args: toolArgs,
+              status: 'done',
+              result,
+              startedAt,
+              endedAt: Date.now()
+            });
+          }
+        } catch (toolError) {
+          const errorMessage = toolError instanceof Error ? toolError.message : String(toolError || 'Unknown tool error');
+          result = { error: errorMessage };
 
-        // Execute tool
-        const result = await executeAgentTool(toolName, toolArgs, { settings });
-
-        // Notify UI done (pass result for action detection)
-        if (onToolCall) onToolCall({ name: toolName, status: 'done', result });
+          if (onToolCall) {
+            onToolCall({
+              id: toolCallId,
+              name: toolName,
+              args: toolArgs,
+              status: 'error',
+              error: errorMessage,
+              startedAt,
+              endedAt: Date.now()
+            });
+          }
+        }
 
         // Add tool result to conversation
         loopMessages.push({
           role: "tool",
-          tool_call_id: toolCall.id,
+          tool_call_id: toolCallId,
           content: JSON.stringify(result)
         });
       }
@@ -3503,3 +3662,4 @@ ${instruction}`;
     return null;
   }
 }
+

@@ -21,6 +21,7 @@ const viewFactories = {
     VideoView: () => import('./views/VideoView'),
     WriterView: () => import('./views/WriterView'),
     TranslationChallengeView: () => import('./views/TranslationChallengeView'),
+    LoginView: () => import('./views/LoginView'),
     ExamView: () => import('./views/ExamView'),
     KnowledgeGraphView: () => import('./views/KnowledgeGraphView'),
     ListeningView: () => import('./views/ListeningView'),
@@ -45,6 +46,7 @@ const CoachView = lazy(viewFactories.CoachView);
 const VideoView = lazy(viewFactories.VideoView);
 const WriterView = lazy(viewFactories.WriterView);
 const TranslationChallengeView = lazy(viewFactories.TranslationChallengeView);
+const LoginView = lazy(viewFactories.LoginView);
 const ExamView = lazy(viewFactories.ExamView);
 const KnowledgeGraphView = lazy(viewFactories.KnowledgeGraphView);
 const ListeningView = lazy(viewFactories.ListeningView);
@@ -106,6 +108,8 @@ function AppContent() {
                 return <WriterView params={viewParams} />;
             case 'translation':
                 return <TranslationChallengeView />;
+            case 'login':
+                return <LoginView onNavigate={setCurrentView} />;
             case 'exam':
                 return <ExamView onNavigate={setCurrentView} params={viewParams} />;
             case 'knowledge':
