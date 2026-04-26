@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SmartLearn Pro</string>
-    <string name="title_activity_main">SmartLearn Pro</string>
+    <string name="app_name">&#35821;&#33033;</string>
+    <string name="title_activity_main">&#35821;&#33033;</string>
     <string name="package_name">com.smartlearnpro.app</string>
     <string name="custom_url_scheme">com.smartlearnpro.app</string>
 </resources>

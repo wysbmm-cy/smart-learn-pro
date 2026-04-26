@@ -113,7 +113,8 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
     const navItems = [
         { id: 'dashboard', icon: BarChart2, label: '工作台' },
-        { id: 'login', icon: LogIn, label: user ? '账号中心' : '账号登录' },
+        // ICP filing mode: account entry is hidden until the login system is ready for public use.
+        // { id: 'login', icon: LogIn, label: user ? '账号中心' : '账号登录' },
         { id: 'notes', icon: NotebookPen, label: '我的笔记' },
         { id: 'import', icon: Upload, label: '导入' },
         { id: 'video', icon: PlayCircle, label: '视频学习' },
@@ -228,6 +229,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 </nav>
 
                 <div className="p-4 border-t border-phy-border bg-phy-glassHeavy shrink-0" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
+                    {/* ICP filing mode: keep auth UI code commented until account login is enabled publicly.
                     <div className="mb-3 rounded-xl border border-phy-border bg-phy-bg/60 px-3 py-2 text-xs">
                         <div className="font-bold text-phy-text truncate">
                             {user ? (user.nickname || user.email) : isGuest ? '游客模式' : '未登录'}
@@ -247,6 +249,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                             <span>{user ? '退出登录' : '登录账号'}</span>
                         </button>
                     </div>
+                    */}
                     <button
                         onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-phy-accentGlass border border-phy-borderHover text-phy-accent transition-all text-sm font-medium"

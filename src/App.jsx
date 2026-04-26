@@ -7,6 +7,9 @@ import Layout from './layouts/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import SkeletonLoader from './components/SkeletonLoader';
 
+// ICP filing mode: keep auth code available, but do not gate the app behind login.
+const AUTH_GATE_ENABLED = false;
+
 // Lazy Load Views Factories (Exposed for Preloading)
 const viewFactories = {
     Dashboard: () => import('./views/Dashboard'),
@@ -128,11 +131,11 @@ function AppContent() {
         setIsSplit(true);
     };
 
-    if (authLoading) {
+    if (AUTH_GATE_ENABLED && authLoading) {
         return <LoadingFallback />;
     }
 
-    if (!canEnterApp) {
+    if (AUTH_GATE_ENABLED && !canEnterApp) {
         return (
             <Suspense fallback={<LoadingFallback />}>
                 <LoginView onNavigate={setCurrentView} />
