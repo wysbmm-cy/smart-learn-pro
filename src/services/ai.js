@@ -1745,6 +1745,60 @@ export const generatePlanInsight = async (history, userGoal = null, recentLogs =
   }
 };
 
+export const generateLearningFlowInsight = async (profile, draftPlan, settings) => {
+  if (!settings?.apiKey) return null;
+
+  const prompt = `
+Role: VerbaPath AI learning-flow coach.
+Task: Polish a one-line English learning route for today.
+
+Rules:
+1. Do not add or remove nodes.
+2. Keep each node practical and action-oriented.
+3. Language: Simplified Chinese.
+4. Return valid JSON only.
+
+Output Schema:
+{
+  "title": "string",
+  "summary": "string, one sentence",
+  "nodes": [
+    { "id": "same id from input", "type": "same type", "title": "string", "description": "string" }
+  ]
+}
+`;
+
+  try {
+    const jsonStr = await fetchFromAI([
+      { role: 'system', content: prompt },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          profile: {
+            sourceDate: profile?.yesterdayKey,
+            dueFlashcards: profile?.dueCards?.length || 0,
+            newFlashcardsYesterday: profile?.newCardsYesterday?.length || 0,
+            readingYesterday: profile?.readingYesterday?.length || 0,
+            translationYesterday: profile?.translationYesterday?.length || 0,
+            writingYesterday: profile?.writingYesterday?.length || 0,
+            notesYesterday: profile?.notesYesterday?.length || 0
+          },
+          draftPlan
+        })
+      }
+    ], settings, true);
+
+    const trimmed = String(jsonStr || '').trim();
+    const jsonBody = trimmed.match(/\{[\s\S]*\}/)?.[0] || trimmed;
+    const parsed = JSON.parse(jsonBody);
+    if (!parsed || !Array.isArray(parsed.nodes)) return null;
+    return parsed;
+  } catch (error) {
+    console.error('Learning Flow AI Error:', error);
+    return null;
+  }
+};
+
 export const extractVocabulary = async (text, settings) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
 

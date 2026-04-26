@@ -58,14 +58,14 @@ const AppContext = createContext();
 export const useApp = () => useContext(AppContext);
 
 export const BUILTIN_API_CONFIG = {
-    mainApiBaseUrl: 'https://api.moonshot.cn/v1',
-    mainModelName: 'kimi-k2-0905-preview',
-    mainApiKey: 'sk-oZJYOSFELAIMihGSsTILis6FDgWTUB0xnujShpivalzUr9Ci',
-    audioApiBaseUrl: 'https://api.siliconflow.cn/v1',
-    audioApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
+    mainApiBaseUrl: '/api/ai',
+    mainModelName: 'deepseek-v4-flash',
+    mainApiKey: 'server-managed',
+    audioApiBaseUrl: '/api/audio',
+    audioApiKey: 'server-managed',
     audioModelName: 'TeleAI/TeleSpeechASR',
-    ttsApiBaseUrl: 'https://api.siliconflow.cn/v1',
-    ttsApiKey: 'sk-lhjqjomtwyimlzlaimfjpodymatrnumaqwmgvevvfukoqxvr',
+    ttsApiBaseUrl: '/api/tts',
+    ttsApiKey: 'server-managed',
     ttsModelName: 'fnlp/MOSS-TTSD-v0.5',
     ttsVoice: 'fnlp/MOSS-TTSD-v0.5:alex',
 };
@@ -129,6 +129,9 @@ Output Format: Markdown (Strictly follow this structure):
     ttsApiKey: BUILTIN_API_CONFIG.ttsApiKey, // Same as audioApiKey
     ttsModelName: BUILTIN_API_CONFIG.ttsModelName,
     ttsVoice: BUILTIN_API_CONFIG.ttsVoice,
+    imageGenApiUrl: '/api/image',
+    imageGenApiKey: 'server-managed',
+    imageGenModel: 'dall-e-3',
 
     // Appearance (Zen Mode)
     backgroundImage: 'https://images.unsplash.com/photo-1497436072909-60f360e1d4b0?q=80&w=2560&auto=format&fit=crop', // Nature by default
@@ -165,6 +168,39 @@ const DEFAULT_ANALYSIS = {
     structures: []
 };
 
+const normalizePublicApiDefaults = (input = {}) => {
+    const next = { ...input };
+
+    if (!next.apiBaseUrl) {
+        next.apiBaseUrl = BUILTIN_API_CONFIG.mainApiBaseUrl;
+        next.modelName = BUILTIN_API_CONFIG.mainModelName;
+        next.apiKey = BUILTIN_API_CONFIG.mainApiKey;
+        next.activeApiProfileId = '';
+    }
+
+    if (!next.audioApiBaseUrl) {
+        next.audioApiBaseUrl = BUILTIN_API_CONFIG.audioApiBaseUrl;
+        next.audioApiKey = BUILTIN_API_CONFIG.audioApiKey;
+        next.audioModelName = BUILTIN_API_CONFIG.audioModelName;
+    }
+
+    if (!next.ttsApiBaseUrl) {
+        next.ttsApiBaseUrl = BUILTIN_API_CONFIG.ttsApiBaseUrl;
+        next.ttsApiKey = BUILTIN_API_CONFIG.ttsApiKey;
+        next.ttsModelName = BUILTIN_API_CONFIG.ttsModelName;
+        next.ttsVoice = BUILTIN_API_CONFIG.ttsVoice;
+    }
+
+    if (!next.imageGenApiUrl) {
+        next.imageGenApiUrl = DEFAULT_SETTINGS.imageGenApiUrl;
+        next.imageGenApiKey = DEFAULT_SETTINGS.imageGenApiKey;
+        next.imageGenModel = DEFAULT_SETTINGS.imageGenModel;
+    }
+
+    next.apiProfiles = Array.isArray(next.apiProfiles) ? next.apiProfiles : [];
+    return next;
+};
+
 export const AppProvider = ({ children }) => {
     // --- Navigation Ref (for Agent Mode) ---
     const navigateRef = React.useRef(null);
@@ -173,23 +209,23 @@ export const AppProvider = ({ children }) => {
     const [settings, setSettings] = useState(() => {
         const saved = localStorage.getItem('smartlearn_settings');
         if (!saved) {
-            return {
+            return normalizePublicApiDefaults({
                 ...DEFAULT_SETTINGS,
                 knowledgeLinking: normalizeKnowledgeLinkingSettings(DEFAULT_SETTINGS.knowledgeLinking)
-            };
+            });
         }
         try {
             const parsed = JSON.parse(saved);
-            return {
+            return normalizePublicApiDefaults({
                 ...DEFAULT_SETTINGS,
                 ...parsed,
                 knowledgeLinking: normalizeKnowledgeLinkingSettings(parsed?.knowledgeLinking)
-            };
+            });
         } catch {
-            return {
+            return normalizePublicApiDefaults({
                 ...DEFAULT_SETTINGS,
                 knowledgeLinking: normalizeKnowledgeLinkingSettings(DEFAULT_SETTINGS.knowledgeLinking)
-            };
+            });
         }
     });
 

@@ -6,11 +6,11 @@ import KnowledgeLinkingSettingsCard from '../components/KnowledgeLinkingSettings
 
 // Navigation sections for quick jump
 const sections = [
-    { id: 'api', label: 'AI 连接', icon: Server },
+    { id: 'api', label: 'AI 服务', icon: Server },
     { id: 'audio', label: '语音识别', icon: Mic },
-    { id: 'tts', label: '语音合成', icon: Volume2 },
-    { id: 'image', label: '图像生成', icon: ImageIcon },
-    { id: 'system', label: 'AI 人设', icon: Settings },
+    { id: 'tts', label: '朗读发音', icon: Volume2 },
+    { id: 'image', label: '总结生图', icon: ImageIcon },
+    { id: 'system', label: 'AI 指令', icon: Settings },
     { id: 'tools', label: '效率工具', icon: Clock },
     { id: 'styles', label: '漫画风格', icon: BookMarked },
     { id: 'drills', label: '智能练习', icon: Hash },
@@ -134,7 +134,6 @@ const SettingsView = () => {
         setConnectionStatus('testing');
         try {
             await checkConnection(settings);
-            upsertCurrentApiProfile();
             setConnectionStatus('success');
             setTimeout(() => setConnectionStatus('idle'), 3000);
         } catch (e) {
@@ -166,7 +165,7 @@ const SettingsView = () => {
         } catch (e) {
             console.error(e);
             setTtsConnectionStatus('error');
-            alert("TTS Test Failed: " + e.message);
+            alert("朗读测试失败：" + e.message);
             setTimeout(() => setTtsConnectionStatus('idle'), 3000);
         }
     };
@@ -180,7 +179,7 @@ const SettingsView = () => {
         } catch (e) {
             console.error(e);
             setImageGenConnectionStatus('error');
-            alert("生图 API 测试失败: " + e.message);
+            alert("生图服务测试失败：" + e.message);
             setTimeout(() => setImageGenConnectionStatus('idle'), 3000);
         }
     };
@@ -192,12 +191,17 @@ const SettingsView = () => {
     };
 
     const isUsingBuiltinMainKey = settings.apiKey === BUILTIN_API_CONFIG.mainApiKey;
+    const isUsingBuiltinAudioKey = settings.audioApiKey === BUILTIN_API_CONFIG.audioApiKey;
+    const isUsingBuiltinTtsKey = settings.ttsApiKey === BUILTIN_API_CONFIG.ttsApiKey;
+    const isUsingBuiltinImageKey = settings.imageGenApiKey === 'server-managed';
 
     const handleUseBuiltinMainKey = () => {
         updateSetting('apiKey', BUILTIN_API_CONFIG.mainApiKey);
         setShowCustomMainKeyInput(false);
         setCustomMainKeyDraft('');
-        setTimeout(() => upsertCurrentApiProfile('Built-in API'), 0);
+        updateSetting('apiBaseUrl', BUILTIN_API_CONFIG.mainApiBaseUrl);
+        updateSetting('modelName', BUILTIN_API_CONFIG.mainModelName);
+        updateSetting('activeApiProfileId', '');
     };
 
     const handleEnableCustomMainKey = () => {
@@ -291,487 +295,427 @@ const SettingsView = () => {
 
                 {/* API Card */}
                 <div id="api" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
-                    <div className="flex items-center gap-3 text-phy-text font-bold font-bold border-b border-phy-border pb-4 mb-6">
+                    <div className="flex items-center gap-3 text-phy-text font-bold border-b border-phy-border pb-4 mb-6">
                         <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
                             <Server size={20} />
                         </div>
-                        <h3 className="text-lg">配置 AI 连接</h3>
+                        <div>
+                            <h3 className="text-lg">AI 服务</h3>
+                            <p className="text-xs text-phy-muted mt-1">内置服务已启用，普通用户无需填写接口地址、模型或密钥。</p>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Base URL */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                API 接口地址 (URL)
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.apiBaseUrl}
-                                    onChange={(e) => updateSetting('apiBaseUrl', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                />
-                                <Wifi size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-blue-500 transition-colors" />
-                            </div>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">Example: https://api.openai.com/v1</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+                        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+                            <div className="text-xs text-phy-muted mb-1">服务状态</div>
+                            <div className="text-sm font-bold text-blue-300">平台内置</div>
                         </div>
-
-                        {/* Model Name */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                模型名称 (Model)
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.modelName}
-                                    onChange={(e) => updateSetting('modelName', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                />
-                                <Box size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-blue-500 transition-colors" />
-                            </div>
+                        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                            <div className="text-xs text-phy-muted mb-1">适用功能</div>
+                            <div className="text-sm font-bold text-emerald-300">阅读 / 写作 / 翻译 / Agent</div>
                         </div>
+                        <div className="rounded-2xl border border-slate-500/20 bg-phy-bg/60 p-4">
+                            <div className="text-xs text-phy-muted mb-1">接口密钥</div>
+                            <div className="text-sm font-bold text-phy-text">已隐藏</div>
+                        </div>
+                    </div>
 
-                        {/* API Key */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                API 密钥 (Key)
-                            </label>
-                            {!showCustomMainKeyInput ? (
-                                <div className="space-y-3">
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="text"
-                                            value={isUsingBuiltinMainKey ? '内置密钥已启用（默认）' : `自定义密钥已启用（${maskApiKey(settings.apiKey)}）`}
-                                            readOnly
-                                            className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm font-medium text-phy-muted"
-                                        />
-                                        <button
-                                            onClick={handleTest}
-                                            disabled={connectionStatus === 'testing' || !settings.apiKey}
-                                            className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 min-w-[140px] justify-center ${connectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
-                                                connectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
-                                                    'bg-phy-glassHeavy text-white hover:bg-phy-glassHeavy shadow-lg shadow-slate-200'
-                                                }`}
-                                        >
-                                            {connectionStatus === 'testing' ? (
-                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            ) : connectionStatus === 'success' ? (
-                                                <><CheckCircle size={16} /> 已验证</>
-                                            ) : connectionStatus === 'error' ? (
-                                                <><X size={16} /> 连接失败</>
-                                            ) : (
-                                                '测试连通性'
-                                            )}
-                                        </button>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        <button
-                                            onClick={handleEnableCustomMainKey}
-                                            className="px-3 py-2 text-xs font-semibold rounded-lg border border-phy-border text-phy-text hover:bg-phy-bg transition-colors"
-                                        >
-                                            改为自定义密钥
-                                        </button>
-                                        {!isUsingBuiltinMainKey && (
-                                            <button
-                                                onClick={handleUseBuiltinMainKey}
-                                                className="px-3 py-2 text-xs font-semibold rounded-lg border border-phy-border text-phy-muted hover:bg-phy-bg transition-colors"
-                                            >
-                                                恢复内置密钥
-                                            </button>
-                                        )}
-                                    </div>
-                                    <p className="text-[11px] text-phy-muted ml-1">默认密钥已隐藏，用户可直接使用，不会在设置页明文显示。</p>
-                                </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
+                        <div className="text-sm text-phy-muted leading-relaxed">
+                            默认 API 由服务器托管，不在前端展示。高级用户也可以在下方填写自己的 API 地址、模型和密钥。
+                        </div>
+                        <button
+                            onClick={handleTest}
+                            disabled={connectionStatus === 'testing' || !settings.apiKey}
+                            className={`px-5 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 justify-center ${connectionStatus === 'success' ? 'bg-green-500 text-white' :
+                                connectionStatus === 'error' ? 'bg-red-500 text-white' :
+                                    'bg-blue-600 text-white hover:bg-blue-700'
+                                }`}
+                        >
+                            {connectionStatus === 'testing' ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : connectionStatus === 'success' ? (
+                                <><CheckCircle size={16} /> AI 可用</>
+                            ) : connectionStatus === 'error' ? (
+                                <><X size={16} /> 连接失败</>
                             ) : (
-                                <div className="space-y-3">
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="password"
-                                            value={customMainKeyDraft}
-                                            onChange={(e) => setCustomMainKeyDraft(e.target.value)}
-                                            placeholder="输入自定义 API Key（不会显示默认内置 Key）"
-                                            className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-medium"
-                                        />
-                                        <button
-                                            onClick={handleSaveCustomMainKey}
-                                            disabled={!customMainKeyDraft.trim()}
-                                            className="px-4 py-3.5 rounded-xl text-sm font-bold bg-blue-600 text-white disabled:opacity-50"
-                                        >
-                                            保存并启用
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setShowCustomMainKeyInput(false);
-                                                setCustomMainKeyDraft('');
-                                            }}
-                                            className="px-4 py-3.5 rounded-xl text-sm font-bold border border-phy-border text-phy-muted hover:bg-phy-bg"
-                                        >
-                                            取消
-                                        </button>
-                                    </div>
-                                </div>
+                                '测试 AI 服务'
                             )}
-                        </div>
-                        <div className="md:col-span-2 rounded-xl border border-phy-border bg-phy-bg/50 p-4 space-y-3">
-                            <div className="text-xs font-bold text-phy-muted uppercase tracking-wider">
-                                API Profiles (Local)
-                            </div>
+                        </button>
+                    </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="mt-5 rounded-2xl border border-phy-border bg-phy-bg/40 p-5 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                                <h4 className="text-sm font-bold text-phy-text">自定义 API（可选）</h4>
+                                <p className="text-xs text-phy-muted mt-1">不填写自己的密钥时，系统继续使用平台内置服务；填写后只在你的本地设置中生效。</p>
+                            </div>
+                            <button
+                                onClick={handleUseBuiltinMainKey}
+                                className="px-4 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover transition-colors"
+                            >
+                                恢复平台内置
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-phy-muted mb-2">API 地址</label>
                                 <input
                                     type="text"
-                                    value={apiProfileNameDraft}
-                                    onChange={(e) => setApiProfileNameDraft(e.target.value)}
-                                    placeholder="Profile name (optional)"
-                                    className="md:col-span-2 bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-phy-text"
+                                    value={settings.apiBaseUrl || ''}
+                                    onChange={(e) => updateSetting('apiBaseUrl', e.target.value)}
+                                    className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
+                                    placeholder="/api/ai 或 https://api.openai.com/v1"
                                 />
-                                <button
-                                    onClick={handleSaveCurrentApiProfile}
-                                    disabled={!settings.apiBaseUrl || !settings.modelName || !settings.apiKey}
-                                    className="px-4 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <Save size={14} />
-                                    Save Current
-                                </button>
                             </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-phy-muted mb-2">模型名称</label>
+                                <input
+                                    type="text"
+                                    value={settings.modelName || ''}
+                                    onChange={(e) => updateSetting('modelName', e.target.value)}
+                                    className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
+                                    placeholder="gpt-4.1-mini / kimi-k2-0905-preview"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-phy-muted mb-2">API 密钥</label>
+                                <input
+                                    type="password"
+                                    value={isUsingBuiltinMainKey ? '' : (settings.apiKey || '')}
+                                    onChange={(e) => updateSetting('apiKey', e.target.value)}
+                                    className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
+                                    placeholder={isUsingBuiltinMainKey ? '平台内置密钥已隐藏' : '输入你自己的 API Key'}
+                                />
+                            </div>
+                        </div>
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 leading-relaxed">
+                            提醒：平台内置密钥不会显示给用户；如果用户填写自己的密钥，该密钥只保存在当前设备本地。
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3">
+                            <input
+                                type="text"
+                                value={apiProfileNameDraft}
+                                onChange={(e) => setApiProfileNameDraft(e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500 text-phy-text"
+                                placeholder="保存当前配置名称（例如：我的 OpenAI）"
+                            />
+                            <button
+                                onClick={handleSaveCurrentApiProfile}
+                                disabled={isUsingBuiltinMainKey}
+                                className="px-4 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                保存配置
+                            </button>
+                            <button
+                                onClick={handleTest}
+                                disabled={connectionStatus === 'testing' || !settings.apiKey}
+                                className="px-4 py-3 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover disabled:opacity-40"
+                            >
+                                测试当前配置
+                            </button>
+                        </div>
+                        {apiProfiles.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3">
                                 <select
                                     value={selectedApiProfileId}
                                     onChange={(e) => setSelectedApiProfileId(e.target.value)}
-                                    className="md:col-span-2 bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
+                                    className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text outline-none"
                                 >
-                                    <option value="">Select saved profile</option>
+                                    <option value="">选择已保存配置</option>
                                     {apiProfiles.map((profile) => (
-                                        <option key={profile.id} value={profile.id}>
-                                            {formatApiProfileOptionLabel(profile)}
-                                        </option>
+                                        <option key={profile.id} value={profile.id}>{formatApiProfileOptionLabel(profile)}</option>
                                     ))}
                                 </select>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={handleApplySelectedApiProfile}
-                                        disabled={!selectedApiProfileId}
-                                        className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
-                                    >
-                                        Apply
-                                    </button>
-                                    <button
-                                        onClick={handleDeleteSelectedApiProfile}
-                                        disabled={!selectedApiProfileId}
-                                        className="px-4 py-3 rounded-xl text-sm font-semibold border border-rose-500/40 text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                                        title="Delete selected profile"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={handleApplySelectedApiProfile}
+                                    disabled={!selectedApiProfileId}
+                                    className="px-4 py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40"
+                                >
+                                    应用
+                                </button>
+                                <button
+                                    onClick={handleDeleteSelectedApiProfile}
+                                    disabled={!selectedApiProfileId}
+                                    className="px-4 py-3 rounded-xl border border-red-500/30 text-red-300 text-xs font-bold hover:bg-red-500/10 disabled:opacity-40"
+                                >
+                                    删除
+                                </button>
                             </div>
-
-                            <p className="text-[11px] text-phy-muted">
-                                Saved locally in this browser/app. Latest 20 profiles are kept for quick switching.
-                            </p>
-                        </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Audio API Card */}
                 <div id="audio" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
-                    <div className="flex items-center gap-3 text-phy-text font-bold font-bold border-b border-phy-border pb-4 mb-6">
+                    <div className="flex items-center gap-3 text-phy-text font-bold border-b border-phy-border pb-4 mb-6">
                         <div className="p-2 bg-pink-50 text-pink-600 rounded-lg">
                             <Mic size={20} />
                         </div>
-                        <h3 className="text-lg">配置语音识别 API (Audio)</h3>
+                        <div>
+                            <h3 className="text-lg">语音识别服务</h3>
+                            <p className="text-xs text-phy-muted mt-1">用于录音转文字、听力材料处理和语音输入。</p>
+                        </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Audio Base URL */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Audio Endpoint URL
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.audioApiBaseUrl}
-                                    onChange={(e) => updateSetting('audioApiBaseUrl', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-pink-500 focus:ring-4 focus:ring-pink-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                    placeholder="Same as Chat API usually..."
-                                />
-                                <Wifi size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-pink-500 transition-colors" />
-                            </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
+                        <div>
+                            <div className="text-sm font-bold text-phy-text">内置语音识别已配置</div>
+                            <div className="text-xs text-phy-muted mt-1">接口地址、模型和密钥不向普通用户展示。</div>
                         </div>
-
-                        {/* Audio Model Name */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Audio Model Name
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.audioModelName}
-                                    onChange={(e) => updateSetting('audioModelName', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-pink-500 focus:ring-4 focus:ring-pink-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                    placeholder="e.g. whisper-1 or FunAudioLLM/SenseVoiceSmall"
-                                />
-                                <Box size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-pink-500 transition-colors" />
+                        <button
+                            onClick={handleAudioTest}
+                            disabled={audioConnectionStatus === 'testing'}
+                            className={`px-5 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 justify-center ${audioConnectionStatus === 'success' ? 'bg-green-500 text-white' :
+                                audioConnectionStatus === 'error' ? 'bg-red-500 text-white' :
+                                    'bg-pink-600 text-white hover:bg-pink-700'
+                                }`}
+                        >
+                            {audioConnectionStatus === 'testing' ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : audioConnectionStatus === 'success' ? (
+                                <><CheckCircle size={16} /> 语音可用</>
+                            ) : audioConnectionStatus === 'error' ? (
+                                <><X size={16} /> 连接失败</>
+                            ) : (
+                                '测试语音识别'
+                            )}
+                        </button>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-phy-border bg-phy-bg/40 p-5 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 className="text-sm font-bold text-phy-text">自定义语音识别（可选）</h4>
+                                <p className="text-xs text-phy-muted mt-1">需要使用自己的语音识别服务时再填写。</p>
                             </div>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">
-                                Use <b>whisper-1</b> for OpenAI, or <b>FunAudioLLM/SenseVoiceSmall</b> for SiliconFlow.
-                            </p>
+                            <button
+                                onClick={() => {
+                                    updateSetting('audioApiBaseUrl', BUILTIN_API_CONFIG.audioApiBaseUrl);
+                                    updateSetting('audioModelName', BUILTIN_API_CONFIG.audioModelName);
+                                    updateSetting('audioApiKey', BUILTIN_API_CONFIG.audioApiKey);
+                                }}
+                                className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
+                            >
+                                恢复内置
+                            </button>
                         </div>
-
-                        {/* Audio API Key */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Audio Security Key (Optional)
-                            </label>
-                            <div className="flex gap-3">
-                                <input
-                                    type="password"
-                                    value={settings.audioApiKey}
-                                    onChange={(e) => updateSetting('audioApiKey', e.target.value)}
-                                    placeholder="Leave empty to use the main API Key above"
-                                    className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm focus:bg-phy-glass focus:border-pink-500 focus:ring-4 focus:ring-pink-500/10 outline-none transition-all font-mono font-medium"
-                                />
-                                <button
-                                    onClick={handleAudioTest}
-                                    disabled={audioConnectionStatus === 'testing'}
-                                    className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 min-w-[140px] justify-center ${audioConnectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
-                                        audioConnectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
-                                            'bg-pink-600 text-white hover:bg-pink-700 shadow-lg shadow-pink-200'
-                                        }`}
-                                >
-                                    {audioConnectionStatus === 'testing' ? (
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    ) : audioConnectionStatus === 'success' ? (
-                                        <><CheckCircle size={16} /> 已验证</>
-                                    ) : audioConnectionStatus === 'error' ? (
-                                        <><X size={16} /> 连接失败</>
-                                    ) : (
-                                        '测试音频连通'
-                                    )}
-                                </button>
-                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                                type="text"
+                                value={settings.audioApiBaseUrl || ''}
+                                onChange={(e) => updateSetting('audioApiBaseUrl', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="/api/audio"
+                            />
+                            <input
+                                type="text"
+                                value={settings.audioModelName || ''}
+                                onChange={(e) => updateSetting('audioModelName', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="语音识别模型"
+                            />
+                            <input
+                                type="password"
+                                value={isUsingBuiltinAudioKey ? '' : (settings.audioApiKey || '')}
+                                onChange={(e) => updateSetting('audioApiKey', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder={isUsingBuiltinAudioKey ? '平台内置密钥已隐藏' : '输入你的语音 API Key'}
+                            />
                         </div>
                     </div>
                 </div>
 
-
                 {/* TTS API Card (Output) */}
                 <div id="tts" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
-                    <div className="flex items-center gap-3 text-phy-text font-bold font-bold border-b border-phy-border pb-4 mb-6">
+                    <div className="flex items-center gap-3 text-phy-text font-bold border-b border-phy-border pb-4 mb-6">
                         <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
                             <Volume2 size={20} />
                         </div>
-                        <h3 className="text-lg">配置语音合成 API (TTS - Output)</h3>
+                        <div>
+                            <h3 className="text-lg">朗读发音服务</h3>
+                            <p className="text-xs text-phy-muted mt-1">用于单词朗读、句子朗读和听力辅助。</p>
+                        </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* TTS Base URL */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                TTS Endpoint URL
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.ttsApiBaseUrl || ''}
-                                    onChange={(e) => updateSetting('ttsApiBaseUrl', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                    placeholder="Same as Chat API usually..."
-                                />
-                                <Wifi size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-purple-500 transition-colors" />
-                            </div>
-                        </div>
-
-                        {/* TTS Model Name */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
                         <div>
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                TTS Model Name
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.ttsModelName || 'tts-1'}
-                                    onChange={(e) => updateSetting('ttsModelName', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                />
-                                <Box size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-purple-500 transition-colors" />
-                            </div>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">e.g. <b>tts-1</b> (OpenAI) or <b>cosyvoice-v1</b> (SiliconFlow)</p>
+                            <div className="text-sm font-bold text-phy-text">内置朗读服务已配置</div>
+                            <div className="text-xs text-phy-muted mt-1">普通用户不需要理解模型或语音参数。</div>
                         </div>
-
-                        {/* TTS Voice */}
-                        <div>
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Voice ID
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.ttsVoice || 'alloy'}
-                                    onChange={(e) => updateSetting('ttsVoice', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                />
-                                <Mic size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-purple-500 transition-colors" />
+                        <button
+                            onClick={handleTTSTest}
+                            disabled={ttsConnectionStatus === 'testing'}
+                            className={`px-5 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 justify-center ${ttsConnectionStatus === 'success' ? 'bg-green-500 text-white' :
+                                ttsConnectionStatus === 'error' ? 'bg-red-500 text-white' :
+                                    'bg-purple-600 text-white hover:bg-purple-700'
+                                }`}
+                        >
+                            {ttsConnectionStatus === 'testing' ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : ttsConnectionStatus === 'success' ? (
+                                <><CheckCircle size={16} /> 朗读可用</>
+                            ) : ttsConnectionStatus === 'error' ? (
+                                <><X size={16} /> 连接失败</>
+                            ) : (
+                                '测试朗读'
+                            )}
+                        </button>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-phy-border bg-phy-bg/40 p-5 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 className="text-sm font-bold text-phy-text">自定义朗读服务（可选）</h4>
+                                <p className="text-xs text-phy-muted mt-1">可填写自己的 TTS 地址、模型、音色和密钥。</p>
                             </div>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">e.g. <b>alloy</b>, <b>echo</b>, or custom voice ID</p>
+                            <button
+                                onClick={() => {
+                                    updateSetting('ttsApiBaseUrl', BUILTIN_API_CONFIG.ttsApiBaseUrl);
+                                    updateSetting('ttsModelName', BUILTIN_API_CONFIG.ttsModelName);
+                                    updateSetting('ttsVoice', BUILTIN_API_CONFIG.ttsVoice);
+                                    updateSetting('ttsApiKey', BUILTIN_API_CONFIG.ttsApiKey);
+                                }}
+                                className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
+                            >
+                                恢复内置
+                            </button>
                         </div>
-
-                        {/* TTS API Key */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                TTS Security Key (Optional)
-                            </label>
-                            <div className="flex gap-3">
-                                <input
-                                    type="password"
-                                    value={settings.ttsApiKey || ''}
-                                    onChange={(e) => updateSetting('ttsApiKey', e.target.value)}
-                                    placeholder="Leave empty to use main API Key"
-                                    className="flex-1 bg-phy-bg border border-phy-border rounded-xl px-4 py-3.5 text-sm focus:bg-phy-glass focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all font-mono font-medium"
-                                />
-                                <button
-                                    onClick={handleTTSTest}
-                                    disabled={ttsConnectionStatus === 'testing'}
-                                    className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 min-w-[140px] justify-center ${ttsConnectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
-                                        ttsConnectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
-                                            'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-200'
-                                        }`}
-                                >
-                                    {ttsConnectionStatus === 'testing' ? (
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    ) : ttsConnectionStatus === 'success' ? (
-                                        <><CheckCircle size={16} /> 已验证</>
-                                    ) : ttsConnectionStatus === 'error' ? (
-                                        <><X size={16} /> 失败</>
-                                    ) : (
-                                        '测试 TTS'
-                                    )}
-                                </button>
-                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input
+                                type="text"
+                                value={settings.ttsApiBaseUrl || ''}
+                                onChange={(e) => updateSetting('ttsApiBaseUrl', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="/api/tts"
+                            />
+                            <input
+                                type="text"
+                                value={settings.ttsModelName || ''}
+                                onChange={(e) => updateSetting('ttsModelName', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="朗读模型"
+                            />
+                            <input
+                                type="text"
+                                value={settings.ttsVoice || ''}
+                                onChange={(e) => updateSetting('ttsVoice', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="音色 Voice"
+                            />
+                            <input
+                                type="password"
+                                value={isUsingBuiltinTtsKey ? '' : (settings.ttsApiKey || '')}
+                                onChange={(e) => updateSetting('ttsApiKey', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder={isUsingBuiltinTtsKey ? '平台内置密钥已隐藏' : '输入你的朗读 API Key'}
+                            />
                         </div>
                     </div>
                 </div>
 
                 {/* Image Generation API Card */}
                 <div id="image" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
-                    <div className="flex items-center gap-3 text-phy-text font-bold font-bold border-b border-phy-border pb-4 mb-6">
+                    <div className="flex items-center gap-3 text-phy-text font-bold border-b border-phy-border pb-4 mb-6">
                         <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
                             <ImageIcon size={20} />
                         </div>
-                        <h3 className="text-lg">配置图像生成 API (每日总结生图)</h3>
+                        <div>
+                            <h3 className="text-lg">学习总结图服务</h3>
+                            <p className="text-xs text-phy-muted mt-1">用于生成每日学习成果图和学习故事图。</p>
+                        </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Image Gen Base URL */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Image API Endpoint URL
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.imageGenApiUrl || ''}
-                                    onChange={(e) => updateSetting('imageGenApiUrl', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                    placeholder="e.g. https://api.openai.com/v1 or https://api.siliconflow.cn/v1"
-                                />
-                                <Wifi size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-amber-500 transition-colors" />
-                            </div>
-                        </div>
-
-                        {/* Image Gen Model Name */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
                         <div>
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Image Model Name
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="text"
-                                    value={settings.imageGenModel || 'dall-e-3'}
-                                    onChange={(e) => updateSetting('imageGenModel', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                />
-                                <Box size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-amber-500 transition-colors" />
-                            </div>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">e.g. <b>dall-e-3</b> (OpenAI) or <b>Kwai-Kolors/Kolors</b> (SiliconFlow)</p>
+                            <div className="text-sm font-bold text-phy-text">内置图像生成服务已配置</div>
+                            <div className="text-xs text-phy-muted mt-1">测试会消耗少量额度，请只在需要排查时使用。</div>
                         </div>
-
-                        {/* Image Gen API Key */}
-                        <div>
-                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                Image API Key (Optional)
-                            </label>
-                            <div className="relative group">
-                                <input
-                                    type="password"
-                                    value={settings.imageGenApiKey || ''}
-                                    onChange={(e) => updateSetting('imageGenApiKey', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 outline-none transition-all font-mono font-medium text-phy-text"
-                                    placeholder="留空则使用主 API Key"
-                                />
-                                <Server size={18} className="absolute left-4 top-3.5 text-phy-muted group-focus-within:text-amber-500 transition-colors" />
+                        <button
+                            onClick={handleImageGenTest}
+                            disabled={imageGenConnectionStatus === 'testing'}
+                            className={`px-5 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 justify-center ${imageGenConnectionStatus === 'success' ? 'bg-green-500 text-white' :
+                                imageGenConnectionStatus === 'error' ? 'bg-red-500 text-white' :
+                                    'bg-amber-500 text-white hover:bg-amber-600'
+                                }`}
+                        >
+                            {imageGenConnectionStatus === 'testing' ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : imageGenConnectionStatus === 'success' ? (
+                                <><CheckCircle size={16} /> 生图可用</>
+                            ) : imageGenConnectionStatus === 'error' ? (
+                                <><X size={16} /> 连接失败</>
+                            ) : (
+                                <><ImageIcon size={16} /> 测试生图</>
+                            )}
+                        </button>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-phy-border bg-phy-bg/40 p-5 space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 className="text-sm font-bold text-phy-text">自定义生图服务（可选）</h4>
+                                <p className="text-xs text-phy-muted mt-1">可填写自己的图像生成接口；平台默认密钥仍然隐藏。</p>
                             </div>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">如果生图 API 与主 API 使用不同的 Key，请在此填写</p>
-                        </div>
-
-                        {/* Test Button */}
-                        <div className="md:col-span-2">
                             <button
-                                onClick={handleImageGenTest}
-                                disabled={imageGenConnectionStatus === 'testing'}
-                                className={`px-6 py-3.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${imageGenConnectionStatus === 'success' ? 'bg-green-500 text-white shadow-green-200 shadow-md' :
-                                    imageGenConnectionStatus === 'error' ? 'bg-red-500 text-white shadow-red-200 shadow-md' :
-                                        'bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-200'
-                                    }`}
+                                onClick={() => {
+                                    updateSetting('imageGenApiUrl', '/api/image');
+                                    updateSetting('imageGenModel', 'dall-e-3');
+                                    updateSetting('imageGenApiKey', 'server-managed');
+                                }}
+                                className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
                             >
-                                {imageGenConnectionStatus === 'testing' ? (
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                ) : imageGenConnectionStatus === 'success' ? (
-                                    <><CheckCircle size={16} /> 生图成功！</>
-                                ) : imageGenConnectionStatus === 'error' ? (
-                                    <><X size={16} /> 连接失败</>
-                                ) : (
-                                    <><ImageIcon size={16} /> 测试生图 API</>
-                                )}
+                                恢复内置
                             </button>
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">测试会生成一张小图片，可能会消耗少量 API 额度</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                                type="text"
+                                value={settings.imageGenApiUrl || ''}
+                                onChange={(e) => updateSetting('imageGenApiUrl', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="/api/image"
+                            />
+                            <input
+                                type="text"
+                                value={settings.imageGenModel || ''}
+                                onChange={(e) => updateSetting('imageGenModel', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder="生图模型"
+                            />
+                            <input
+                                type="password"
+                                value={isUsingBuiltinImageKey ? '' : (settings.imageGenApiKey || '')}
+                                onChange={(e) => updateSetting('imageGenApiKey', e.target.value)}
+                                className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
+                                placeholder={isUsingBuiltinImageKey ? '平台内置密钥已隐藏' : '输入你的生图 API Key'}
+                            />
                         </div>
                     </div>
                 </div>
-
                 {/* System Prompt Card */}
                 <div id="system" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
                     <div className="flex items-center gap-3 text-phy-text font-bold font-bold border-b border-phy-border pb-4 mb-6">
                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
                             <Settings size={20} />
                         </div>
-                        <h3 className="text-lg">配置 AI 核心人设 (System Prompt)</h3>
+                        <h3 className="text-lg">AI 指令与学习偏好</h3>
                     </div>
                     <div>
                         <div>
                             <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                系统预设指令 (System Instruction)
+                                AI 回答风格
                             </label>
                             <textarea
                                 value={settings.systemPrompt}
                                 onChange={(e) => updateSetting('systemPrompt', e.target.value)}
                                 className="w-full bg-phy-bg border border-phy-border rounded-xl p-4 text-sm focus:bg-phy-glass focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-phy-text min-h-[100px] mb-6"
-                                placeholder="Define how the AI should behave..."
+                                placeholder="设置 AI 应该如何回答和辅导..."
                             />
                         </div>
                         <div className="pt-4 border-t border-phy-border/30">
                             <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                深度笔记预设指令 (Deep Note Prompt)
+                                深度笔记生成格式
                             </label>
                             <textarea
                                 value={settings.deepNotePrompt || ''}
                                 onChange={(e) => updateSetting('deepNotePrompt', e.target.value)}
                                 className="w-full bg-phy-bg border border-phy-border rounded-xl p-4 text-sm focus:bg-phy-glass focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-phy-text min-h-[200px] mb-2"
-                                placeholder="Edit the prompt template for deep notes..."
+                                placeholder="编辑深度笔记的生成格式..."
                             />
                             <p className="text-[11px] text-phy-muted mb-4">
                                 可用占位符: <code className="bg-phy-border px-1 rounded font-mono">{"{{word}}"}</code> (当前单词), <code className="bg-phy-border px-1 rounded font-mono">{"{{context}}"}</code> (上下文例文)。保留核心 markdown 骨架以确保最佳排版效果。
@@ -805,7 +749,7 @@ const SettingsView = () => {
                         </div>
                         <div className="mt-4 pt-4 border-t border-phy-border/30">
                             <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                词汇提取数量 (Vocabulary Quantity Target)
+                                词汇提取数量
                             </label>
                             <input
                                 type="text"
@@ -827,12 +771,12 @@ const SettingsView = () => {
                         <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
                             <Clock size={20} />
                         </div>
-                        <h3 className="text-lg">效率工具 (Efficiency Tools)</h3>
+                        <h3 className="text-lg">效率工具</h3>
                     </div>
 
                     <div className="space-y-6">
                         <Toggle
-                            title="Enable Global Pomodoro Timer (开启全局番茄钟)"
+                            title="开启全局番茄钟"
                             checked={settings.showPomodoro}
                             onChange={(v) => updateSetting('showPomodoro', v)}
                         />
@@ -841,7 +785,7 @@ const SettingsView = () => {
                             <div className="grid grid-cols-2 gap-4 animate-fade-in-up">
                                 <div>
                                     <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                        Focus Duration (min)
+                                        专注时长（分钟）
                                     </label>
                                     <input
                                         type="number"
@@ -854,7 +798,7 @@ const SettingsView = () => {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                        Break Duration (min)
+                                        休息时长（分钟）
                                     </label>
                                     <input
                                         type="number"
@@ -871,14 +815,14 @@ const SettingsView = () => {
                         {/* Vocabulary Import Limit */}
                         <div className="pt-4 border-t border-phy-border">
                             <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-2">
-                                词汇批量导入上限 (Vocabulary Import Limit)
+                                词汇批量导入上限
                             </label>
                             <select
                                 value={settings.vocabLimit || ''}
                                 onChange={(e) => updateSetting('vocabLimit', e.target.value ? parseInt(e.target.value) : null)}
                                 className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:bg-phy-glass focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-medium text-phy-text"
                             >
-                                <option value="">无限制 (No Limit)</option>
+                                <option value="">无限制</option>
                                 <option value="50">50 词</option>
                                 <option value="100">100 词</option>
                                 <option value="200">200 词</option>
@@ -895,13 +839,13 @@ const SettingsView = () => {
                         <div className="p-2 bg-pink-50 text-pink-600 rounded-lg">
                             <BookMarked size={20} />
                         </div>
-                        <h3 className="text-lg">自定义漫画风格 (Design Your Comic Style)</h3>
+                        <h3 className="text-lg">自定义漫画风格</h3>
                     </div>
 
                     {/* List Existing Custom Styles */}
                     <div className="mb-8">
                         <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-3">
-                            Your Custom Styles
+                            已添加的自定义风格
                         </label>
                         <div className="space-y-3">
                             {settings.customStyles?.length > 0 ? (
@@ -910,14 +854,14 @@ const SettingsView = () => {
                                         <div className="flex-1 min-w-0 mr-4">
                                             <div className="font-bold text-phy-text font-bold text-sm flex items-center gap-2">
                                                 {style.name}
-                                                <span className="text-[10px] bg-pink-100 text-pink-600 px-1.5 py-0.5 rounded font-medium">Custom</span>
+                                                <span className="text-[10px] bg-pink-100 text-pink-600 px-1.5 py-0.5 rounded font-medium">自定义</span>
                                             </div>
                                             <div className="text-xs text-phy-muted truncate mt-1 font-mono">{style.prompt}</div>
                                         </div>
                                         <button
                                             onClick={() => removeCustomStyle(style.id)}
                                             className="p-2 text-phy-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Delete Style"
+                                            title="删除风格"
                                         >
                                             <Trash2 size={16} />
                                         </button>
@@ -940,7 +884,7 @@ const SettingsView = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label className="block text-[10px] font-bold text-phy-muted uppercase tracking-wider mb-1.5">
-                                    Style Name (风格名称)
+                                    风格名称
                                 </label>
                                 <input
                                     type="text"
@@ -952,7 +896,7 @@ const SettingsView = () => {
                             </div>
                             <div className="md:col-span-2">
                                 <label className="block text-[10px] font-bold text-phy-muted uppercase tracking-wider mb-1.5">
-                                    AI Prompt (画风描述/关键词)
+                                    画风描述 / 关键词
                                 </label>
                                 <div className="flex gap-2">
                                     <input
@@ -967,11 +911,11 @@ const SettingsView = () => {
                                         disabled={!newStyleName.trim() || !newStylePrompt.trim()}
                                         className="px-4 py-2 bg-pink-500 text-white rounded-xl font-bold text-xs hover:bg-pink-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-pink-200 transition-all"
                                     >
-                                        Add
+                                        添加
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-phy-muted mt-1.5">
-                                    <b>Tip:</b> 使用英文描述效果最佳。可以参考 Midjourney/Stable Diffusion 的画风提示词。
+                                    建议使用清晰的画风关键词，例如“赛博朋克、胶片感、低饱和、手绘线条”。
                                 </p>
                             </div>
                         </div>
@@ -1051,11 +995,11 @@ const SettingsView = () => {
                         <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
                             <Box size={20} />
                         </div>
-                        <h3 className="text-lg">通用与性能 (General)</h3>
+                        <h3 className="text-lg">通用与性能</h3>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Toggle
-                            title="⚡ Fast Mode (Preload All Views)"
+                            title="⚡ 快速模式（预加载页面）"
                             checked={settings.preloadAll !== false}
                             onChange={(val) => updateSetting('preloadAll', val)}
                         />
@@ -1068,13 +1012,13 @@ const SettingsView = () => {
                         <div className="p-2 bg-rose-50 text-rose-600 rounded-lg">
                             <Palette size={20} />
                         </div>
-                        <h3 className="text-lg">外观设置 (Appearance & Theme)</h3>
+                        <h3 className="text-lg">外观与主题</h3>
                     </div>
 
                     {/* === Theme Switcher === */}
                     <div className="mb-8">
                         <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-4">
-                            配色方案 (Color Scheme) - Phycat 风格
+                            配色方案
                         </label>
                         <p className="text-xs text-phy-muted mb-2">推荐主题</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-3 mb-4">
@@ -1151,7 +1095,7 @@ const SettingsView = () => {
                             <div className="relative group mb-3">
                                 <input
                                     type="text"
-                                    value={settings.backgroundImage?.startsWith('data:') ? 'Local Image Uploaded' : (settings.backgroundImage || '')}
+                                    value={settings.backgroundImage?.startsWith('data:') ? '已上传本地图片' : (settings.backgroundImage || '')}
                                     onChange={(e) => !settings.backgroundImage?.startsWith('data:') && updateSetting('backgroundImage', e.target.value)}
                                     className="w-full bg-phy-bg border border-phy-border rounded-xl pl-11 pr-4 py-3.5 text-sm focus:bg-phy-glass focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 outline-none transition-all font-mono font-medium text-phy-text"
                                     placeholder="https://..."
@@ -1185,9 +1129,9 @@ const SettingsView = () => {
 
                                                 const url = URL.createObjectURL(file);
                                                 updateSetting('backgroundImage', url);
-                                                alert("Background set successfully!");
+                                                alert("背景设置成功。");
                                             } catch (err) {
-                                                alert("Failed to save background: " + err.message);
+                                                alert("背景保存失败：" + err.message);
                                             }
                                         }}
                                     />
@@ -1207,7 +1151,7 @@ const SettingsView = () => {
                                 )}
                             </div>
                             <p className="text-[11px] text-phy-muted mt-2 ml-1">
-                                Paste a link OR upload a local image (Max 4MB).
+                                可以粘贴图片链接，也可以上传本地图片。
                             </p>
                         </div>
 
@@ -1224,7 +1168,7 @@ const SettingsView = () => {
                                 onChange={(e) => updateSetting('glassOpacity', parseInt(e.target.value) / 100)}
                                 className="w-full h-2 bg-phy-bg rounded-lg appearance-none cursor-pointer accent-rose-500"
                             />
-                            <p className="text-[11px] text-phy-muted mt-2 ml-1">Controls the "fog" density over the background image.</p>
+                            <p className="text-[11px] text-phy-muted mt-2 ml-1">控制背景图片上方的磨砂遮罩强度。</p>
                         </div>
                     </div>
                 </div>

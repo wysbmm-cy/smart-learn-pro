@@ -9,7 +9,7 @@ import SplitPane from '../components/SplitPane';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
-    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones, LogIn, LogOut
+    Clock, FolderOpen, NotebookPen, Layers, Menu, Mic, PlayCircle, PenTool, FileQuestion, Share2, X, Home, Target, Languages, Headphones, Route
 } from 'lucide-react';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, onContextMenu }) => (
@@ -86,7 +86,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const shouldAutoHideSidebar = !isMobileViewport && currentView === 'writer' && isChatOpen && isWriterMaterialPanelOpen;
     const isSidebarVisible = isSidebarOpen && !shouldAutoHideSidebar;
     const writerCanvasClass = 'max-w-[1700px] mx-auto h-full';
-    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam' || currentView === 'writer' || currentView === 'translation';
+    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam' || currentView === 'writer' || currentView === 'translation' || currentView === 'flow';
     const contentContainerClass = currentView === 'notes'
         ? 'h-full w-full max-w-none mx-0 p-0'
         : currentView === 'exam'
@@ -95,6 +95,8 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 ? writerCanvasClass
             : currentView === 'translation'
                 ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
+            : currentView === 'flow'
+                ? 'w-full max-w-none h-full'
             : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto pt-4 md:pt-6 pb-24 md:pb-8`;
     const splitPaneContainerClass = currentView === 'exam'
         ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
@@ -102,6 +104,8 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
             ? writerCanvasClass
         : currentView === 'translation'
             ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
+        : currentView === 'flow'
+            ? 'w-full max-w-none h-full'
         : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full pt-6`;
 
     const handleContextMenu = (e, itemId) => {
@@ -121,6 +125,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
         { id: 'listening', icon: Headphones, label: '听力实验室' },
         { id: 'writer', icon: PenTool, label: 'AI 写作' },
         { id: 'translation', icon: Languages, label: '翻译挑战' },
+        { id: 'flow', icon: Route, label: '学习流画布' },
         { id: 'exam', icon: FileQuestion, label: '阅读与考试' },
         { id: 'flashcards', icon: Layers, label: '闪卡复习' },
         { id: 'review', icon: Target, label: '记忆曲线复习' },

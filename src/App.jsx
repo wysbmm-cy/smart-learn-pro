@@ -25,6 +25,7 @@ const viewFactories = {
     VideoView: () => import('./views/VideoView'),
     WriterView: () => import('./views/WriterView'),
     TranslationChallengeView: () => import('./views/TranslationChallengeView'),
+    LearningFlowCanvasView: () => import('./views/LearningFlowCanvasView'),
     LoginView: () => import('./views/LoginView'),
     ExamView: () => import('./views/ExamView'),
     KnowledgeGraphView: () => import('./views/KnowledgeGraphView'),
@@ -50,6 +51,7 @@ const CoachView = lazy(viewFactories.CoachView);
 const VideoView = lazy(viewFactories.VideoView);
 const WriterView = lazy(viewFactories.WriterView);
 const TranslationChallengeView = lazy(viewFactories.TranslationChallengeView);
+const LearningFlowCanvasView = lazy(viewFactories.LearningFlowCanvasView);
 const LoginView = lazy(viewFactories.LoginView);
 const ExamView = lazy(viewFactories.ExamView);
 const KnowledgeGraphView = lazy(viewFactories.KnowledgeGraphView);
@@ -89,7 +91,7 @@ function AppContent() {
     const getViewComponent = (viewId) => {
         switch (viewId) {
             case 'dashboard':
-                return <Dashboard onNavigate={setCurrentView} />;
+                return <Dashboard onNavigate={handleNavigate} />;
             case 'review':
                 return <ReviewCenterView onNavigate={setCurrentView} />;
             case 'import':
@@ -113,6 +115,8 @@ function AppContent() {
                 return <WriterView params={viewParams} />;
             case 'translation':
                 return <TranslationChallengeView />;
+            case 'flow':
+                return <LearningFlowCanvasView onNavigate={handleNavigate} />;
             case 'login':
                 return <LoginView onNavigate={setCurrentView} />;
             case 'exam':
@@ -122,7 +126,7 @@ function AppContent() {
             case 'listening':
                 return <ListeningView />;
             default:
-                return <Dashboard onNavigate={setCurrentView} />;
+                return <Dashboard onNavigate={handleNavigate} />;
         }
     };
 

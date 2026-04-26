@@ -9,6 +9,16 @@ const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS || 30);
 const SESSION_MAX_AGE_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const AI_PROXY_BASE_URL = process.env.AI_PROXY_BASE_URL || 'https://api.deepseek.com/v1';
+const AI_PROXY_API_KEY = process.env.AI_PROXY_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.MOONSHOT_API_KEY || '';
+const AI_PROXY_MODEL = process.env.AI_PROXY_MODEL || 'deepseek-v4-flash';
+const AUDIO_PROXY_BASE_URL = process.env.AUDIO_PROXY_BASE_URL || 'https://api.siliconflow.cn/v1';
+const AUDIO_PROXY_API_KEY = process.env.AUDIO_PROXY_API_KEY || process.env.SILICONFLOW_API_KEY || '';
+const TTS_PROXY_BASE_URL = process.env.TTS_PROXY_BASE_URL || AUDIO_PROXY_BASE_URL;
+const TTS_PROXY_API_KEY = process.env.TTS_PROXY_API_KEY || AUDIO_PROXY_API_KEY;
+const IMAGE_PROXY_BASE_URL = process.env.IMAGE_PROXY_BASE_URL || AI_PROXY_BASE_URL;
+const IMAGE_PROXY_API_KEY = process.env.IMAGE_PROXY_API_KEY || AI_PROXY_API_KEY;
+const IMAGE_PROXY_MODEL = process.env.IMAGE_PROXY_MODEL || 'dall-e-3';
 
 const now = () => Date.now();
 const createId = (prefix) => `${prefix}_${crypto.randomBytes(16).toString('hex')}`;
@@ -19,7 +29,7 @@ const json = (res, status, payload, extraHeaders = {}) => {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': CLIENT_ORIGIN,
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     ...extraHeaders,
   });
@@ -53,6 +63,12 @@ const readBody = async (req) => {
   for await (const chunk of req) chunks.push(chunk);
   if (!chunks.length) return {};
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+};
+
+const readRawBody = async (req) => {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
 };
 
 const hashPassword = (password) => {
@@ -123,6 +139,55 @@ const handleLogout = (req, res) => {
   return json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
 };
 
+const corsHeaders = (contentType = 'application/json; charset=utf-8') => ({
+  'Content-Type': contentType,
+  'Access-Control-Allow-Origin': CLIENT_ORIGIN,
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+});
+
+const normalizeBaseUrl = (value) => String(value || '').replace(/\/+$/, '');
+
+const proxyProviderRequest = async (req, res, url, config) => {
+  const { prefix, baseUrl, apiKey, defaultModel } = config;
+  if (!apiKey) {
+    return json(res, 500, { error: '服务器未配置 AI 服务密钥' });
+  }
+
+  const cleanBase = normalizeBaseUrl(baseUrl);
+  const upstreamPath = url.pathname.slice(prefix.length) || '/';
+  const upstreamUrl = `${cleanBase}${upstreamPath}${url.search || ''}`;
+  const contentType = req.headers['content-type'] || 'application/json';
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': contentType,
+  };
+
+  let body;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    const raw = await readRawBody(req);
+    if (contentType.includes('application/json')) {
+      const parsed = raw.length ? JSON.parse(raw.toString('utf8')) : {};
+      if ((!parsed.model || parsed.model === 'server-managed') && defaultModel) {
+        parsed.model = defaultModel;
+      }
+      body = JSON.stringify(parsed);
+    } else {
+      body = raw;
+    }
+  }
+
+  const upstream = await fetch(upstreamUrl, {
+    method: req.method,
+    headers,
+    body,
+  });
+  const responseText = await upstream.text();
+  res.writeHead(upstream.status, corsHeaders(upstream.headers.get('content-type') || 'application/json; charset=utf-8'));
+  return res.end(responseText);
+};
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return json(res, 204, {});
@@ -138,6 +203,36 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/auth/register') return handleRegister(req, res);
     if (req.method === 'POST' && url.pathname === '/api/auth/login') return handleLogin(req, res);
     if (req.method === 'POST' && url.pathname === '/api/auth/logout') return handleLogout(req, res);
+    if (url.pathname.startsWith('/api/ai/')) {
+      return proxyProviderRequest(req, res, url, {
+        prefix: '/api/ai',
+        baseUrl: AI_PROXY_BASE_URL,
+        apiKey: AI_PROXY_API_KEY,
+        defaultModel: AI_PROXY_MODEL,
+      });
+    }
+    if (url.pathname.startsWith('/api/audio/')) {
+      return proxyProviderRequest(req, res, url, {
+        prefix: '/api/audio',
+        baseUrl: AUDIO_PROXY_BASE_URL,
+        apiKey: AUDIO_PROXY_API_KEY,
+      });
+    }
+    if (url.pathname.startsWith('/api/tts/')) {
+      return proxyProviderRequest(req, res, url, {
+        prefix: '/api/tts',
+        baseUrl: TTS_PROXY_BASE_URL,
+        apiKey: TTS_PROXY_API_KEY,
+      });
+    }
+    if (url.pathname.startsWith('/api/image/')) {
+      return proxyProviderRequest(req, res, url, {
+        prefix: '/api/image',
+        baseUrl: IMAGE_PROXY_BASE_URL,
+        apiKey: IMAGE_PROXY_API_KEY,
+        defaultModel: IMAGE_PROXY_MODEL,
+      });
+    }
 
     return json(res, 404, { error: '接口不存在' });
   } catch (error) {

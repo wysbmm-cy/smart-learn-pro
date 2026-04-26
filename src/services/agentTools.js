@@ -318,7 +318,7 @@ const findCardByWord = (cards = [], word = '') => {
 
 const generateDeepNoteMarkdown = async ({ word, context = '', translation = '', settings = {} }) => {
     const apiKey = clean(settings.apiKey);
-    const apiBaseUrl = clean(settings.apiBaseUrl || 'https://api.moonshot.cn/v1');
+    const apiBaseUrl = clean(settings.apiBaseUrl || '/api/ai');
     const modelName = clean(settings.modelName || 'kimi-k2-0905-preview');
     if (!apiKey || !apiBaseUrl) return null;
 
