@@ -1188,6 +1188,9 @@ Return STRICT JSON with this schema:
 Rules:
 - sentence_index is required for every issue.
 - Keep feedback balanced across the whole essay.
+- Write reasons, overall_comment, paragraph suggestions, and improvement_plan actions in clear Chinese.
+- Make every improvement_plan action directly executable by the student, not a generic principle.
+- When rewriting, preserve the student's stance and do not invent unsupported facts.
 - Do not return markdown wrappers or extra text.
 `;
 

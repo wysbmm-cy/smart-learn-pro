@@ -12,12 +12,24 @@ import { writingTemplates } from '../data/writingTemplates';
 import { WRITING_MATERIAL_CATEGORIES, WRITING_MATERIAL_CATEGORY_LABELS, normalizeMaterialCategory } from '../data/writingMaterials';
 import { computeDiff } from '../utils/simpleDiff';
 import { getTodayNotesFolderName } from '../utils/noteFolders';
+import {
+    buildInsertPreview as buildWriterInsertPreview,
+    buildSentenceChanges as buildWriterSentenceChanges,
+    clamp,
+    escapeRegExp as escapeWriterRegExp,
+    getCoverageStatus as getWriterCoverageStatus,
+    normalizeCompareText as normalizeWriterCompareText,
+    normalizeSelectionText,
+    parseVocabularyPairs as parseWriterVocabularyPairs,
+    resolveAnchorForContent as resolveWriterAnchorForContent,
+    sentenceRanges as writerSentenceRanges,
+    splitParagraphs as splitWriterParagraphs
+} from '../utils/writerText';
 import PolishChatModal from '../components/PolishChatModal';
 import toast from 'react-hot-toast';
 
 const DEFAULT_EXAM_CONTEXT = { examType: 'CET-6', targetScore: 12, genre: 'Argumentative', wordTarget: 200, prompt: '' };
 const STEPS = ['prompt', 'outline', 'write', 'diagnose'];
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const MATERIAL_DRAWER_KEY = 'writer_material_drawer_open';
 const WRITER_MATERIAL_LAYOUT_DESKTOP_KEY = 'writer_material_layout_desktop';
 const WRITER_MATERIAL_LAYOUT_MOBILE_KEY = 'writer_material_layout_mobile';
@@ -42,7 +54,17 @@ const INSERT_MODE_OPTIONS = [
     { value: 'after_paragraph', label: '插入到段后' },
     { value: 'replace_selected_sentence', label: '替换选中句' }
 ];
-
+const READABLE_STEP_META = {
+    prompt: { label: '审题', hint: '明确任务与评分目标' },
+    outline: { label: '提纲', hint: '组织观点与证据链' },
+    write: { label: '写作', hint: '完成草稿并迭代' },
+    diagnose: { label: '诊断', hint: '聚焦提分改进项' }
+};
+const READABLE_INSERT_MODE_OPTIONS = [
+    { value: 'cursor', label: '插入到光标' },
+    { value: 'after_paragraph', label: '插入到段后' },
+    { value: 'replace_selected_sentence', label: '替换选中句' }
+];
 
 const normalizeWordFront = (raw) => String(raw || '').split('\n')[0].replace(/\/[^/]+\/$/, '').trim();
 const getTodayFlashcardFolderName = () => `Daily - ${new Date().toISOString().split('T')[0]}`;
@@ -449,7 +471,7 @@ const WriterView = ({ params }) => {
             if (readSelection) setReadSelection(null);
             return;
         }
-        const text = normalizeText(selection.toString());
+        const text = normalizeSelectionText(selection.toString());
         if (!text) {
             setReadSelection(null);
             return;
@@ -465,10 +487,15 @@ const WriterView = ({ params }) => {
         setReadSelection(null);
         try {
             window.getSelection?.().removeAllRanges();
-        } catch (e) {}
+        } catch (e) {
+            console.warn('Clear text selection failed:', e);
+        }
     };
 
     const resolveAnchorForContent = (anchorCandidate, textContent = content) => {
+        if (resolveWriterAnchorForContent) {
+            return resolveWriterAnchorForContent(anchorCandidate, textContent, currentParagraphIndex);
+        }
         const sourceParts = splitParagraphs(textContent);
         const parts = sourceParts.length ? sourceParts : [''];
         const rawBlock = Number(anchorCandidate?.blockIndex);
@@ -492,6 +519,9 @@ const WriterView = ({ params }) => {
     };
 
     const buildInsertPreview = (payload, textContent = content) => {
+        if (buildWriterInsertPreview) {
+            return buildWriterInsertPreview(payload, textContent, currentParagraphIndex);
+        }
         const insertText = String(payload?.text || '').trim();
         if (!insertText) {
             return { ok: false, error: '插入内容为空' };
@@ -596,7 +626,7 @@ const WriterView = ({ params }) => {
     };
 
     const applyVocabularyToSelectedSentence = (item, pair = null) => {
-        const pairs = parseVocabularyPairs(item);
+        const pairs = parseWriterVocabularyPairs(item);
         const selectedPair = pair || pairs[0] || null;
         const source = String(selectedPair?.source || '').trim();
         const target = String(selectedPair?.target || '').trim();
@@ -616,7 +646,7 @@ const WriterView = ({ params }) => {
                 toast.error(`当前选中句未包含“${source}”`);
                 return;
             }
-            replaced = selectedText.replace(new RegExp(escapeRegExp(source), 'gi'), target);
+            replaced = selectedText.replace(new RegExp(escapeWriterRegExp(source), 'gi'), target);
         } else {
             replaced = target;
         }
@@ -728,16 +758,16 @@ const WriterView = ({ params }) => {
     const rewrittenText = analysis?.rewritten_text || analysis?.corrected_text || '';
     const paragraphComparisons = useMemo(() => {
         if (!rewrittenText) return [];
-        const beforeRows = splitParagraphs(content);
-        const afterRows = splitParagraphs(rewrittenText);
+        const beforeRows = splitWriterParagraphs(content);
+        const afterRows = splitWriterParagraphs(rewrittenText);
         const size = Math.max(beforeRows.length, afterRows.length);
         const rows = [];
         for (let i = 0; i < size; i += 1) {
             const before = beforeRows[i] || '';
             const after = afterRows[i] || '';
             if (!before && !after) continue;
-            const changed = normalizeCompareText(before) !== normalizeCompareText(after);
-            const sentenceChanges = changed ? buildSentenceChanges(before, after) : [];
+            const changed = normalizeWriterCompareText(before) !== normalizeWriterCompareText(after);
+            const sentenceChanges = changed ? buildWriterSentenceChanges(before, after) : [];
             rows.push({
                 index: i + 1,
                 before,
@@ -1070,7 +1100,7 @@ const WriterView = ({ params }) => {
     }, [materials, materialQuery]);
     const vocabularyRows = useMemo(() => {
         return vocabularyMaterials.flatMap((item) => {
-            const pairs = parseVocabularyPairs(item);
+            const pairs = parseWriterVocabularyPairs(item);
             return pairs.map((pair, idx) => ({
                 id: `${item.id}-${idx}-${pair.source}-${pair.target}`,
                 item,
@@ -1554,7 +1584,7 @@ const WriterView = ({ params }) => {
 
     const applyFix = (issue) => {
         if (!issue?.fixed) return;
-        const ranges = sentenceRanges(content);
+        const ranges = writerSentenceRanges(content);
         const idx = clamp(Number(issue.sentence_index || 0), 0, Math.max(0, ranges.length - 1));
         const r = ranges[idx];
         if (!r) return;
@@ -1633,10 +1663,69 @@ const WriterView = ({ params }) => {
         </div>
     );
 
+    const ImprovedSidebar = (
+        <div className="h-full flex flex-col p-4 bg-phy-glassHeavy backdrop-blur-3xl text-phy-text">
+            <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 dark:bg-indigo-500/20 px-4 py-3 mb-3">
+                <h2 className="text-lg font-black text-indigo-600 dark:text-white flex items-center gap-2">
+                    <PenTool className="text-indigo-500 dark:text-indigo-300" size={18} />
+                    AI 写作台
+                </h2>
+                <p className="text-xs text-indigo-600/80 dark:text-indigo-100/80 mt-1 font-medium">审题提纲 · 分段写作 · 诊断修改 · 素材复用</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="rounded-xl border border-phy-border bg-phy-glass p-2">
+                    <div className="text-[10px] text-phy-muted">草稿</div>
+                    <div className="text-base font-black text-phy-text">{writings.length}</div>
+                </div>
+                <div className="rounded-xl border border-phy-border bg-phy-glass p-2">
+                    <div className="text-[10px] text-phy-muted">素材</div>
+                    <div className="text-base font-black text-amber-600 dark:text-amber-200">{materials.length}</div>
+                </div>
+            </div>
+
+            <div className="space-y-2 mb-4">
+                <button
+                    onClick={() => setShowTemplateModal(true)}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                >
+                    <FileText size={16} />
+                    新建 / 模板
+                </button>
+                <button
+                    onClick={openMaterialsPanel}
+                    className="w-full bg-amber-500/10 dark:bg-amber-500/20 border border-amber-400/30 text-amber-700 dark:text-amber-200 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-amber-500/20 transition-colors"
+                >
+                    <FolderOpen size={16} />
+                    打开素材包
+                </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 custom-scrollbar">
+                <h3 className="text-xs font-bold text-phy-muted uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <History size={12} /> 我的写作 ({writings.length})
+                </h3>
+                {writings.map((w) => (
+                    <div
+                        key={w.id}
+                        onClick={() => loadDraft(w)}
+                        className={`p-3 rounded-xl border cursor-pointer group relative transition-all ${currentId === w.id ? 'bg-indigo-500/15 border-indigo-400/40 text-indigo-600 dark:text-indigo-100 shadow-lg shadow-indigo-500/10' : 'bg-phy-glass border-phy-border text-phy-muted hover:text-phy-text hover:border-phy-borderHover hover:bg-phy-glassHeavy'}`}
+                    >
+                        <div className="text-sm font-medium line-clamp-1 pr-6">{w.title || '未命名'}</div>
+                        <div className="text-[10px] opacity-70 mt-1">{new Date(w.updatedAt || Date.now()).toLocaleDateString()}</div>
+                        <button onClick={(e) => deleteDraft(e, w.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 text-phy-muted hover:text-red-400" title="删除草稿">
+                            <Trash2 size={12} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+
     const StepNav = (
         <div className="px-4 md:px-6 py-3 border-b border-phy-border bg-phy-glass flex flex-wrap items-center gap-2">
             {STEPS.map((step, i) => {
-                const meta = STEP_META[step];
+                const meta = READABLE_STEP_META[step];
                 const active = workflowStep === step;
                 return (
                     <React.Fragment key={step}>
@@ -1678,6 +1767,50 @@ const WriterView = ({ params }) => {
                 <textarea value={examContext.prompt} onChange={(e) => setExamContext(p => ({ ...p, prompt: e.target.value }))} rows={5} placeholder="输入题目或任务说明" className="w-full mt-4 bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text resize-none" />
                 <div className="mt-4 flex gap-2">
                     <button onClick={generateOutline} disabled={isGeneratingOutline} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center gap-2">{isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} 生成提纲</button>
+                    <button onClick={createManualOutline} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">手动提纲</button>
+                    <button onClick={() => setWorkflowStep('write')} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">直接写作</button>
+                </div>
+            </div>
+        </div>
+    );
+
+    const ImprovedPromptPane = (
+        <div className="h-full min-h-0 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
+            <div className="glass-panel rounded-2xl border border-phy-border p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="font-bold text-phy-text text-base flex items-center gap-2">
+                        <GraduationCap size={16} className="text-indigo-400" />
+                        审题与目标设置
+                    </h3>
+                    <div className="text-[11px] text-phy-muted">先定题目和目标，再生成提纲或直接写作。</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="space-y-1">
+                        <span className="text-xs font-bold text-phy-muted">考试类型</span>
+                        <select value={examContext.examType} onChange={(e) => setExamContext(p => ({ ...p, examType: e.target.value }))} className="w-full bg-phy-bg border border-phy-border rounded-lg px-3 py-2 text-sm text-phy-text">{['CET-4', 'CET-6', 'IELTS', 'TOEFL'].map(x => <option key={x} value={x}>{x}</option>)}</select>
+                    </label>
+                    <label className="space-y-1">
+                        <span className="text-xs font-bold text-phy-muted">写作类型</span>
+                        <select value={examContext.genre} onChange={(e) => setExamContext(p => ({ ...p, genre: e.target.value }))} className="w-full bg-phy-bg border border-phy-border rounded-lg px-3 py-2 text-sm text-phy-text">{['Argumentative', 'Expository', 'Narrative', 'Email'].map(x => <option key={x} value={x}>{x}</option>)}</select>
+                    </label>
+                    <label className="space-y-1">
+                        <span className="text-xs font-bold text-phy-muted">目标分数 / 15</span>
+                        <input type="number" min="1" max="15" value={examContext.targetScore} onChange={(e) => setExamContext(p => ({ ...p, targetScore: clamp(Number(e.target.value) || 12, 1, 15) }))} className="w-full bg-phy-bg border border-phy-border rounded-lg px-3 py-2 text-sm text-phy-text" />
+                    </label>
+                    <label className="space-y-1">
+                        <span className="text-xs font-bold text-phy-muted">目标词数</span>
+                        <input type="number" min="80" max="1200" value={examContext.wordTarget} onChange={(e) => setExamContext(p => ({ ...p, wordTarget: clamp(Number(e.target.value) || 200, 80, 1200) }))} className="w-full bg-phy-bg border border-phy-border rounded-lg px-3 py-2 text-sm text-phy-text" />
+                    </label>
+                </div>
+                <textarea
+                    value={examContext.prompt}
+                    onChange={(e) => setExamContext(p => ({ ...p, prompt: e.target.value }))}
+                    rows={5}
+                    placeholder="输入作文题目、任务说明或评分要求..."
+                    className="w-full mt-4 bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text resize-none"
+                />
+                <div className="mt-4 flex flex-wrap gap-2">
+                    <button onClick={generateOutline} disabled={isGeneratingOutline} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} 生成提纲</button>
                     <button onClick={createManualOutline} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">手动提纲</button>
                     <button onClick={() => setWorkflowStep('write')} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">直接写作</button>
                 </div>
@@ -1792,6 +1925,124 @@ const WriterView = ({ params }) => {
         </div>
     );
 
+    const ImprovedOutlinePane = (
+        <div className="h-full min-h-0 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
+            {!outline ? (
+                <div className="glass-panel rounded-2xl border border-phy-border p-5">
+                    <div className="text-sm text-phy-muted">暂无提纲。可以让 AI 生成，也可以手动搭一个四段式结构。</div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        <button onClick={generateOutline} disabled={isGeneratingOutline} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} AI 生成提纲</button>
+                        <button onClick={createManualOutline} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">手动创建提纲</button>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <div className="text-sm font-bold text-phy-text">提纲质量仪表</div>
+                                <div className="text-xs text-phy-muted mt-1">检查立场、论据、让步和结论是否完整。</div>
+                            </div>
+                            <div className="text-lg font-black text-phy-text">{checkScore}%</div>
+                        </div>
+                        <div className="mt-2 h-2 rounded-full bg-phy-glass overflow-hidden"><div className="h-full bg-indigo-500" style={{ width: `${checkScore}%` }} /></div>
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                            <span className={checks.thesis ? 'text-emerald-300' : 'text-amber-200'}>立场 {checks.thesis ? '已写' : '待补'}</span>
+                            <span className={checks.evidence ? 'text-emerald-300' : 'text-amber-200'}>论据 {checks.evidence ? '已写' : '待补'}</span>
+                            <span className={checks.concession ? 'text-emerald-300' : 'text-amber-200'}>让步 {checks.concession ? '已写' : '可选补强'}</span>
+                            <span className={checks.conclusion ? 'text-emerald-300' : 'text-amber-200'}>结论 {checks.conclusion ? '已写' : '待补'}</span>
+                        </div>
+                    </div>
+
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <div className="font-semibold text-phy-text mb-2">核心立场（Thesis）</div>
+                        <textarea
+                            value={outline.thesis || ''}
+                            onChange={(e) => updateOutlineField('thesis', e.target.value)}
+                            rows={3}
+                            placeholder="写出你的立场句，例如：In my view, ... because ..."
+                            className="w-full bg-phy-bg border border-phy-border rounded-xl px-3 py-2 text-sm text-phy-text resize-y"
+                        />
+                    </div>
+
+                    {(outline.paragraphs || []).map((p, i) => (
+                        <div key={i} className="glass-panel rounded-xl border border-phy-border p-3 space-y-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-phy-muted">P{i + 1}</span>
+                                <select
+                                    value={p.purpose || ''}
+                                    onChange={(e) => updateOutlineParagraph(i, 'purpose', e.target.value)}
+                                    className="bg-phy-bg border border-phy-border rounded-lg px-2 py-1 text-xs text-phy-text"
+                                >
+                                    {OUTLINE_PURPOSE_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}
+                                </select>
+                                <label className="ml-auto flex items-center gap-1 text-xs text-phy-muted">
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(p.concession)}
+                                        onChange={(e) => updateOutlineParagraph(i, 'concession', e.target.checked)}
+                                    />
+                                    让步段
+                                </label>
+                                <button
+                                    onClick={() => removeOutlineParagraph(i)}
+                                    className="p-1.5 rounded-md text-phy-muted hover:text-rose-300 hover:bg-rose-500/10"
+                                    title="删除本段"
+                                >
+                                    <Trash2 size={13} />
+                                </button>
+                            </div>
+                            <textarea
+                                value={p.topic_sentence || ''}
+                                onChange={(e) => updateOutlineParagraph(i, 'topic_sentence', e.target.value)}
+                                rows={2}
+                                placeholder="本段主题句"
+                                className="w-full bg-phy-bg border border-phy-border rounded-xl px-3 py-2 text-sm text-phy-text resize-y"
+                            />
+                            <textarea
+                                value={p.evidence_hint || ''}
+                                onChange={(e) => updateOutlineParagraph(i, 'evidence_hint', e.target.value)}
+                                rows={2}
+                                placeholder="论据提示：例子 / 数据 / 对比 / 原因链"
+                                className="w-full bg-phy-bg border border-phy-border rounded-xl px-3 py-2 text-sm text-phy-text resize-y"
+                            />
+                        </div>
+                    ))}
+
+                    <div className="glass-panel rounded-xl border border-phy-border p-3">
+                        <div className="text-xs text-phy-muted mb-2">结论收束（Conclusion）</div>
+                        <textarea
+                            value={outline.conclusion || ''}
+                            onChange={(e) => updateOutlineField('conclusion', e.target.value)}
+                            rows={2}
+                            placeholder="最后一句如何收束主张"
+                            className="w-full bg-phy-bg border border-phy-border rounded-xl px-3 py-2 text-sm text-phy-text resize-y"
+                        />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        <button onClick={addOutlineParagraph} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">新增段落</button>
+                        <button onClick={generateOutline} disabled={isGeneratingOutline} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold flex items-center gap-2 disabled:opacity-60">{isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} AI 重生成</button>
+                        <button onClick={() => {
+                            const outlineSeed = (outline.paragraphs || []).map((p, i) => `Paragraph ${i + 1}: ${p.topic_sentence || ''}`).join('\n\n');
+                            const shouldSeedFromOutline =
+                                !content.trim() ||
+                                !isContentDirty ||
+                                contentOrigin === 'template' ||
+                                contentOrigin === 'draft';
+                            if (shouldSeedFromOutline && outlineSeed.trim()) {
+                                setContent(outlineSeed);
+                                setContentOrigin('outline');
+                                setIsContentDirty(false);
+                            }
+                            setWorkflowStep('write');
+                        }} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold">进入写作</button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+
     const wordTarget = clamp(Number(examContext.wordTarget) || 200, 80, 1200);
     const wordProgress = clamp(Math.round((wordCount / wordTarget) * 100), 0, 100);
     const editorParagraphs = useMemo(() => {
@@ -1870,7 +2121,7 @@ const WriterView = ({ params }) => {
             const intro = paragraphs[0] || '';
             const ending = paragraphs.length > 1 ? paragraphs[paragraphs.length - 1] : '';
             const thesisScope = `${intro}\n${ending}`;
-            const coverage = getCoverageStatus(thesisScope, thesis);
+            const coverage = getWriterCoverageStatus(thesisScope, thesis);
             rows.push({
                 id: 'thesis',
                 label: '论点',
@@ -1884,7 +2135,7 @@ const WriterView = ({ params }) => {
             if (!sentence) return;
             const evidence = String(p.evidence_hint || '').trim();
             const paragraphScope = paragraphs[idx] || '';
-            const coverage = getCoverageStatus(paragraphScope, `${sentence} ${evidence}`.trim());
+            const coverage = getWriterCoverageStatus(paragraphScope, `${sentence} ${evidence}`.trim());
             rows.push({
                 id: `p${idx + 1}`,
                 label: `P${idx + 1}`,
@@ -2256,6 +2507,167 @@ const WriterView = ({ params }) => {
         </div>
     );
 
+    const ImprovedDiagnosePane = (
+        <div
+            className="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4 bg-phy-bg/20"
+            onMouseUp={() => captureReadOnlySelection('diagnose')}
+            onClick={(e) => { if (window.innerWidth < 768) handleReadOnlyTextTap(e, 'diagnose'); }}
+            onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault(); }}
+            style={{ WebkitTouchCallout: 'none' }}
+        >
+            {!analysis ? (
+                <div className="glass-panel rounded-2xl border border-phy-border p-6 text-sm text-phy-muted text-center">暂无诊断结果，请先完成一次 AI 诊断。</div>
+            ) : (
+                <>
+                    <div className="glass-panel rounded-2xl border border-phy-border p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div className="text-xs text-phy-muted uppercase mb-1">总评分</div>
+                                <div className="text-4xl font-black text-phy-text">{analysis.score_total || analysis.score}<span className="text-lg text-phy-muted"> / 15</span></div>
+                            </div>
+                            <button
+                                onClick={runAnalyze}
+                                disabled={isAnalyzing}
+                                className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
+                            >
+                                {isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                重新诊断
+                            </button>
+                        </div>
+                        <div className="text-sm text-phy-text mt-3 leading-6">{analysis.overall_comment || analysis.comment || '暂无总评'}</div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">任务回应</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.task_response ?? 0}</div></div>
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">连贯衔接</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.coherence ?? 0}</div></div>
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">词汇表达</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.lexical_resource ?? 0}</div></div>
+                        <div className="glass-panel rounded-xl border border-phy-border p-3"><div className="text-[11px] text-phy-muted">语法准确</div><div className="font-bold text-phy-text">{analysis.rubric_scores?.grammar_range_accuracy ?? 0}</div></div>
+                    </div>
+
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <h4 className="font-bold text-phy-text text-sm mb-2">提分行动清单</h4>
+                        {(analysis.improvement_plan || []).slice(0, 5).map((item) => (
+                            <label key={item.id} className="flex items-start gap-2 rounded-lg border border-phy-border p-2 bg-phy-glass mb-2">
+                                <input type="checkbox" checked={Boolean(actionChecks[item.id])} onChange={() => setActionChecks(prev => ({ ...prev, [item.id]: !prev[item.id] }))} className="mt-0.5" />
+                                <div className="text-sm text-phy-text flex-1">{item.title}: <span className="text-phy-muted">{item.action}</span></div>
+                                <button onClick={(e) => { e.preventDefault(); requestInsertPreview(item.action, { label: '提分建议插入', sourceTitle: item.title || '提分建议', mode: insertModePreference, anchor: insertAnchor }); }} className="px-2 py-1 text-[11px] rounded-md border border-indigo-500/30 text-indigo-300">插入</button>
+                            </label>
+                        ))}
+                    </div>
+
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <h4 className="font-bold text-phy-text text-sm mb-2">句级问题 ({(analysis.issues || []).length})</h4>
+                        {(analysis.issues || []).map((issue, idx) => (
+                            <div key={idx} className={`rounded-lg border p-3 mb-2 ${issue.applied ? 'opacity-60 border-emerald-500/30 bg-emerald-500/5' : 'border-phy-border bg-phy-glass'}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="text-xs text-phy-muted">{issue.type} · sentence #{issue.sentence_index}</div>
+                                    {!issue.applied ? <button onClick={() => applyFix(issue)} className="px-2 py-1 text-[11px] rounded-md bg-emerald-600 hover:bg-emerald-500 text-white">应用到原文</button> : <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1"><CheckCircle size={12} />已应用</span>}
+                                </div>
+                                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
+                                        <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原句</div>
+                                        <div className="text-sm text-rose-100 mt-1 whitespace-pre-wrap">{issue.original || '（空）'}</div>
+                                    </div>
+                                    <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
+                                        <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">建议表达</div>
+                                        <div className="text-sm text-emerald-100 mt-1 whitespace-pre-wrap">{issue.fixed || '（空）'}</div>
+                                    </div>
+                                </div>
+                                <div className="mt-2 text-xs text-phy-muted">{issue.reason}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <h4 className="font-bold text-phy-text text-sm">段落级改写对照</h4>
+                            <span className="text-[11px] text-phy-muted">只展示发生变化的段落</span>
+                            {rewrittenText ? (
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm('采用整篇改写会替换当前草稿，可用撤销按钮恢复。确定采用吗？')) {
+                                            applyAiTextChange(rewrittenText, '采用整篇改写', { type: 'rewrite' });
+                                        }
+                                    }}
+                                    className="ml-auto px-2.5 py-1.5 rounded-md border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold"
+                                >
+                                    一键采用整篇改写
+                                </button>
+                            ) : null}
+                        </div>
+                        {!rewrittenText ? (
+                            <div className="text-sm text-phy-muted">本次诊断未返回整篇改写。</div>
+                        ) : !changedParagraphComparisons.length ? (
+                            <div className="text-sm text-phy-muted">改写与原文差异很小，建议优先查看句级问题。</div>
+                        ) : (
+                            <div className="space-y-3">
+                                {changedParagraphComparisons.map((row) => (
+                                    <div key={row.index} className="rounded-xl border border-phy-border bg-phy-glass p-3">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="text-[11px] text-phy-muted">段落 P{row.index}</div>
+                                            <span className="text-[11px] px-2 py-0.5 rounded-full border border-indigo-400/30 bg-indigo-500/10 text-indigo-200">
+                                                {row.changeCount || row.sentenceChanges.length} 处关键变化
+                                            </span>
+                                            <button
+                                                onClick={() => setExpandedCompareMap((prev) => ({ ...prev, [row.index]: !prev[row.index] }))}
+                                                className="ml-auto text-[11px] px-2 py-1 rounded-md border border-phy-border text-phy-muted hover:text-phy-text"
+                                            >
+                                                {expandedCompareMap[row.index] ? '收起整段' : '展开整段'}
+                                            </button>
+                                        </div>
+                                        {row.sentenceChanges.length ? (
+                                            <div className="space-y-2">
+                                                {row.sentenceChanges.map((change) => (
+                                                    <div key={change.index} className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                                        <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
+                                                            <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原句</div>
+                                                            <div className="text-sm text-rose-100 mt-1 whitespace-pre-wrap">{change.before}</div>
+                                                        </div>
+                                                        <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
+                                                            <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">改写句</div>
+                                                            <div className="text-sm text-emerald-100 mt-1 whitespace-pre-wrap">{change.after}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-phy-muted">主要是措辞细调，未检测到明显句级结构变化。</div>
+                                        )}
+                                        {expandedCompareMap[row.index] ? (
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 mt-3">
+                                                <div className="rounded-lg border border-rose-400/20 bg-rose-500/5 p-2.5">
+                                                    <div className="text-[11px] uppercase tracking-wide text-rose-200/80">原段落全文</div>
+                                                    <InlineParagraphDiff oldText={row.before} newText={row.after} side="old" />
+                                                </div>
+                                                <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2.5">
+                                                    <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">改写段落全文</div>
+                                                    <InlineParagraphDiff oldText={row.before} newText={row.after} side="new" />
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="glass-panel rounded-2xl border border-phy-border p-4">
+                        <h4 className="font-bold text-phy-text text-sm mb-2">词汇注入建议</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {injectSuggestions.map((item, idx) => (
+                                <div key={idx} className="rounded-lg border border-phy-border bg-phy-glass p-3">
+                                    <div className="text-sm font-bold text-phy-text">{item.word}</div>
+                                    <div className="text-xs text-phy-muted mt-1">{item.why}</div>
+                                    <div className="text-xs text-indigo-300 mt-1">{item.where}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+
     const MaterialQuickPanel = ({ showClose = false, onClose = null, compact = false } = {}) => (
         <div className={`h-full min-h-0 flex flex-col bg-phy-glassHeavy backdrop-blur-2xl ${isMobile ? 'overflow-y-auto' : ''}`}>
             <div className="px-4 py-4 border-b border-phy-border bg-gradient-to-br from-indigo-500/5 to-amber-500/5">
@@ -2391,7 +2803,7 @@ const WriterView = ({ params }) => {
                 <div className={`${isMobile ? 'pb-24' : 'overflow-y-auto custom-scrollbar'} p-3 space-y-2`}>
                     {drawerMaterials.map((item) => {
                         const itemCategory = normalizeMaterialCategory(item.category);
-                        const vocabPairsPreview = itemCategory === 'vocabulary' ? parseVocabularyPairs(item) : [];
+                        const vocabPairsPreview = itemCategory === 'vocabulary' ? parseWriterVocabularyPairs(item) : [];
                         const sourceKey = getMaterialSourceKey(item);
                         const isDeepNoteSource = item?.source === 'deep_note';
                         const isPinnedSource = isDeepNoteSource && sourceKey ? pinnedSourceIds.includes(sourceKey) : false;
@@ -2425,7 +2837,7 @@ const WriterView = ({ params }) => {
                                         </div>
                                     ) : null}
                                 </button>
-                                <div className="mt-2 flex gap-1.5">
+                                <div className="mt-2">
                                     <button
                                         onClick={() => requestInsertPreview(item.rewrite || item.content, {
                                             label: `素材预览：${item.title}`,
@@ -2434,15 +2846,9 @@ const WriterView = ({ params }) => {
                                             mode: insertModePreference,
                                             anchor: insertAnchor
                                         })}
-                                        className="flex-1 px-2 py-1 rounded-md text-[11px] border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glass"
+                                        className="w-full px-2 py-1 rounded-md text-[11px] border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glass"
                                     >
-                                        预览
-                                    </button>
-                                    <button
-                                        onClick={() => insertMaterialContent(item, item.rewrite || item.content, `素材插入：${item.title}`)}
-                                        className="flex-1 px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
-                                    >
-                                        插入
+                                        预览插入位置
                                     </button>
                                 </div>
                                 {isDeepNoteSource ? (
@@ -2493,7 +2899,7 @@ const WriterView = ({ params }) => {
                             {vocabView === 'cards' ? (
                                 <div className="grid grid-cols-1 gap-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
                                     {vocabularyMaterials.map((item) => {
-                                        const pairs = parseVocabularyPairs(item);
+                                        const pairs = parseWriterVocabularyPairs(item);
                                         const visiblePairs = pairs.slice(0, 6);
                                         const hiddenCount = Math.max(0, pairs.length - visiblePairs.length);
                                         return (
@@ -2653,7 +3059,7 @@ const WriterView = ({ params }) => {
                                             <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5 space-y-2">
                                                 <div className="text-[11px] text-phy-muted">词汇替换映射</div>
                                                 {(() => {
-                                                    const pairs = parseVocabularyPairs(activeMaterial);
+                                                    const pairs = parseWriterVocabularyPairs(activeMaterial);
                                                     if (!pairs.length) {
                                                         return (
                                                             <div className="text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
@@ -2962,7 +3368,7 @@ const WriterView = ({ params }) => {
         <div className="h-full min-h-0 flex flex-col bg-transparent">
             {workflowStep !== 'write' ? StepNav : null}
             <div className="flex-1 min-h-0 overflow-hidden">
-                {workflowStep === 'prompt' ? PromptPane : workflowStep === 'outline' ? OutlinePane : workflowStep === 'write' ? WritePane : DiagnosePane}
+                {workflowStep === 'prompt' ? ImprovedPromptPane : workflowStep === 'outline' ? ImprovedOutlinePane : workflowStep === 'write' ? WritePane : ImprovedDiagnosePane}
             </div>
         </div>
     );
@@ -2999,7 +3405,7 @@ const WriterView = ({ params }) => {
                 </div>
                 <div className="p-4 space-y-3">
                     <div className="flex flex-wrap gap-2">
-                        {INSERT_MODE_OPTIONS.map((modeOption) => (
+                        {READABLE_INSERT_MODE_OPTIONS.map((modeOption) => (
                             <button
                                 key={modeOption.value}
                                 onClick={() => setPendingInsert((prev) => prev ? { ...prev, mode: modeOption.value } : prev)}
@@ -3104,7 +3510,7 @@ const WriterView = ({ params }) => {
                                 minLeftWidth={0}
                                 maxLeftWidth={500}
                                 onLeftWidthChange={handleWriterSplitResize}
-                                left={Sidebar}
+                                left={ImprovedSidebar}
                                 right={Main}
                             />
                         </div>
@@ -3126,7 +3532,9 @@ const WriterView = ({ params }) => {
                                             selection.modify("extend", "forward", "sentence");
                                             const text = selection.toString().trim();
                                             if (text) setReadSelection({ ...readSelection, text });
-                                        } catch (e) {}
+                                        } catch (e) {
+                                            console.warn('Sentence selection failed:', e);
+                                        }
                                     }
                                 }}
                                 className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] active:scale-95 transition-transform"
@@ -3167,7 +3575,7 @@ const WriterView = ({ params }) => {
                         </div>
                     </div>
                 )}
-                <div className="flex-1 overflow-hidden">{mobileTab === 'tools' ? Sidebar : mobileTab === 'editor' ? Main : DiagnosePane}</div>
+                <div className="flex-1 overflow-hidden">{mobileTab === 'tools' ? ImprovedSidebar : mobileTab === 'editor' ? Main : ImprovedDiagnosePane}</div>
             </div>
         </div>
     );
