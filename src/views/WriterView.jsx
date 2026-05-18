@@ -7,13 +7,14 @@ import {
     LayoutList, Columns
 } from 'lucide-react';
 import { saveWriting, getWritings, deleteWriting, getFlashcards, saveFlashcard, getFolders, saveFolder, saveWritingMaterial, getWritingMaterials, deleteWritingMaterial } from '../services/db';
-import { analyzeWriting, generateWritingOutline } from '../services/ai';
+import { analyzeWriting, assembleWritingMaterials, generateWritingOutline } from '../services/ai';
 import { writingTemplates } from '../data/writingTemplates';
 import { WRITING_MATERIAL_CATEGORIES, WRITING_MATERIAL_CATEGORY_LABELS, normalizeMaterialCategory } from '../data/writingMaterials';
 import { computeDiff } from '../utils/simpleDiff';
 import { getTodayNotesFolderName } from '../utils/noteFolders';
 import {
     buildInsertPreview as buildWriterInsertPreview,
+    buildOutlineSeedContent,
     buildSentenceChanges as buildWriterSentenceChanges,
     clamp,
     escapeRegExp as escapeWriterRegExp,
@@ -23,6 +24,7 @@ import {
     parseVocabularyPairs as parseWriterVocabularyPairs,
     resolveAnchorForContent as resolveWriterAnchorForContent,
     sentenceRanges as writerSentenceRanges,
+    stripOutlineParagraphLabel,
     splitParagraphs as splitWriterParagraphs
 } from '../utils/writerText';
 import PolishChatModal from '../components/PolishChatModal';
@@ -49,6 +51,11 @@ const STEP_META = {
     diagnose: { label: '诊断', hint: '聚焦提分改进项' }
 };
 const OUTLINE_PURPOSE_OPTIONS = ['Introduction', 'Point 1', 'Point 2', 'Concession', 'Conclusion'];
+const ANALYSIS_MODE_OPTIONS = [
+    { value: 'polish', label: '综合润色' },
+    { value: 'grammar', label: '只查语法' },
+    { value: 'academic', label: '学术升级' }
+];
 const INSERT_MODE_OPTIONS = [
     { value: 'cursor', label: '插入到光标' },
     { value: 'after_paragraph', label: '插入到段后' },
@@ -173,6 +180,14 @@ const getCoverageStatus = (scopeText, outlineText) => {
     if (hit >= 2 || ratio >= 0.5) return { status: 'covered', hit, total: keywords.length };
     return { status: 'partial', hit, total: keywords.length };
 };
+
+const cleanWritingTemplateContent = (templateText) => String(templateText || '')
+    .split('\n')
+    .filter((line) => !/^\s{0,3}#{0,6}\s*(topic|introduction|body\s+paragraph\s+\d+|paragraph\s+\d+|conclusion)\s*:?\s*(\[.*\])?\s*$/i.test(line))
+    .map((line) => stripOutlineParagraphLabel(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
 const InlineParagraphDiff = ({ oldText, newText, side = 'old' }) => {
     const parts = useMemo(() => computeDiff(oldText || '', newText || ''), [oldText, newText]);
@@ -318,6 +333,7 @@ const WriterView = ({ params }) => {
     const [currentId, setCurrentId] = useState(() => localStorage.getItem(CURRENT_WRITING_ID_KEY) || null);
     const [isSaving, setIsSaving] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isAssemblingMaterials, setIsAssemblingMaterials] = useState(false);
     const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [mobileTab, setMobileTab] = useState('editor');
@@ -343,7 +359,7 @@ const WriterView = ({ params }) => {
     const [materialCategory, setMaterialCategory] = useState('all');
     const [materialDrawerTab, setMaterialDrawerTab] = useState(() => {
         const saved = localStorage.getItem(WRITER_MATERIAL_TAB_KEY);
-        return ['recommend', 'all', 'deep_note'].includes(saved) ? saved : 'recommend';
+        return ['all', 'deep_note'].includes(saved) ? saved : 'all';
     });
     const [activeMaterialId, setActiveMaterialId] = useState(null);
     const [hiddenSourceIds, setHiddenSourceIds] = useState(() => readStringList(WRITER_MATERIAL_HIDE_SOURCE_IDS_KEY));
@@ -921,6 +937,7 @@ const WriterView = ({ params }) => {
     useEffect(() => {
         if (!params) return;
         if (params.openMaterials) openMaterialsPanel();
+        if (params.materialCategory) setMaterialCategory(normalizeMaterialCategory(params.materialCategory));
         if (params.materialId) setActiveMaterialId(params.materialId);
     }, [params]);
 
@@ -961,6 +978,26 @@ const WriterView = ({ params }) => {
             category: 'argument',
             topic: '',
             tags: ''
+        });
+    };
+
+    const startNewVocabularyMaterial = () => {
+        setMaterialFormAdvancedOpen(true);
+        setMaterialForm({
+            id: null,
+            title: '',
+            content: '',
+            rewrite: '',
+            usage: '',
+            caution: '',
+            sourceTerm: '',
+            targetTerm: '',
+            replaceReason: '',
+            beforeExample: '',
+            afterExample: '',
+            category: 'vocabulary',
+            topic: examContext.prompt.slice(0, 24),
+            tags: examContext.examType || ''
         });
     };
 
@@ -1075,13 +1112,11 @@ const WriterView = ({ params }) => {
 
     const drawerMaterials = useMemo(() => {
         const base =
-            materialDrawerTab === 'recommend'
-                ? recommendedMaterials
-                : materialDrawerTab === 'deep_note'
-                    ? deepNoteMaterials
-                    : (visibleMaterials || []);
+            materialDrawerTab === 'deep_note'
+                ? deepNoteMaterials
+                : (visibleMaterials || []);
         return applyMaterialFilter(base);
-    }, [materialDrawerTab, recommendedMaterials, deepNoteMaterials, visibleMaterials, materialQuery, materialCategory]);
+    }, [materialDrawerTab, deepNoteMaterials, visibleMaterials, materialQuery, materialCategory]);
 
     const activeMaterial = useMemo(() => {
         if (!activeMaterialId) return null;
@@ -1161,8 +1196,14 @@ const WriterView = ({ params }) => {
         if (!titleVal || !contentVal) return toast.error('请填写素材标题和内容');
         setIsSavingMaterial(true);
         try {
+            const materialId = materialForm.id || crypto.randomUUID();
+            const tagList = materialForm.tags
+                .split(/[，,]/)
+                .map((x) => x.trim())
+                .filter(Boolean)
+                .slice(0, 12);
             await saveWritingMaterial({
-                id: materialForm.id || undefined,
+                id: materialId,
                 title: titleVal,
                 content: contentVal,
                 rewrite: rewriteVal,
@@ -1176,15 +1217,32 @@ const WriterView = ({ params }) => {
                 category: categoryVal,
                 topic: materialForm.topic.trim(),
                 examType: examContext.examType,
-                tags: materialForm.tags
-                    .split(/[，,]/)
-                    .map((x) => x.trim())
-                    .filter(Boolean)
-                    .slice(0, 12),
+                tags: tagList,
                 source: materialForm.id ? 'edit' : 'writer'
             });
             await refreshMaterials();
-            resetMaterialForm();
+            if (categoryVal === 'vocabulary') {
+                setActiveMaterialId(materialId);
+                setMaterialFormAdvancedOpen(true);
+                setMaterialForm({
+                    id: materialId,
+                    title: titleVal,
+                    content: contentVal,
+                    rewrite: rewriteVal,
+                    usage: usageVal,
+                    caution: cautionVal,
+                    sourceTerm,
+                    targetTerm,
+                    replaceReason,
+                    beforeExample,
+                    afterExample,
+                    category: categoryVal,
+                    topic: materialForm.topic.trim(),
+                    tags: tagList.join('，')
+                });
+            } else {
+                resetMaterialForm();
+            }
             toast.success('素材已保存');
         } catch (e) {
             toast.error(`保存素材失败: ${e.message}`);
@@ -1317,45 +1375,48 @@ const WriterView = ({ params }) => {
         toast.success(created ? `已采集 ${created} 条素材` : '没有新的可采集素材');
     };
 
-    const assembleAmmoPack = () => {
-        const pool = (recommendedMaterials.length ? recommendedMaterials : materials || []).filter(Boolean);
+    const assembleAmmoPack = async () => {
+        const pool = (materials || []).filter(Boolean);
         if (!pool.length) {
             toast.error('没有可用素材，先收藏几条再试');
             return;
         }
-        const used = new Set();
-        const pick = (cats, matcher) => {
-            for (const item of pool) {
-                if (used.has(item.id)) continue;
-                const cat = normalizeMaterialCategory(item.category);
-                const text = String(item.content || '').toLowerCase();
-                if (cats.length && !cats.includes(cat)) continue;
-                if (matcher && !matcher(text, item)) continue;
-                used.add(item.id);
-                return item;
-            }
-            return null;
-        };
-
-        const opening = pick(['thesis', 'argument']);
-        const reasoning = pick(['argument', 'evidence']);
-        const concession = pick(['transition', 'argument'], (text) => /however|although|admittedly|while|even though/.test(text));
-        const conclusion = pick(['conclusion', 'transition', 'argument']);
-        const vocab = pick(['vocabulary']);
-
-        const candidates = [];
-        const line = (item, fallbackLabel) => {
-            if (!item) return null;
-            const main = String(item.rewrite || item.content || '').trim();
-            if (!main) return null;
-            const note = String(item.usage || '').trim();
-            return {
-                id: item.id,
-                label: fallbackLabel,
-                text: main,
-                note
-            };
-        };
+        setIsAssemblingMaterials(true);
+        try {
+            const result = await assembleWritingMaterials({
+                examContext,
+                outline,
+                content,
+                insertTargetHint: insertAnchorHint,
+                materials: pool
+            }, settings);
+            const legacyNotes = [
+                ...(result.usagePlan || []).map((item) => `使用建议：${item}`),
+                ...(result.warnings || []).map((item) => `注意：${item}`)
+            ];
+            void legacyNotes;
+            const notes = [
+                ...(result.usagePlan || []).map((item) => `Usage note: ${item}`),
+                ...(result.warnings || []).map((item) => `Caution: ${item}`)
+            ];
+            requestInsertPreview(
+                [result.assembledText, notes.length ? notes.join('\n') : ''].filter(Boolean).join('\n\n'),
+                {
+                    label: result.title || 'AI 组装素材',
+                    sourceTitle: result.title || 'AI 组装素材',
+                    mode: insertModePreference,
+                    anchor: insertAnchor
+                }
+            );
+            toast.success('AI 已根据素材库生成插入预览');
+            return;
+        } catch (e) {
+            toast.error(`AI assembly failed: ${e?.message || 'unknown error'}`);
+        } finally {
+            setIsAssemblingMaterials(false);
+        }
+        return;
+        /*
         const b1 = line(opening, '1) 开头立场句');
         const b2 = line(reasoning, '2) 论证推进句');
         const b3 = line(concession, '3) 让步/转折句');
@@ -1372,6 +1433,7 @@ const WriterView = ({ params }) => {
             return;
         }
         setAmmoPicker({ open: true, items: candidates });
+        */
     };
 
     const toggleAmmoItem = (id) => {
@@ -1906,7 +1968,7 @@ const WriterView = ({ params }) => {
                         <button onClick={addOutlineParagraph} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">新增段落</button>
                         <button onClick={generateOutline} disabled={isGeneratingOutline} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold flex items-center gap-2 disabled:opacity-60">{isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} AI重生成</button>
                         <button onClick={() => {
-                            const outlineSeed = (outline.paragraphs || []).map((p, i) => `Paragraph ${i + 1}: ${p.topic_sentence || ''}`).join('\n\n');
+                            const outlineSeed = buildOutlineSeedContent(outline);
                             const shouldSeedFromOutline =
                                 !content.trim() ||
                                 !isContentDirty ||
@@ -2024,7 +2086,7 @@ const WriterView = ({ params }) => {
                         <button onClick={addOutlineParagraph} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold">新增段落</button>
                         <button onClick={generateOutline} disabled={isGeneratingOutline} className="px-4 py-2 rounded-lg bg-phy-glass border border-phy-border text-phy-text text-sm font-bold flex items-center gap-2 disabled:opacity-60">{isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} AI 重生成</button>
                         <button onClick={() => {
-                            const outlineSeed = (outline.paragraphs || []).map((p, i) => `Paragraph ${i + 1}: ${p.topic_sentence || ''}`).join('\n\n');
+                            const outlineSeed = buildOutlineSeedContent(outline);
                             const shouldSeedFromOutline =
                                 !content.trim() ||
                                 !isContentDirty ||
@@ -2146,9 +2208,14 @@ const WriterView = ({ params }) => {
         });
         return rows;
     }, [outline, content]);
-    const topRecommendedMaterial = recommendedMaterials[0] || null;
     const isVocabMaterialForm = normalizeMaterialCategory(materialForm.category) === 'vocabulary';
     const showVocabularyWorkbench = materialCategory === 'vocabulary';
+    useEffect(() => {
+        if (!showVocabularyWorkbench || !activeMaterial) return;
+        if (normalizeMaterialCategory(activeMaterial.category) !== 'vocabulary') return;
+        if (materialForm.id === activeMaterial.id) return;
+        handleEditMaterial(activeMaterial);
+    }, [showVocabularyWorkbench, activeMaterial, materialForm.id]);
     const autoSaveText = autoSaveState === 'saving'
         ? '自动保存中...'
         : autoSaveState === 'error'
@@ -2229,12 +2296,27 @@ const WriterView = ({ params }) => {
                     </div>
 
                     <div className="flex flex-wrap xl:flex-nowrap gap-2 items-center">
-                        <select value={analysisMode} onChange={(e) => setAnalysisMode(e.target.value)} className="bg-phy-glass border border-phy-border text-xs rounded-lg px-2 py-1 text-phy-text h-[32px] outline-none hover:border-indigo-400 font-bold transition-all">
-                            {['grammar', 'polish', 'academic'].map(x => <option key={x} value={x}>{x}</option>)}
-                        </select>
+                        <label className="h-[32px] px-2.5 rounded-lg bg-phy-glass border border-phy-border text-xs font-bold text-phy-text flex items-center gap-1.5 hover:border-indigo-400 transition-colors">
+                            <span className="text-phy-muted">诊断模式</span>
+                            <select
+                                value={analysisMode}
+                                onChange={(e) => setAnalysisMode(e.target.value)}
+                                className="bg-transparent text-xs text-phy-text outline-none font-bold cursor-pointer"
+                                aria-label="诊断模式"
+                            >
+                                {ANALYSIS_MODE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <button onClick={openMaterialsPanel} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 h-[32px] transition-colors"><FolderOpen size={12} /> 打开素材</button>
+                        <button onClick={assembleAmmoPack} disabled={isAssemblingMaterials} className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-400/30 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20 flex items-center gap-1.5 h-[32px] transition-colors disabled:opacity-60">{isAssemblingMaterials ? <Loader2 size={12} className="animate-spin" /> : <ListChecks size={12} />} {isAssemblingMaterials ? 'AI \u7ec4\u88c5\u4e2d' : 'AI \u7ec4\u88c5\u7d20\u6750'}</button>
+                        {!focusMode ? <button onClick={collectFromDraft} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 h-[32px] transition-colors"><Plus size={12} /> 存为素材</button> : null}
+                        <div className="hidden">
                         <button onClick={openMaterialsPanel} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 h-[32px] transition-colors"><FolderOpen size={12} /> 素材包</button>
                         <button onClick={assembleAmmoPack} className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-400/30 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20 flex items-center gap-1.5 h-[32px] transition-colors"><ListChecks size={12} /> 组装</button>
                         {!focusMode ? <button onClick={collectFromDraft} className="px-3 py-1 rounded-lg text-xs font-bold bg-phy-glass border border-phy-border text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 h-[32px] transition-colors"><Plus size={12} /> 采集</button> : null}
+                        </div>
                         {lastAiAction ? (
                             <button onClick={undoLastAiAction} className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-500/5 dark:bg-rose-500/10 border border-rose-400/30 text-rose-600 dark:text-rose-200 hover:bg-rose-500/20 flex items-center gap-1.5 h-[32px] transition-colors">
                                 <RotateCcw size={12} />
@@ -2256,17 +2338,7 @@ const WriterView = ({ params }) => {
                         {editorLayoutMode === 'merged' ? <LayoutList size={12} /> : <Columns size={12} />}
                         {editorLayoutMode === 'merged' ? '分段查看' : '合并查看'}
                     </button>
-                    {topRecommendedMaterial ? (
-                        <button
-                            onClick={() => insertMaterialContent(topRecommendedMaterial, topRecommendedMaterial.content, '推荐素材插入')}
-                            title={topRecommendedMaterial.title}
-                            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 hover:bg-emerald-500/20 shadow-sm transition-all"
-                        >
-                            插入推荐
-                        </button>
-                    ) : (
-                        <div className="ml-auto text-[10px] text-phy-muted font-medium bg-phy-glass px-2 py-1 rounded-md border border-phy-border">暂无推荐素材</div>
-                    )}
+                    <div className="ml-auto" />
                 </div>
             ) : (
                 <div className="px-4 md:px-6 py-2 border-b border-phy-border bg-phy-bg/10 text-[10px] text-phy-muted font-medium italic">
@@ -2692,13 +2764,7 @@ const WriterView = ({ params }) => {
 
             <div className="px-4 py-3 border-b border-phy-border space-y-3 bg-phy-bg/5">
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1">
-                        <button
-                            onClick={() => setMaterialDrawerTab('recommend')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'recommend' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
-                        >
-                            智能推荐 ({recommendedMaterials.length})
-                        </button>
+                    <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1">
                         <button
                             onClick={() => setMaterialDrawerTab('all')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'all' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
@@ -2713,19 +2779,8 @@ const WriterView = ({ params }) => {
                         </button>
                     </div>
                     {vocabularyMaterials.length && showVocabularyWorkbench ? (
-                        <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1 ml-auto">
-                            <button
-                                onClick={() => setVocabView('cards')}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-bold ${vocabView === 'cards' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
-                            >
-                                词汇卡片
-                            </button>
-                            <button
-                                onClick={() => setVocabView('table')}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-bold ${vocabView === 'table' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
-                            >
-                                词汇表格
-                            </button>
+                        <div className="ml-auto px-2.5 py-1 rounded-lg border border-cyan-400/25 bg-cyan-500/10 text-[11px] font-bold text-cyan-100">
+                            词汇表格 · {vocabularyRows.length} 组
                         </div>
                     ) : null}
                 </div>
@@ -2800,22 +2855,34 @@ const WriterView = ({ params }) => {
             </div>
 
             <div className={`flex-1 min-h-0 grid grid-cols-1 ${isMobile ? 'h-auto' : ''}`}>
-                <div className={`${isMobile ? 'pb-24' : 'overflow-y-auto custom-scrollbar'} p-3 space-y-2`}>
+                <div className={`${showVocabularyWorkbench ? 'hidden' : isMobile ? 'pb-24' : 'overflow-y-auto custom-scrollbar'} p-3 space-y-2`}>
                     {drawerMaterials.map((item) => {
                         const itemCategory = normalizeMaterialCategory(item.category);
                         const vocabPairsPreview = itemCategory === 'vocabulary' ? parseWriterVocabularyPairs(item) : [];
                         const sourceKey = getMaterialSourceKey(item);
                         const isDeepNoteSource = item?.source === 'deep_note';
                         const isPinnedSource = isDeepNoteSource && sourceKey ? pinnedSourceIds.includes(sourceKey) : false;
-                        const listPreview = itemCategory === 'vocabulary'
-                            ? (vocabPairsPreview.length ? `${vocabPairsPreview[0].source} -> ${vocabPairsPreview[0].target}` : item.content)
-                            : item.content;
+                        const listHint = item.recommendationReason
+                            || item.topic
+                            || (itemCategory === 'vocabulary' && vocabPairsPreview.length ? `${vocabPairsPreview[0].source} -> ${vocabPairsPreview[0].target}` : '')
+                            || (isDeepNoteSource ? '来自深度笔记，点击查看详情' : '点击查看详情');
+                        const isActiveMaterial = activeMaterialId === item.id;
                         return (
                             <div
                                 key={item.id}
-                                className={`w-full rounded-xl border p-2.5 transition ${activeMaterialId === item.id ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-phy-border bg-phy-glass hover:border-phy-borderHover'}`}
+                                className={`w-full rounded-xl border p-2.5 transition ${isActiveMaterial ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-phy-border bg-phy-glass hover:border-phy-borderHover'}`}
                             >
-                                <button onClick={() => setActiveMaterialId(item.id)} className="w-full text-left">
+                                <button
+                                    onClick={() => {
+                                        if (itemCategory === 'vocabulary') {
+                                            setMaterialCategory('vocabulary');
+                                            handleEditMaterial(item);
+                                            return;
+                                        }
+                                        setActiveMaterialId(item.id);
+                                    }}
+                                    className="w-full text-left"
+                                >
                                     <div className="text-sm font-bold text-phy-text truncate">{item.title}</div>
                                     <div className="text-[10px] text-phy-muted mt-1 flex items-center gap-1.5">
                                         <span>{WRITING_MATERIAL_CATEGORY_LABELS[item.category] || item.category}</span>
@@ -2827,30 +2894,18 @@ const WriterView = ({ params }) => {
                                             <span className="px-1.5 py-0.5 rounded border border-amber-400/25 bg-amber-500/10 text-amber-200">已固定</span>
                                         ) : null}
                                     </div>
-                                    <div className="text-[11px] text-phy-muted mt-1 line-clamp-2">{listPreview}</div>
-                                    {item.recommendationReason ? (
-                                        <div className="text-[10px] text-emerald-200 mt-1 line-clamp-1">{item.recommendationReason}</div>
-                                    ) : null}
+                                    <div className="text-[11px] text-phy-muted mt-1 line-clamp-1">{listHint}</div>
                                     {isDeepNoteSource && item?.sourceNoteTitle ? (
                                         <div className="text-[10px] text-phy-muted mt-1 truncate" title={item.sourceNoteTitle}>
                                             来源：{item.sourceNoteTitle}{item.sourceSection ? ` / ${item.sourceSection}` : ''}
                                         </div>
                                     ) : null}
+                                    <div className="mt-2 flex justify-end">
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] border ${isActiveMaterial ? 'border-indigo-400/30 bg-indigo-500/20 text-indigo-100' : 'border-phy-border text-phy-muted'}`}>
+                                            {itemCategory === 'vocabulary' ? '打开词汇表' : (isActiveMaterial ? '当前详情' : '查看详情')}
+                                        </span>
+                                    </div>
                                 </button>
-                                <div className="mt-2">
-                                    <button
-                                        onClick={() => requestInsertPreview(item.rewrite || item.content, {
-                                            label: `素材预览：${item.title}`,
-                                            materialId: item.id,
-                                            sourceTitle: item.title || '素材预览',
-                                            mode: insertModePreference,
-                                            anchor: insertAnchor
-                                        })}
-                                        className="w-full px-2 py-1 rounded-md text-[11px] border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glass"
-                                    >
-                                        预览插入位置
-                                    </button>
-                                </div>
                                 {isDeepNoteSource ? (
                                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                                         <button
@@ -2880,9 +2935,7 @@ const WriterView = ({ params }) => {
                     })}
                     {!drawerMaterials.length ? (
                         <div className="rounded-xl border border-dashed border-phy-border p-3 text-xs text-phy-muted text-center">
-                            {materialDrawerTab === 'recommend'
-                                ? '暂无推荐素材，可切到“全部素材”查看。'
-                                : materialDrawerTab === 'deep_note'
+                            {materialDrawerTab === 'deep_note'
                                     ? '暂无深度笔记来源素材'
                                     : '没有素材'}
                         </div>
@@ -2890,13 +2943,26 @@ const WriterView = ({ params }) => {
                 </div>
 
                 <div className="min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
-                    {showVocabularyWorkbench && vocabularyMaterials.length ? (
+                    {showVocabularyWorkbench ? (
                         <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3">
                             <div className="flex items-center justify-between gap-2 mb-2">
-                                <div className="text-sm font-black text-phy-text">词汇替换工作台</div>
-                                <div className="text-[11px] text-phy-muted">默认仅作用于当前选中句</div>
+                                <div>
+                                    <div className="text-sm font-black text-phy-text">词汇替换表</div>
+                                    <div className="text-[11px] text-phy-muted mt-0.5">点击一行查看对比、理由和用法；词汇不直接插入正文</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="text-[11px] text-cyan-100 rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-2 py-1">
+                                        {vocabularyRows.length} 组表达
+                                    </div>
+                                    <button
+                                        onClick={startNewVocabularyMaterial}
+                                        className="px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold"
+                                    >
+                                        新增词汇
+                                    </button>
+                                </div>
                             </div>
-                            {vocabView === 'cards' ? (
+                            {vocabView === '__legacy_cards' ? (
                                 <div className="grid grid-cols-1 gap-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
                                     {vocabularyMaterials.map((item) => {
                                         const pairs = parseWriterVocabularyPairs(item);
@@ -2947,34 +3013,60 @@ const WriterView = ({ params }) => {
                                                 <th className="px-2 py-2">原词</th>
                                                 <th className="px-2 py-2">替换词</th>
                                                 <th className="px-2 py-2">理由</th>
-                                                <th className="px-2 py-2">操作</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {vocabularyRows.map((row) => (
-                                                <tr key={`vocab-row-${row.id}`} className="border-t border-phy-border">
+                                                <tr
+                                                    key={`vocab-row-${row.id}`}
+                                                    onClick={() => {
+                                                        setActiveMaterialId(row.item.id);
+                                                        handleEditMaterial(row.item);
+                                                    }}
+                                                    className={`border-t border-phy-border cursor-pointer transition ${activeMaterialId === row.item.id ? 'bg-cyan-500/10' : 'hover:bg-phy-glassHeavy'}`}
+                                                >
                                                     <td className="px-2 py-2 text-phy-muted max-w-[180px] truncate" title={row.item.title || '词汇替换'}>{row.item.title || '词汇替换'}</td>
                                                     <td className="px-2 py-2 text-phy-text">{row.pair.source || '-'}</td>
                                                     <td className="px-2 py-2 text-emerald-200">{row.pair.target || '-'}</td>
                                                     <td className="px-2 py-2 text-phy-muted max-w-[240px] truncate">{row.pair.reason || row.item.replaceReason || '-'}</td>
-                                                    <td className="px-2 py-2">
-                                                        <button
-                                                            onClick={() => applyVocabularyToSelectedSentence(row.item, row.pair)}
-                                                            className="px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                                                        >
-                                                            应用
-                                                        </button>
-                                                    </td>
                                                 </tr>
                                             ))}
+                                            {!vocabularyRows.length ? (
+                                                <tr className="border-t border-phy-border">
+                                                    <td colSpan={4} className="px-3 py-6 text-center text-phy-muted">
+                                                        还没有词汇替换记录，点击右上角“新增词汇”开始整理。
+                                                    </td>
+                                                </tr>
+                                            ) : null}
                                         </tbody>
                                     </table>
                                 </div>
                             )}
+                            <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-phy-bg/40 p-3">
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                    <div>
+                                        <div className="text-sm font-black text-phy-text">{materialForm.id ? '编辑词汇详情' : '编写词汇详情'}</div>
+                                        <div className="text-[11px] text-phy-muted mt-0.5">这里维护对比、理由、例句、用法和误用提醒。</div>
+                                    </div>
+                                    <button
+                                        onClick={startNewVocabularyMaterial}
+                                        className="px-2.5 py-1.5 rounded-lg border border-cyan-400/30 text-cyan-100 text-[11px] font-bold hover:bg-cyan-500/10"
+                                    >
+                                        清空新建
+                                    </button>
+                                </div>
+                                {normalizeMaterialCategory(materialForm.category) === 'vocabulary' ? (
+                                    MaterialManagerForm
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-phy-border p-4 text-sm text-phy-muted text-center">
+                                        点击表格中的一行查看详情，或点击“新增词汇”直接编写。
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ) : null}
 
-                    {activeMaterial ? (
+                    {!showVocabularyWorkbench && activeMaterial && normalizeMaterialCategory(activeMaterial.category) !== 'vocabulary' ? (
                         <div 
                             className="rounded-2xl border border-indigo-400/30 bg-indigo-500/10 p-3"
                             onMouseUp={() => captureReadOnlySelection('material')}
@@ -2990,6 +3082,7 @@ const WriterView = ({ params }) => {
                                     : false;
                                 return (
                                     <>
+                                        <div className="text-[11px] font-bold text-indigo-200 mb-1">{isVocab ? '词汇详情' : '素材详情'}</div>
                                         <div className="flex items-start gap-2">
                                             <div className="flex-1">
                                                 <div className="text-sm font-black text-phy-text">{activeMaterial.title}</div>
@@ -3076,12 +3169,11 @@ const WriterView = ({ params }) => {
                                                                         <div className="text-[10px] text-phy-muted">{'->'}</div>
                                                                         <div className="text-xs font-bold text-emerald-200 break-all text-right">{pair.target}</div>
                                                                     </div>
-                                                                    <button
-                                                                        onClick={() => applyVocabularyToSelectedSentence(activeMaterial, pair)}
-                                                                        className="mt-2 px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                                                                    >
-                                                                        应用到当前选中句
-                                                                    </button>
+                                                                    {(pair.reason || activeMaterial.replaceReason) ? (
+                                                                        <div className="mt-2 text-[11px] text-phy-muted leading-5">
+                                                                            {pair.reason || activeMaterial.replaceReason}
+                                                                        </div>
+                                                                    ) : null}
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -3125,11 +3217,26 @@ const WriterView = ({ params }) => {
                                                 ))}
                                             </div>
                                         ) : null}
-                                        <div className="mt-3 grid grid-cols-3 gap-2">
-                                            <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.content, '素材正文插入')} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">{isVocab ? '插入替换映射' : '插入正文'}</button>
-                                            <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.rewrite || activeMaterial.content, '素材改写插入')} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">插入改写</button>
-                                            <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
-                                        </div>
+                                        {isVocab ? (
+                                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        handleEditMaterial(activeMaterial);
+                                                        setMaterialManagerModalOpen(true);
+                                                    }}
+                                                    className="px-3 py-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 text-xs font-bold"
+                                                >
+                                                    编辑词汇
+                                                </button>
+                                                <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
+                                            </div>
+                                        ) : (
+                                            <div className="mt-3 grid grid-cols-3 gap-2">
+                                                <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.content, '素材正文预览')} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">预览正文</button>
+                                                <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.rewrite || activeMaterial.content, '素材改写预览')} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">预览改写</button>
+                                                <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
+                                            </div>
+                                        )}
                                     </>
                                 );
                             })()}
@@ -3147,7 +3254,11 @@ const WriterView = ({ params }) => {
 
     const MaterialManagerForm = (
         <div className="rounded-2xl border border-phy-border bg-phy-glass p-3 space-y-2">
-            <div className="text-xs font-bold text-phy-muted uppercase tracking-wide">{materialForm.id ? '编辑素材' : '新增素材'}</div>
+            <div className="text-xs font-bold text-phy-muted uppercase tracking-wide">
+                {materialForm.id
+                    ? (isVocabMaterialForm ? '编辑词汇' : '编辑素材')
+                    : (isVocabMaterialForm ? '新增词汇' : '新增素材')}
+            </div>
             <input
                 value={materialForm.title}
                 onChange={(e) => setMaterialForm((p) => ({ ...p, title: e.target.value }))}
@@ -3383,7 +3494,7 @@ const WriterView = ({ params }) => {
                 <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button onClick={() => { setShowTemplateModal(false); setCurrentId(null); activeDraftIdRef.current = null; setContent(''); setContentOrigin('manual'); setIsContentDirty(false); setTitle(''); setOutline(null); setAnalysis(null); setWorkflowStep('write'); setMobileTab('editor'); }} className="p-4 rounded-xl border border-dashed border-phy-border hover:border-emerald-500 text-left"><div className="font-bold text-phy-text">空白文档</div><div className="text-xs text-phy-muted mt-1">从零开始，自由创作。</div></button>
                     {writingTemplates.map(t => (
-                        <button key={t.id} onClick={() => { setShowTemplateModal(false); setCurrentId(null); activeDraftIdRef.current = null; setContent(t.content); setContentOrigin('template'); setIsContentDirty(false); setTitle(`${t.name} - ${new Date().toLocaleDateString()}`); setOutline(null); setAnalysis(null); setWorkflowStep('write'); setMobileTab('editor'); }} className="p-4 rounded-xl border border-phy-border bg-phy-glass hover:bg-phy-glassHover text-left">
+                        <button key={t.id} onClick={() => { setShowTemplateModal(false); setCurrentId(null); activeDraftIdRef.current = null; setContent(cleanWritingTemplateContent(t.content)); setContentOrigin('template'); setIsContentDirty(false); setTitle(`${t.name} - ${new Date().toLocaleDateString()}`); setOutline(null); setAnalysis(null); setWorkflowStep('write'); setMobileTab('editor'); }} className="p-4 rounded-xl border border-phy-border bg-phy-glass hover:bg-phy-glassHover text-left">
                             <div className="font-bold text-phy-text">{t.name}</div><div className="text-xs text-phy-muted mt-1">{t.description}</div>
                         </button>
                     ))}

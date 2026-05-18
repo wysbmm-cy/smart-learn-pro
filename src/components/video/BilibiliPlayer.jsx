@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Tv, AlertCircle } from 'lucide-react';
 
 const BilibiliPlayer = ({ url }) => {
@@ -23,9 +23,9 @@ const BilibiliPlayer = ({ url }) => {
                 <div className="w-20 h-20 bg-phy-glassHeavy rounded-full flex items-center justify-center mb-4 shadow-inner">
                     <Tv size={40} className="text-phy-muted" />
                 </div>
-                <h3 className="text-xl font-bold text-phy-text mb-2">Ready to Watch</h3>
+                <h3 className="text-xl font-bold text-phy-text mb-2">准备开始视频学习</h3>
                 <p className="text-sm text-phy-muted max-w-md text-center">
-                    Paste a Bilibili video link (e.g., https://www.bilibili.com/video/BV...) in the sidebar to start learning.
+                    在左侧粘贴 Bilibili 视频链接，例如 https://www.bilibili.com/video/BV...，即可开始边看边记。
                 </p>
             </div>
         );
@@ -35,8 +35,8 @@ const BilibiliPlayer = ({ url }) => {
         return (
             <div className="w-full h-full flex flex-col items-center justify-center text-red-400 bg-red-900/10 rounded-2xl border border-red-900/20 p-8">
                 <AlertCircle size={48} className="mb-4 opacity-50" />
-                <h3 className="text-lg font-bold">Invalid Bilibili Link</h3>
-                <p className="text-sm opacity-70 mt-1">Please ensure the URL contains a valid 'BV' ID.</p>
+                <h3 className="text-lg font-bold">链接无法识别</h3>
+                <p className="text-sm opacity-70 mt-1">请确认链接中包含有效的 BV 号。</p>
             </div>
         );
     }
@@ -46,7 +46,7 @@ const BilibiliPlayer = ({ url }) => {
             <iframe
                 src={`//player.bilibili.com/player.html?bvid=${bvid}&page=${page}&high_quality=1&danmaku=0&autoplay=0`}
                 className="w-full h-full border-0 absolute inset-0"
-                allowFullScreen="true"
+                allowFullScreen
                 sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
             ></iframe>
 
@@ -56,9 +56,9 @@ const BilibiliPlayer = ({ url }) => {
                 target="_blank"
                 rel="noreferrer"
                 className="absolute top-4 right-4 z-10 bg-black/60 hover:bg-pink-600/90 text-white/80 hover:text-white px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-sm transition-all flex items-center gap-1 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
-                title="Open in Bilibili for 1080p/4K Quality"
+                title="在 Bilibili 打开高清视频"
             >
-                <Tv size={14} /> Watch in HD ↗
+                <Tv size={14} /> 高清观看 ↗
             </a>
         </div>
     );

@@ -583,7 +583,7 @@ const SettingsView = () => {
                                 value={settings.ttsApiBaseUrl || ''}
                                 onChange={(e) => updateSetting('ttsApiBaseUrl', e.target.value)}
                                 className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
-                                placeholder="/api/tts"
+                                placeholder="例如 https://api.302.ai/bigmodel/api/paas/v4/audio/speech"
                             />
                             <input
                                 type="text"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import SplitPane from '../components/SplitPane';
 import BilibiliPlayer from '../components/video/BilibiliPlayer';
 import { useApp } from '../context/AppContext';
@@ -8,13 +8,23 @@ import { transcribeAudio } from '../services/ai';
 import { saveVideoHistory, getVideoHistory, deleteVideoHistory } from '../services/db';
 import toast from 'react-hot-toast';
 
+const getBilibiliVideoData = (value) => {
+    const text = String(value || '');
+    const bvidMatch = text.match(/(BV[a-zA-Z0-9]+)/);
+    const pageMatch = text.match(/[?&]p=(\d+)/);
+    return {
+        bvid: bvidMatch ? bvidMatch[1] : null,
+        page: pageMatch ? pageMatch[1] : '1'
+    };
+};
+
 const VideoView = () => {
     const {
         settings,
         setCurrentArticle,
         saveToNotes
     } = useApp();
-    const { toggleChat } = useChat();
+    const { toggleChat, isChatOpen } = useChat();
 
     const [url, setUrl] = useState('');
     const [inputUrl, setInputUrl] = useState('');
@@ -27,6 +37,8 @@ const VideoView = () => {
     const [isTranscribing, setIsTranscribing] = useState(false);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
+    const capturedStreamRef = useRef(null);
+    const recorderStreamRef = useRef(null);
 
     useEffect(() => {
         localStorage.setItem('draft_video_note', quickNote);
@@ -49,11 +61,17 @@ const VideoView = () => {
         const nextUrl = inputUrl.trim();
         if (!nextUrl) return;
 
+        const videoData = getBilibiliVideoData(nextUrl);
+        if (!videoData.bvid) {
+            toast.error('请粘贴包含 BV 号的 Bilibili 视频链接。');
+            return;
+        }
+
         setUrl(nextUrl);
 
         const record = {
             url: nextUrl,
-            title: `Bilibili Video (${nextUrl.slice(-12)})`,
+            title: `Bilibili ${videoData.bvid}${videoData.page !== '1' ? ` P${videoData.page}` : ''}`,
             lastWatched: Date.now()
         };
 
@@ -69,26 +87,45 @@ const VideoView = () => {
 
     const handleDeleteHistory = async (event, historyUrl) => {
         event.stopPropagation();
-        if (!window.confirm('Remove this item from history?')) return;
+        if (!window.confirm('确定从视频历史中移除这条记录吗？')) return;
         await deleteVideoHistory(historyUrl);
         await loadHistory();
     };
 
     const startRecording = async () => {
         try {
-            let stream;
+            if (!navigator.mediaDevices?.getUserMedia) {
+                toast.error('当前环境不支持录音。');
+                return;
+            }
+
+            let capturedStream;
             try {
-                stream = await navigator.mediaDevices.getDisplayMedia({
+                capturedStream = await navigator.mediaDevices.getDisplayMedia({
                     video: true,
                     audio: true
                 });
             } catch (displayError) {
                 console.warn('System audio capture canceled, fallback to microphone:', displayError);
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                capturedStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
 
-            const mediaRecorder = new MediaRecorder(stream);
+            let audioTracks = capturedStream.getAudioTracks();
+            if (!audioTracks.length) {
+                capturedStream.getTracks().forEach((track) => track.stop());
+                capturedStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioTracks = capturedStream.getAudioTracks();
+            }
+
+            const recorderStream = new MediaStream(audioTracks);
+            const recorderOptions = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? { mimeType: 'audio/webm;codecs=opus' }
+                : undefined;
+            const mediaRecorder = new MediaRecorder(recorderStream, recorderOptions);
+
             mediaRecorderRef.current = mediaRecorder;
+            capturedStreamRef.current = capturedStream;
+            recorderStreamRef.current = recorderStream;
             audioChunksRef.current = [];
 
             mediaRecorder.ondataavailable = (event) => {
@@ -102,7 +139,7 @@ const VideoView = () => {
             setIsRecording(true);
         } catch (error) {
             console.error('Audio recording failed:', error);
-            toast.error('Recording failed. Please check microphone/screen permission.');
+            toast.error('录音失败，请检查麦克风或屏幕共享权限。');
         }
     };
 
@@ -110,7 +147,8 @@ const VideoView = () => {
         if (!mediaRecorderRef.current || !isRecording) return;
 
         mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+        recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+        capturedStreamRef.current?.getTracks().forEach((track) => track.stop());
         setIsRecording(false);
     };
 
@@ -119,6 +157,10 @@ const VideoView = () => {
 
         try {
             const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            if (!audioBlob.size) {
+                toast.error('没有录到音频，请确认共享窗口或麦克风有声音。');
+                return;
+            }
             const file = new File([audioBlob], 'video_clip.webm', { type: 'audio/webm' });
             const text = await transcribeAudio(file, settings);
 
@@ -127,8 +169,11 @@ const VideoView = () => {
             }
         } catch (error) {
             console.error('Transcription failed:', error);
-            toast.error('Transcription failed. Check API settings and try again.');
+            toast.error('转录失败，请检查音频模型与 API 设置。');
         } finally {
+            mediaRecorderRef.current = null;
+            recorderStreamRef.current = null;
+            capturedStreamRef.current = null;
             setIsTranscribing(false);
         }
     };
@@ -187,7 +232,7 @@ const VideoView = () => {
                 <button
                     onClick={() => setShowHistory(true)}
                     className="p-2 text-phy-muted hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
-                    title="Open video history"
+                    title="打开视频历史"
                 >
                     <History size={18} />
                 </button>
@@ -210,7 +255,7 @@ const VideoView = () => {
                         <button
                             onClick={() => setInputUrl('')}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-phy-muted hover:text-white"
-                            title="Clear URL"
+                            title="清空链接"
                         >
                             <X size={14} />
                         </button>
@@ -241,8 +286,8 @@ const VideoView = () => {
                     onChange={(event) => setQuickNote(event.target.value)}
                     placeholder={
                         isRecording
-                            ? 'Recording... click stop to transcribe.'
-                            : 'Write notes while watching. You can transcribe audio and send to AI.'
+                            ? '正在录音，点击停止后会自动转录。'
+                            : '边看边记，也可以录制系统音频或麦克风音频后转录。'
                     }
                     className={`flex-1 w-full border rounded-xl p-3 text-sm text-phy-text focus:outline-none resize-none mb-3 custom-scrollbar transition-colors ${
                         isRecording
@@ -260,7 +305,7 @@ const VideoView = () => {
                                 ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
                                 : 'bg-phy-glassHeavy text-phy-text hover:bg-slate-700 hover:text-white'
                         } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="Record system/mic audio"
+                        title="录制系统音频或麦克风"
                     >
                         {isTranscribing
                             ? <Loader2 size={18} className="animate-spin" />
@@ -272,10 +317,10 @@ const VideoView = () => {
                     <button
                         onClick={() => {
                             if (!quickNote.trim()) return;
-                            toggleChat();
+                            if (!isChatOpen) toggleChat();
                             setTimeout(() => {
                                 try {
-                                    navigator.clipboard.writeText(`Please analyze this text from the video: "${quickNote}"`);
+                                    navigator.clipboard.writeText(`请分析这段视频学习笔记，并提炼重点词汇、表达和可复习的问题：\n\n${quickNote}`);
                                 } catch (error) {
                                     console.warn('Clipboard write failed:', error);
                                 }
@@ -285,21 +330,21 @@ const VideoView = () => {
                         className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-xs transition-all"
                     >
                         <Sparkles size={14} />
-                        AI 深度分析
+                        放入 AI 上下文
                     </button>
 
                     <button
                         onClick={async () => {
                             if (!quickNote.trim()) return;
                             await saveToNotes({
-                                title: `Video Note ${new Date().toLocaleString()}`,
+                                title: `视频笔记 ${new Date().toLocaleString()}`,
                                 content: quickNote
                             });
                             setQuickNote('');
-                            toast.success('Saved to notes.');
+                            toast.success('已保存到笔记。');
                         }}
                         className="flex items-center justify-center gap-2 bg-phy-glassHeavy hover:bg-slate-700 text-phy-text px-4 py-2.5 rounded-xl font-bold text-xs transition-all"
-                        title="Save as note"
+                        title="保存为笔记"
                     >
                         <FileText size={14} />
                     </button>
@@ -307,7 +352,7 @@ const VideoView = () => {
             </div>
 
             <div className="mt-4 text-[10px] text-phy-muted text-center">
-                Tip: for better transcript quality, use screen-share audio when starting recording.
+                提示：转录视频声音时，优先选择共享标签页或窗口音频，效果通常比外放再收音更稳定。
             </div>
         </div>
     );
@@ -318,6 +363,10 @@ const VideoView = () => {
                 initialLeftWidth={350}
                 minLeftWidth={280}
                 maxLeftWidth={500}
+                mobileCollapsible
+                mobileCollapsedDefault={Boolean(url)}
+                mobileToggleLabel="学习面板"
+                mobileLeftMaxHeight="55vh"
                 left={SidebarContent}
                 right={
                     <div className={`w-full h-full flex flex-col p-6 ${!url ? 'justify-center items-center' : ''}`}>

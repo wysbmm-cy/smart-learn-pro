@@ -11,12 +11,15 @@ import {
     RefreshCw,
     Search,
     Type,
-    ChevronLeft
+    ChevronLeft,
+    Folder,
+    FolderOpen,
+    Wand2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
-import { generateListeningQuizFromTranscript, transcribeAudio } from '../services/ai';
-import { getListeningData, saveListeningData } from '../services/db';
+import { generateListeningQuizFromTranscript, synthesizeSpeech, transcribeAudio } from '../services/ai';
+import { getListeningData, saveFile, saveListeningData } from '../services/db';
 
 const extractOption = (option, idx) => {
     const raw = String(option || '').trim();
@@ -31,13 +34,22 @@ const normalizeAnswer = (value) => {
     return found ? found[0] : '';
 };
 
+const normalizeFolderName = (value) => String(value || '').trim().replace(/\s+/g, ' ').slice(0, 24);
+const getListeningFolder = (file) => normalizeFolderName(file?.listeningFolder);
+const sanitizeAudioName = (value) => String(value || 'AI Listening').trim().replace(/[\\/:*?"<>|]/g, '-').slice(0, 80);
+
 const ListeningView = () => {
     const fileInputRef = useRef(null);
     const { loadFiles, playAudio, settings, saveToFileLibrary } = useApp();
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [folderFilter, setFolderFilter] = useState('all');
     const [loading, setLoading] = useState(true);
     const [activeFile, setActiveFile] = useState(null);
+    const [showGenerator, setShowGenerator] = useState(false);
+    const [generatedAudioTitle, setGeneratedAudioTitle] = useState('');
+    const [generatedAudioText, setGeneratedAudioText] = useState('');
+    const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
 
     // Responsive State
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
@@ -48,6 +60,7 @@ const ListeningView = () => {
     const [listeningQuiz, setListeningQuiz] = useState(null);
     const [listeningAnswers, setListeningAnswers] = useState({});
     const [listeningSubmitted, setListeningSubmitted] = useState(false);
+    const [workbenchMode, setWorkbenchMode] = useState('both');
     
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
@@ -105,6 +118,10 @@ const ListeningView = () => {
         loadData();
     }, []);
 
+    const listeningFolders = useMemo(() => {
+        return Array.from(new Set(files.map(getListeningFolder).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    }, [files]);
+
     useEffect(() => {
         if (!activeFile) return;
 
@@ -135,8 +152,90 @@ const ListeningView = () => {
     }, [activeFile?.id]);
 
     const filteredFiles = useMemo(() => {
-        return files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [files, searchTerm]);
+        const keyword = searchTerm.trim().toLowerCase();
+        return files.filter(f => {
+            const folder = getListeningFolder(f);
+            const matchesSearch = !keyword || f.name.toLowerCase().includes(keyword) || folder.toLowerCase().includes(keyword);
+            const matchesFolder = folderFilter === 'all'
+                || (folderFilter === 'unfiled' ? !folder : folder === folderFilter);
+            return matchesSearch && matchesFolder;
+        });
+    }, [files, folderFilter, searchTerm]);
+
+    const handleOrganizeFile = async (file) => {
+        const currentFolder = getListeningFolder(file);
+        const nextFolder = normalizeFolderName(window.prompt('Audio folder name. Leave empty for Unfiled.', currentFolder));
+        if (nextFolder === currentFolder) return;
+
+        try {
+            const updated = {
+                ...file,
+                listeningFolder: nextFolder || undefined,
+                organizedAt: Date.now()
+            };
+            await saveFile(updated);
+            setFiles(prev => prev.map(item => item.id === file.id ? updated : item));
+            if (activeFile?.id === file.id) {
+                setActiveFile(prev => prev ? { ...prev, listeningFolder: updated.listeningFolder, organizedAt: updated.organizedAt } : prev);
+            }
+            if (folderFilter !== 'all' && folderFilter !== 'unfiled' && folderFilter !== nextFolder) {
+                setFolderFilter('all');
+            }
+            toast.success(nextFolder ? `已归类到「${nextFolder}」` : '已移到未整理');
+        } catch (e) {
+            console.error('Failed to organize audio file', e);
+            toast.error(`整理失败: ${e.message}`);
+        }
+    };
+
+    const handleGenerateListeningAudio = async () => {
+        const text = generatedAudioText.trim();
+        if (!text) {
+            toast.error('请先输入英文听力文本');
+            return;
+        }
+        if (text.length > 4000) {
+            toast.error('文本太长了，建议控制在 4000 字符以内');
+            return;
+        }
+
+        setIsGeneratingAudio(true);
+        const toastId = toast.loading('正在生成英文听力音频...');
+        try {
+            const audioBlob = await synthesizeSpeech(text, settings);
+            const safeTitle = sanitizeAudioName(generatedAudioTitle || text.split(/\s+/).slice(0, 8).join(' '));
+            const ext = audioBlob.type?.includes('wav') ? 'wav' : 'mp3';
+            const record = await saveToFileLibrary({
+                name: `[AI听力] ${safeTitle}.${ext}`,
+                type: audioBlob.type || 'audio/mpeg',
+                blob: audioBlob,
+                listeningFolder: 'AI生成'
+            });
+
+            await saveListeningData({
+                fileId: record.id,
+                transcript: text,
+                quizData: null
+            });
+
+            const nextRecord = { ...record, listeningFolder: 'AI生成' };
+            setFiles(prev => [nextRecord, ...prev.filter(item => item.id !== record.id)]);
+            setFolderFilter('AI生成');
+            setTranscriptText(text);
+            setListeningQuiz(null);
+            setWorkbenchMode('transcript');
+            handleSelectFile(nextRecord);
+            setShowGenerator(false);
+            setGeneratedAudioTitle('');
+            setGeneratedAudioText('');
+            toast.success('听力音频已生成并保存', { id: toastId });
+        } catch (e) {
+            console.error('Generate listening audio failed', e);
+            toast.error(`生成失败: ${e.message}`, { id: toastId });
+        } finally {
+            setIsGeneratingAudio(false);
+        }
+    };
 
     const handleSelectFile = (file) => {
         if (activeFile?.url) {
@@ -203,6 +302,7 @@ const ListeningView = () => {
             setListeningQuiz(quizData);
             setListeningAnswers({});
             setListeningSubmitted(false);
+            setWorkbenchMode('quiz');
 
             await saveListeningData({
                 fileId: activeFile.id,
@@ -243,6 +343,15 @@ const ListeningView = () => {
             accuracy: total ? Math.round((correct / total) * 100) : 0
         };
     }, [listeningQuiz, listeningAnswers]);
+
+    const hasQuiz = Boolean(listeningQuiz?.questions?.length);
+    const showTranscriptPane = workbenchMode !== 'quiz' || !hasQuiz;
+    const showQuizPane = hasQuiz && workbenchMode !== 'transcript';
+    const contentLayoutClass = isMobile
+        ? 'flex flex-col overflow-y-auto no-scrollbar pb-10'
+        : showTranscriptPane && showQuizPane
+            ? 'grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] overflow-hidden min-h-0'
+            : 'grid grid-cols-1 overflow-hidden min-h-0';
 
         const handleSplitAudio = async () => {
         if (!activeFile) return;
@@ -307,6 +416,17 @@ const ListeningView = () => {
                         <p className="text-[10px] text-phy-muted uppercase tracking-wider font-bold">精听训练专用</p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowGenerator(prev => !prev)}
+                            className={`p-2 rounded-xl transition-all shadow-lg ${
+                                showGenerator
+                                    ? 'bg-indigo-500 text-white shadow-indigo-500/20'
+                                    : 'bg-phy-glass border border-phy-border text-phy-accent hover:bg-phy-glassHover'
+                            }`}
+                            title="生成英文听力音频"
+                        >
+                            <Wand2 size={16} />
+                        </button>
                         <button 
                             onClick={() => fileInputRef.current?.click()}
                             className="p-2 bg-phy-accent text-white rounded-xl hover:bg-phy-accent/80 transition-all shadow-lg shadow-phy-accent/20"
@@ -316,6 +436,35 @@ const ListeningView = () => {
                         </button>
                     </div>
                 </div>
+                {showGenerator && (
+                    <div className="mb-3 rounded-2xl border border-phy-border bg-phy-bg/70 p-3 space-y-2 animate-fade-in">
+                        <input
+                            type="text"
+                            value={generatedAudioTitle}
+                            onChange={(e) => setGeneratedAudioTitle(e.target.value)}
+                            placeholder="音频标题，例如 Campus Conversation"
+                            className="w-full bg-phy-glass border border-phy-border rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-phy-accent/50"
+                        />
+                        <textarea
+                            value={generatedAudioText}
+                            onChange={(e) => setGeneratedAudioText(e.target.value)}
+                            placeholder="粘贴或输入英文听力文本..."
+                            rows={5}
+                            className="w-full resize-none bg-phy-glass border border-phy-border rounded-xl px-3 py-2 text-xs leading-relaxed outline-none focus:ring-1 focus:ring-phy-accent/50 custom-scrollbar"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] text-phy-muted">{generatedAudioText.trim().length} / 4000</span>
+                            <button
+                                onClick={handleGenerateListeningAudio}
+                                disabled={isGeneratingAudio || !generatedAudioText.trim()}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 disabled:opacity-45 disabled:cursor-not-allowed transition-all"
+                            >
+                                {isGeneratingAudio ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                                生成并保存
+                            </button>
+                        </div>
+                    </div>
+                )}
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-phy-muted" size={14} />
                     <input
@@ -325,6 +474,43 @@ const ListeningView = () => {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-phy-bg border border-phy-border rounded-xl py-2 pl-9 pr-3 text-xs focus:ring-1 focus:ring-phy-accent/50 outline-none transition-all"
                     />
+                </div>
+                <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
+                    {[
+                        { id: 'all', label: '全部', icon: FolderOpen },
+                        { id: 'unfiled', label: '未整理', icon: Folder }
+                    ].map((item) => {
+                        const Icon = item.icon;
+                        const active = folderFilter === item.id;
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => setFolderFilter(item.id)}
+                                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                                    active
+                                        ? 'bg-phy-accent/15 border-phy-accent/40 text-phy-accent'
+                                        : 'bg-phy-bg border-phy-border text-phy-muted hover:text-phy-text'
+                                }`}
+                            >
+                                <Icon size={12} />
+                                {item.label}
+                            </button>
+                        );
+                    })}
+                    {listeningFolders.map((folder) => (
+                        <button
+                            key={folder}
+                            onClick={() => setFolderFilter(folder)}
+                            className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${
+                                folderFilter === folder
+                                    ? 'bg-phy-accent/15 border-phy-accent/40 text-phy-accent'
+                                    : 'bg-phy-bg border-phy-border text-phy-muted hover:text-phy-text'
+                            }`}
+                        >
+                            <Folder size={12} />
+                            {folder}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -336,10 +522,11 @@ const ListeningView = () => {
                         <p className="text-xs mt-1">请从“导入”页面上传 MP3/WAV</p>
                     </div>
                 ) : (
-                    filteredFiles.map(file => (
-                        <button
+                    filteredFiles.map(file => {
+                        const folder = getListeningFolder(file);
+                        return (
+                        <div
                             key={file.id}
-                            onClick={() => handleSelectFile(file)}
                             className={`w-full text-left p-3.5 rounded-2xl border transition-all duration-300 group ${
                                 activeFile?.id === file.id
                                     ? 'bg-phy-accent/10 border-phy-accent/40 shadow-lg translate-x-1'
@@ -347,22 +534,40 @@ const ListeningView = () => {
                             }`}
                         >
                             <div className="flex items-center gap-3 overflow-hidden">
-                                <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                                    activeFile?.id === file.id ? 'bg-phy-accent text-white rotate-6' : 'bg-phy-bg text-phy-muted group-hover:text-phy-accent'
-                                }`}>
+                                <button
+                                    onClick={() => handleSelectFile(file)}
+                                    className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                                        activeFile?.id === file.id ? 'bg-phy-accent text-white rotate-6' : 'bg-phy-bg text-phy-muted group-hover:text-phy-accent'
+                                    }`}
+                                    title="播放"
+                                >
                                     <Play size={16} fill={activeFile?.id === file.id ? 'currentColor' : 'none'} />
-                                </div>
-                                <div className="min-w-0">
+                                </button>
+                                <button
+                                    onClick={() => handleSelectFile(file)}
+                                    className="min-w-0 flex-1 text-left"
+                                >
                                     <h4 className={`text-sm font-bold truncate ${activeFile?.id === file.id ? 'text-phy-accent' : 'text-phy-text'}`}>
                                         {file.name}
                                     </h4>
-                                    <p className="text-[10px] text-phy-muted mt-0.5">
-                                        {(file.blob.size / 1024 / 1024).toFixed(1)}MB · {new Date(file.timestamp).toLocaleDateString()}
+                                    <p className="text-[10px] text-phy-muted mt-0.5 truncate">
+                                        {(file.blob.size / 1024 / 1024).toFixed(1)}MB · {new Date(file.timestamp).toLocaleDateString()} · {folder || '未整理'}
                                     </p>
-                                </div>
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOrganizeFile(file);
+                                    }}
+                                    className="shrink-0 p-2 rounded-lg text-phy-muted hover:text-phy-accent hover:bg-phy-accent/10 transition-all"
+                                    title="整理分类"
+                                >
+                                    <Folder size={14} />
+                                </button>
                             </div>
-                        </button>
-                    ))
+                        </div>
+                    );
+                    })
                 )}
             </div>
         </div>
@@ -370,14 +575,14 @@ const ListeningView = () => {
     );
 
     return (
-        <div className={`max-w-[1600px] mx-auto h-[calc(100vh-100px)] flex animate-fade-in p-2 md:p-4 ${isMobile ? 'flex-col gap-4' : 'flex-row gap-6'}`}>
+        <div className={`w-full max-w-none h-full flex animate-fade-in p-2 md:p-3 ${isMobile ? 'flex-col gap-3' : 'flex-row gap-3 2xl:gap-4'}`}>
             
             {/* Sidebar Logic for Mobile/Desktop */}
             {(!isMobile || showSidebarOnMobile) && Sidebar}
 
             {/* Main Workbench */}
             {(!isMobile || !showSidebarOnMobile) && (
-                <div className="flex-1 flex flex-col gap-4 md:gap-6 overflow-hidden min-h-0">
+                <div className="flex-1 flex flex-col gap-3 overflow-hidden min-h-0 min-w-0">
                     {!activeFile ? (
                         <div className="flex-1 glass-panel rounded-[2rem] flex flex-col items-center justify-center text-phy-muted animate-slide-up p-6 text-center">
                             <div className="relative mb-6">
@@ -405,9 +610,9 @@ const ListeningView = () => {
                             )}
 
                             {/* Audio Info Card */}
-                            <div className="glass-panel rounded-[1.5rem] md:rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between border border-phy-border shadow-xl animate-slide-up gap-4">
-                                <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto">
-                                    <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 bg-phy-accent rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-phy-accent/20">
+                            <div className="glass-panel rounded-[1.25rem] md:rounded-2xl p-3 md:p-4 flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap items-start md:items-center justify-between border border-phy-border shadow-xl animate-slide-up gap-3 min-w-0">
+                                <div className="flex items-center gap-3 w-full md:flex-[1_1_280px] min-w-0">
+                                    <div className="shrink-0 w-11 h-11 md:w-12 md:h-12 bg-phy-accent rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-phy-accent/20">
                                         <Music size={isMobile ? 24 : 28} />
                                     </div>
                                     <div className="min-w-0 flex-1">
@@ -418,30 +623,30 @@ const ListeningView = () => {
                                         </p>
                                     </div>
                                 </div>
-                                    <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 no-scrollbar">
-                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-phy-glass rounded-xl border border-phy-border shrink-0">
-                                            <div className="flex items-center gap-1">
+                                    <div className="flex flex-wrap items-center justify-start md:justify-end gap-2 w-full md:flex-[1_1_520px] min-w-0 max-w-full">
+                                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 px-2.5 py-1.5 bg-phy-glass rounded-xl border border-phy-border w-full sm:w-auto min-w-0">
+                                            <div className="flex items-center gap-1 min-w-0">
                                                 <span className="text-[10px] text-phy-muted">Start</span>
                                                 <input 
                                                     type="number" 
                                                     value={splitRange.start} 
                                                     onChange={(e) => setSplitRange(prev => ({ ...prev, start: e.target.value }))}
-                                                    className="w-12 bg-phy-bg border border-phy-border rounded-md px-1 py-0.5 text-[10px] outline-none" 
+                                                    className="w-14 bg-phy-bg border border-phy-border rounded-md px-1 py-0.5 text-[10px] outline-none" 
                                                 />
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-1 min-w-0">
                                                 <span className="text-[10px] text-phy-muted">End</span>
                                                 <input 
                                                     type="number" 
                                                     value={splitRange.end} 
                                                     onChange={(e) => setSplitRange(prev => ({ ...prev, end: e.target.value }))}
-                                                    className="w-12 bg-phy-bg border border-phy-border rounded-md px-1 py-0.5 text-[10px] outline-none" 
+                                                    className="w-14 bg-phy-bg border border-phy-border rounded-md px-1 py-0.5 text-[10px] outline-none" 
                                                 />
                                             </div>
                                             <button
                                                 onClick={handleSplitAudio}
                                                 disabled={isSplitting}
-                                                className="p-1.5 rounded-lg bg-phy-accent/20 text-phy-accent hover:bg-phy-accent/30 transition-all disabled:opacity-50"
+                                                className="shrink-0 p-1.5 rounded-lg bg-phy-accent/20 text-phy-accent hover:bg-phy-accent/30 transition-all disabled:opacity-50"
                                                 title="切割为新文件"
                                             >
                                                 {isSplitting ? <Loader2 size={14} className="animate-spin" /> : <Scissors size={14} />}
@@ -451,7 +656,7 @@ const ListeningView = () => {
                                         <button
                                             onClick={handleTranscribe}
                                             disabled={isTranscribing}
-                                            className={`whitespace-nowrap flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${
+                                            className={`whitespace-nowrap flex-1 sm:flex-none min-w-[7.5rem] flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${
                                                 !transcriptText 
                                                     ? 'bg-phy-accent text-white shadow-lg shadow-phy-accent/30 hover:brightness-110' 
                                                     : 'bg-phy-glass border border-phy-border text-phy-muted hover:text-phy-accent'
@@ -465,7 +670,7 @@ const ListeningView = () => {
                                         <button
                                             onClick={handleGenerateQuiz}
                                             disabled={isGeneratingQuiz || !transcriptText}
-                                            className={`whitespace-nowrap flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed ${
+                                            className={`whitespace-nowrap flex-1 sm:flex-none min-w-[7.5rem] flex items-center justify-center gap-2 px-4 md:px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed ${
                                                 transcriptText 
                                                     ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-400' 
                                                     : 'bg-phy-glass border border-phy-border text-phy-muted'
@@ -478,35 +683,63 @@ const ListeningView = () => {
                                     </div>
                             </div>
 
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 rounded-2xl border border-phy-border bg-phy-glass p-1">
+                                    {[
+                                        { id: 'both', label: '原文 + 题目', disabled: !hasQuiz },
+                                        { id: 'transcript', label: '只看原文', disabled: !transcriptText },
+                                        { id: 'quiz', label: '只做题目', disabled: !hasQuiz }
+                                    ].map((item) => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => setWorkbenchMode(item.id)}
+                                            disabled={item.disabled}
+                                            className={`px-3 md:px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-35 disabled:cursor-not-allowed ${
+                                                workbenchMode === item.id
+                                                    ? 'bg-phy-accent text-white shadow-lg shadow-phy-accent/20'
+                                                    : 'text-phy-muted hover:text-phy-text hover:bg-phy-glassHover'
+                                            }`}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="text-[10px] md:text-xs text-phy-muted">
+                                    {showQuizPane && !showTranscriptPane ? '题目独占工作区' : showTranscriptPane && showQuizPane ? '左右对照练习' : '专注阅读原文'}
+                                </div>
+                            </div>
+
                             {/* Content Area: Stacks on Mobile */}
-                            <div className={`flex-1 flex ${isMobile ? 'flex-col overflow-y-auto no-scrollbar pb-10' : 'flex-row overflow-hidden min-h-0'} gap-4 md:gap-6`}>
+                            <div className={`flex-1 ${contentLayoutClass} gap-3 2xl:gap-4`}>
                                 
                                 {/* Transcript Area */}
-                                <div className={`bg-phy-glass rounded-[1.5rem] md:rounded-[2rem] border border-phy-border flex flex-col shrink-0 md:shrink transition-all duration-500 ${!isMobile && listeningQuiz ? 'w-[45%]' : 'w-full'} ${isMobile ? 'min-h-[300px]' : ''}`}>
-                                    <div className="p-4 md:p-5 border-b border-phy-border bg-phy-glassHeavy/20 flex items-center justify-between shrink-0">
+                                {showTranscriptPane && (
+                                <div className={`bg-phy-glass rounded-[1.25rem] md:rounded-2xl border border-phy-border flex flex-col overflow-hidden min-w-0 transition-all duration-500 ${isMobile ? 'shrink-0 min-h-[300px]' : ''}`}>
+                                    <div className="p-3 md:px-4 md:py-3 border-b border-phy-border bg-phy-glassHeavy/20 flex items-center justify-between shrink-0">
                                         <div className="flex items-center gap-2">
                                             <Type size={16} className="text-phy-accent" />
                                             <span className="text-xs md:text-sm font-bold text-phy-text">转写文本</span>
                                         </div>
                                         <span className="text-[10px] text-phy-muted bg-phy-bg px-2 py-1 rounded-md">AI 生成供参考</span>
                                     </div>
-                                    <div className="flex-1 p-5 md:p-6 overflow-y-auto custom-scrollbar leading-loose text-phy-text text-sm md:text-[15px] space-y-4">
+                                    <div className="flex-1 p-4 md:p-5 overflow-y-auto custom-scrollbar leading-loose text-phy-text text-sm md:text-[15px] space-y-4">
                                         {!transcriptText ? (
                                             <div className="h-full flex flex-col items-center justify-center opacity-30 italic text-sm text-center">
                                                 尚未转写，请点击上方按钮开始
                                             </div>
                                         ) : (
-                                            <div className="whitespace-pre-wrap animate-fade-in group selection:bg-phy-accent/30 text-justify">
+                                            <div className="whitespace-pre-wrap animate-fade-in group selection:bg-phy-accent/30 text-left">
                                                 {transcriptText}
                                             </div>
                                         )}
                                     </div>
                                 </div>
+                                )}
 
                                 {/* Quiz Area */}
-                                {listeningQuiz && (
-                                    <div className={`flex-1 bg-phy-glass rounded-[1.5rem] md:rounded-[2rem] border border-phy-border flex flex-col overflow-hidden animate-slide-left shadow-2xl ${isMobile ? 'shrink-0 min-h-[500px]' : ''}`}>
-                                        <div className="p-4 md:p-5 border-b border-phy-border bg-phy-glassHeavy/20 flex items-center justify-between shrink-0">
+                                {showQuizPane && (
+                                    <div className={`min-w-0 bg-phy-glass rounded-[1.25rem] md:rounded-2xl border border-phy-border flex flex-col overflow-hidden animate-slide-left shadow-2xl ${isMobile ? 'shrink-0 min-h-[500px]' : ''}`}>
+                                        <div className="p-3 md:px-4 md:py-3 border-b border-phy-border bg-phy-glassHeavy/20 flex items-center justify-between shrink-0">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <Brain size={16} className="text-indigo-400 shrink-0" />
                                                 <span className="text-xs md:text-sm font-bold text-phy-text truncate">{listeningQuiz.title}</span>
@@ -520,7 +753,11 @@ const ListeningView = () => {
                                             )}
                                         </div>
 
-                                        <div className="flex-1 p-4 md:p-6 overflow-y-auto custom-scrollbar space-y-5 md:space-y-6">
+                                        <div className={`flex-1 p-4 md:p-5 overflow-y-auto custom-scrollbar ${
+                                            showQuizPane && !showTranscriptPane && !isMobile
+                                                ? 'grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-5 content-start'
+                                                : 'space-y-5 md:space-y-6'
+                                        }`}>
                                             {listeningQuiz.questions.map((q, idx) => {
                                                 const selected = listeningAnswers[q.id] || '';
                                                 const correct = normalizeAnswer(q.answer);

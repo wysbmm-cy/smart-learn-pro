@@ -3,6 +3,28 @@ export const getTodayIsoDate = () => new Date().toISOString().split('T')[0];
 export const getTodayNotesFolderName = (date = getTodayIsoDate()) =>
     `\u4eca\u65e5\u7b14\u8bb0 ${date}`;
 
+export const isDateNoteTag = (value) => {
+    const tag = String(value || '').trim();
+    return (
+        /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(tag) ||
+        /^\u4eca\u65e5\u7b14\u8bb0\s+\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(tag) ||
+        /^today\s*notes?\s+\d{4}[-/]\d{1,2}[-/]\d{1,2}$/i.test(tag)
+    );
+};
+
+export const normalizeNoteTags = (tags = []) => {
+    const seen = new Set();
+    return (Array.isArray(tags) ? tags : [])
+        .map((tag) => String(tag || '').trim())
+        .filter(Boolean)
+        .filter((tag) => {
+            const key = tag.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+};
+
 const normalizeName = (value) => String(value || '').trim();
 
 export const resolveTodayNotesFolderName = (folders = [], date = getTodayIsoDate()) => {
@@ -23,4 +45,3 @@ export const resolveTodayNotesFolderName = (folders = [], date = getTodayIsoDate
 
     return canonical;
 };
-

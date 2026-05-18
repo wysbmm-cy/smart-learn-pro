@@ -24,6 +24,15 @@ export const splitParagraphs = (text) => {
     return raw.split(/\n\s*\n/).map((p) => p.replace(/^\n+|\n+$/g, ''));
 };
 
+export const stripOutlineParagraphLabel = (text) => String(text || '')
+    .replace(/^\s*(?:(?:body\s+)?(?:paragraph|para\.?|p)|\u6bb5\u843d)\s*[\dIVXLC]+\s*[:\uFF1A.\-)]+\s*/i, '')
+    .trim();
+
+export const buildOutlineSeedContent = (outline) => (outline?.paragraphs || [])
+    .map((paragraph) => stripOutlineParagraphLabel(paragraph?.topic_sentence || ''))
+    .filter(Boolean)
+    .join('\n\n');
+
 export const splitSentences = (text) => {
     const cleaned = String(text || '').replace(/\n+/g, ' ').trim();
     if (!cleaned) return [];

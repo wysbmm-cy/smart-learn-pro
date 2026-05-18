@@ -1,6 +1,27 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 import { statements, toPublicUser } from './db.js';
+
+const loadLocalEnv = () => {
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (!fs.existsSync(envPath)) return;
+  const content = fs.readFileSync(envPath, 'utf8');
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = trimmed.slice(0, eqIndex).trim();
+    const value = trimmed.slice(eqIndex + 1).trim().replace(/^["']|["']$/g, '');
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+};
+
+loadLocalEnv();
 
 const PORT = Number(process.env.PORT || 3001);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -14,8 +35,8 @@ const AI_PROXY_API_KEY = process.env.AI_PROXY_API_KEY || process.env.DEEPSEEK_AP
 const AI_PROXY_MODEL = process.env.AI_PROXY_MODEL || 'deepseek-v4-flash';
 const AUDIO_PROXY_BASE_URL = process.env.AUDIO_PROXY_BASE_URL || 'https://api.siliconflow.cn/v1';
 const AUDIO_PROXY_API_KEY = process.env.AUDIO_PROXY_API_KEY || process.env.SILICONFLOW_API_KEY || '';
-const TTS_PROXY_BASE_URL = process.env.TTS_PROXY_BASE_URL || AUDIO_PROXY_BASE_URL;
-const TTS_PROXY_API_KEY = process.env.TTS_PROXY_API_KEY || AUDIO_PROXY_API_KEY;
+const TTS_PROXY_BASE_URL = process.env.TTS_PROXY_BASE_URL || 'https://openrouter.ai/api/v1';
+const TTS_PROXY_API_KEY = process.env.TTS_PROXY_API_KEY || process.env.OPENROUTER_API_KEY || AUDIO_PROXY_API_KEY;
 const IMAGE_PROXY_BASE_URL = process.env.IMAGE_PROXY_BASE_URL || AI_PROXY_BASE_URL;
 const IMAGE_PROXY_API_KEY = process.env.IMAGE_PROXY_API_KEY || AI_PROXY_API_KEY;
 const IMAGE_PROXY_MODEL = process.env.IMAGE_PROXY_MODEL || 'dall-e-3';
@@ -183,9 +204,10 @@ const proxyProviderRequest = async (req, res, url, config) => {
     headers,
     body,
   });
-  const responseText = await upstream.text();
-  res.writeHead(upstream.status, corsHeaders(upstream.headers.get('content-type') || 'application/json; charset=utf-8'));
-  return res.end(responseText);
+  const upstreamContentType = upstream.headers.get('content-type') || 'application/json; charset=utf-8';
+  res.writeHead(upstream.status, corsHeaders(upstreamContentType));
+  const responseBuffer = Buffer.from(await upstream.arrayBuffer());
+  return res.end(responseBuffer);
 };
 
 const server = http.createServer(async (req, res) => {

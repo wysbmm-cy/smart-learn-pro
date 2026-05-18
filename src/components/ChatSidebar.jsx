@@ -1,76 +1,163 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import SharedMarkdown from './SharedMarkdown';
 import { 
     X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, 
     History, Plus, Trash2, MessageSquare, Zap, MessageCircle, 
     Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, 
-    BookOpen, ImagePlus, Calendar, BarChart3 
-} from 'lucide-react';
+    BookOpen, ImagePlus, Calendar, BarChart3, ChevronDown, AlertTriangle, Square, CheckSquare } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
 import { analyzeImagesForChat, streamChatMessage, streamAgentChat } from '../services/ai';
+import { AGENT_TOOLS } from '../services/agentTools';
 import ChatQuizWidget from './ChatQuizWidget';
 import ChatFlashcardWidget from './ChatFlashcardWidget';
 import ChatWritingWidget from './ChatWritingWidget';
 
-// Tool name -> display label mapping
-// Tool name -> display label mapping
 const TOOL_LABELS = {
-    get_flashcard_stats: { label: 'Flashcard stats', icon: 'STAT' },
-    get_study_history: { label: 'Study history', icon: 'HIS' },
-    get_notes_summary: { label: 'Notes summary', icon: 'NOTE' },
-    get_note_detail: { label: 'Note detail', icon: 'NOTE+' },
-    get_study_logs: { label: 'Study logs', icon: 'LOG' },
-    get_user_goal: { label: 'User goal', icon: 'GOAL' },
-    get_drill_performance: { label: 'Drill performance', icon: 'DRILL' },
-    get_writing_history: { label: 'Writing history', icon: 'WRITE' },
-    list_writing_materials: { label: 'Writing materials', icon: 'PACK' },
-    list_flashcard_folders: { label: 'Flashcard folders', icon: 'FOLD' },
-    list_flashcards: { label: 'Flashcard list', icon: 'CARD' },
-    organize_flashcards_to_note: { label: 'Folder to note', icon: 'SYNC' },
-    create_writing_material: { label: 'Create material', icon: 'NEW' },
-    update_writing_material: { label: 'Update material', icon: 'EDIT' },
-    delete_writing_materials: { label: 'Delete material', icon: 'DEL' },
-    get_highlights: { label: 'Highlights', icon: 'MARK' },
-    get_tasks: { label: 'Tasks', icon: 'TASK' },
-    create_flashcards: { label: 'Create flashcards', icon: 'NEW' },
-    update_flashcard: { label: 'Update flashcard', icon: 'EDIT' },
-    delete_flashcards: { label: 'Delete flashcards', icon: 'DEL' },
-    flashcard_batch_delete: { label: 'Batch delete cards', icon: 'BDEL' },
-    flashcard_batch_move_folder: { label: 'Batch move folder', icon: 'MOVE' },
-    flashcard_batch_edit: { label: 'Batch edit cards', icon: 'BEDIT' },
-    flashcard_delete_by_rule: { label: 'Delete by rule', icon: 'RULE' },
-    flashcard_undo_last_batch: { label: 'Undo batch op', icon: 'UNDO' },
-    create_note: { label: 'Create note', icon: 'NEW' },
-    update_note: { label: 'Update note', icon: 'EDIT' },
-    delete_notes: { label: 'Delete notes', icon: 'DEL' },
-    create_task_item: { label: 'Create task', icon: 'NEW' },
-    update_task_item: { label: 'Update task', icon: 'EDIT' },
-    delete_task_items: { label: 'Delete task', icon: 'DEL' },
-    create_writing_task: { label: 'Writing exercise', icon: 'WRITE' },
-    create_coach_topic: { label: 'Coach topic', icon: 'COACH' },
-    navigate_to: { label: 'Navigate', icon: 'GO' },
-    review_flashcards: { label: 'Quick review cards', icon: 'CARD' },
-    create_interactive_quiz: { label: 'Interactive quiz', icon: 'QUIZ' },
-    generate_deep_note: { label: 'Generate deep note', icon: 'NOTE+' },
-    note_create_deep_note: { label: 'Create deep note+', icon: 'NOTE+' },
-    note_append_today_folder: { label: 'Append today note', icon: 'NAPP' },
-    note_partial_sync_to_materials: { label: 'Sync note links', icon: 'SYNC' },
+    get_flashcard_stats: { label: '读取闪卡统计', icon: '统计' },
+    get_study_history: { label: '读取学习历史', icon: '历史' },
+    get_notes_summary: { label: '读取笔记摘要', icon: '笔记' },
+    get_note_detail: { label: '读取笔记详情', icon: '笔记' },
+    get_study_logs: { label: '读取学习日志', icon: '日志' },
+    get_user_goal: { label: '读取学习目标', icon: '目标' },
+    get_drill_performance: { label: '读取训练表现', icon: '训练' },
+    get_current_reading_exam_article: { label: '读取阅读文章', icon: '阅读' },
+    extract_reading_learning_points_preview: { label: '预览阅读学习点', icon: '提取' },
+    get_writing_history: { label: '读取写作记录', icon: '写作' },
+    list_writing_materials: { label: '读取写作素材', icon: '素材' },
+    list_flashcard_folders: { label: '读取闪卡文件夹', icon: '文件夹' },
+    list_flashcards: { label: '读取闪卡列表', icon: '闪卡' },
+    organize_flashcards_to_note: { label: '闪卡整理成笔记', icon: '整理' },
+    create_writing_material: { label: '创建素材', icon: '新建' },
+    update_writing_material: { label: '更新素材', icon: '编辑' },
+    upsert_writing_vocabulary: { label: '编辑词汇替换', icon: '词汇' },
+    delete_writing_materials: { label: '删除素材', icon: '删除' },
+    get_highlights: { label: '读取标记', icon: '标记' },
+    get_tasks: { label: '读取任务', icon: '任务' },
+    create_flashcards: { label: '创建闪卡', icon: '新卡' },
+    update_flashcard: { label: '编辑闪卡', icon: '编辑' },
+    delete_flashcards: { label: '删除指定闪卡', icon: '删除' },
+    flashcard_batch_delete: { label: '批量删除闪卡', icon: '批删' },
+    flashcard_batch_move_folder: { label: '批量移动闪卡', icon: '移动' },
+    flashcard_batch_edit: { label: '批量编辑闪卡', icon: '批改' },
+    flashcard_delete_by_rule: { label: '按规则删除闪卡', icon: '规则' },
+    flashcard_undo_last_batch: { label: '撤销闪卡操作', icon: '撤销' },
+    create_note: { label: '创建笔记', icon: '新建' },
+    update_note: { label: '更新笔记', icon: '编辑' },
+    delete_notes: { label: '删除笔记', icon: '删除' },
+    create_task_item: { label: '创建任务', icon: '新建' },
+    update_task_item: { label: '更新任务', icon: '编辑' },
+    delete_task_items: { label: '删除任务', icon: '删除' },
+    create_listening_audio: { label: '生成听力音频', icon: '听力' },
+    create_writing_task: { label: '创建写作练习', icon: '写作' },
+    create_coach_topic: { label: '创建口语主题', icon: '口语' },
+    navigate_to: { label: '跳转页面', icon: '跳转' },
+    review_flashcards: { label: '快速复习闪卡', icon: '复习' },
+    create_interactive_quiz: { label: '创建互动测验', icon: '测验' },
+    generate_deep_note: { label: '生成深度笔记', icon: '深笔' },
+    note_create_deep_note: { label: '创建深度笔记', icon: '深笔' },
+    note_append_today_folder: { label: '追加今日笔记', icon: '追加' },
+    note_partial_sync_to_materials: { label: '同步笔记素材', icon: '同步' },
 };
 
-// View ID -> display info
 const VIEW_INFO = {
-    flashcards: { label: '单词闪卡', icon: Layers, color: 'text-violet-600 bg-violet-50 border-violet-200' },
-    writer: { label: '写作中心', icon: PenTool, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+    flashcards: { label: '闪卡复习', icon: Layers, color: 'text-violet-600 bg-violet-50 border-violet-200' },
+    writer: { label: 'AI 写作', icon: PenTool, color: 'text-blue-600 bg-blue-50 border-blue-200' },
     coach: { label: '口语教练', icon: Mic, color: 'text-green-600 bg-green-50 border-green-200' },
-    notes: { label: '学习笔记', icon: NotebookPen, color: 'text-amber-600 bg-amber-50 border-amber-200' },
-    study: { label: '沉浸阅读', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
-    exam: { label: '模考中心', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
+    notes: { label: '我的笔记', icon: NotebookPen, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+    study: { label: '词汇与阅读', icon: BookOpen, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
+    exam: { label: '阅读与考试', icon: FileText, color: 'text-red-600 bg-red-50 border-red-200' },
+    listening: { label: '听力实验室', icon: BookOpen, color: 'text-teal-600 bg-teal-50 border-teal-200' },
     plan: { label: '学习计划', icon: Brain, color: 'text-cyan-600 bg-cyan-50 border-cyan-200' },
-    dashboard: { label: '仪表盘', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
+    dashboard: { label: '工作台', icon: Brain, color: 'text-phy-muted bg-phy-bg border-phy-border' },
     knowledge: { label: '知识图谱', icon: Brain, color: 'text-purple-600 bg-purple-50 border-purple-200' },
     review: { label: '复习中心', icon: Brain, color: 'text-sky-600 bg-sky-50 border-sky-200' },
 };
+
+const AGENT_TOOL_FLOW_STORAGE_KEY = 'verbapath_agent_tool_flows_v1';
+
+const BUILTIN_AGENT_TOOL_FLOWS = [
+    {
+        id: 'builtin_vocab_to_assets',
+        name: '单词到学习资产',
+        description: '创建闪卡，挑选重点词生成深度笔记，再同步到写作/翻译素材。',
+        source: 'builtin',
+        tools: [
+            { toolName: 'create_flashcards', defaultParams: {} },
+            { toolName: 'note_create_deep_note', defaultParams: { syncToWriting: false, syncToTranslation: false } },
+            { toolName: 'note_partial_sync_to_materials', defaultParams: { toWriting: true, toTranslation: true, maxItems: 20 } }
+        ]
+    },
+    {
+        id: 'builtin_flashcards_review_note',
+        name: '闪卡整理复盘',
+        description: '读取闪卡，整理成复盘笔记，并追加到今日笔记。',
+        source: 'builtin',
+        tools: [
+            { toolName: 'list_flashcards', defaultParams: { limit: 20 } },
+            { toolName: 'organize_flashcards_to_note', defaultParams: { mode: 'append' } },
+            { toolName: 'note_append_today_folder', defaultParams: { heading: '闪卡复盘', syncKnowledge: true } }
+        ]
+    },
+    {
+        id: 'builtin_writing_materials',
+        name: '写作素材整理',
+        description: '沉淀写作素材，并生成可练习的句子写作任务。',
+        source: 'builtin',
+        tools: [
+            { toolName: 'create_writing_material', defaultParams: { source: 'agent_flow' } },
+            { toolName: 'create_writing_task', defaultParams: {} }
+        ]
+    }
+];
+
+const normalizeAgentToolFlow = (flow = {}, source = 'saved') => ({
+    id: String(flow.id || `flow_${Date.now()}`),
+    name: String(flow.name || '未命名流程'),
+    description: String(flow.description || ''),
+    source: flow.source || source,
+    tools: Array.isArray(flow.tools)
+        ? flow.tools
+            .map((item) => ({
+                toolName: String(item.toolName || item.name || '').trim(),
+                defaultParams: item.defaultParams && typeof item.defaultParams === 'object' ? item.defaultParams : {}
+            }))
+            .filter((item) => item.toolName)
+        : [],
+    createdAt: flow.createdAt || Date.now(),
+    updatedAt: flow.updatedAt || Date.now()
+});
+
+const loadSavedAgentToolFlows = () => {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(AGENT_TOOL_FLOW_STORAGE_KEY) || '[]');
+        return Array.isArray(parsed)
+            ? parsed.map((item) => normalizeAgentToolFlow(item, 'saved')).filter((item) => item.tools.length)
+            : [];
+    } catch {
+        return [];
+    }
+};
+
+const saveAgentToolFlows = (flows = []) => {
+    localStorage.setItem(AGENT_TOOL_FLOW_STORAGE_KEY, JSON.stringify(flows));
+};
+
+const getFlowToolsText = (flow = {}) => (flow.tools || [])
+    .map((item) => TOOL_LABELS[item.toolName]?.label || item.toolName)
+    .join(' → ');
+
+const getAgentToolOptions = () => AGENT_TOOLS.map((tool) => {
+    const name = tool?.function?.name || '';
+    const meta = TOOL_LABELS[name] || { label: name, icon: '工具' };
+    return {
+        name,
+        label: meta.label || name,
+        icon: meta.icon || '工具',
+        description: tool?.function?.description || '',
+        isRisky: /delete|batch_delete/.test(name)
+    };
+}).filter((item) => item.name);
 
 const formatToolArgs = (args) => {
     if (!args || typeof args !== 'object') return '';
@@ -98,6 +185,22 @@ const summarizeToolResult = (tc) => {
     return keys.map((k) => `${k}=${String(result[k]).slice(0, 28)}`).join(' | ');
 };
 
+const getPlanStepStyle = (status) => {
+    if (status === 'running') return 'border-amber-300/40 bg-amber-500/10 text-amber-200';
+    if (status === 'done') return 'border-emerald-300/35 bg-emerald-500/10 text-emerald-200';
+    if (status === 'error') return 'border-red-300/35 bg-red-500/10 text-red-200';
+    return 'border-phy-border bg-phy-bg/70 text-phy-muted';
+};
+
+const getPlanStepLabel = (status) => {
+    if (status === 'running') return '执行中';
+    if (status === 'done') return '完成';
+    if (status === 'error') return '失败';
+    return '等待';
+};
+
+const isRiskyTool = (name = '', riskLevel = '') => riskLevel === 'high' || /delete|batch_delete/.test(name);
+
 const ChatSidebar = ({ isMobileSheet = false }) => {
     const {
         settings,
@@ -123,13 +226,36 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
     const [chatMode, setChatMode] = useState(() => localStorage.getItem('chat_mode') || 'chat');
     // Agent tool call status for visualization
     const [toolCalls, setToolCalls] = useState([]);
+    const [agentPlan, setAgentPlan] = useState(null);
+    const [expandedPlanSteps, setExpandedPlanSteps] = useState({});
+    const [showToolLog, setShowToolLog] = useState(false);
+    const [savedToolFlows, setSavedToolFlows] = useState(loadSavedAgentToolFlows);
+    const [selectedToolFlow, setSelectedToolFlow] = useState(null);
+    const [showSlashMenu, setShowSlashMenu] = useState(false);
+    const [slashQuery, setSlashQuery] = useState('');
+    const [showSaveFlowForm, setShowSaveFlowForm] = useState(false);
+    const [flowNameDraft, setFlowNameDraft] = useState('');
+    const [flowDescriptionDraft, setFlowDescriptionDraft] = useState('');
     // Collected actions from tool execution results
     const [pendingActions, setPendingActions] = useState([]);
 
     // Persist chat mode preference
     useEffect(() => {
         localStorage.setItem('chat_mode', chatMode);
+        if (chatMode !== 'agent') {
+            setShowSlashMenu(false);
+            setSelectedToolFlow(null);
+        }
     }, [chatMode]);
+
+    useEffect(() => {
+        saveAgentToolFlows(savedToolFlows);
+    }, [savedToolFlows]);
+
+    useEffect(() => {
+        if (!showSlashMenu) return;
+        setSavedToolFlows(loadSavedAgentToolFlows());
+    }, [showSlashMenu]);
 
     // Suggestion State
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -190,7 +316,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         if (viewMode === 'chat' && autoScrollEnabledRef.current) {
             scrollToBottom('auto');
         }
-    }, [chatMessages.length, isChatOpen, viewMode, toolCalls, pendingActions]);
+    }, [chatMessages.length, isChatOpen, viewMode, toolCalls, pendingActions, agentPlan]);
 
     useEffect(() => {
         return () => {
@@ -218,6 +344,21 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         setInput(val);
         setCursorPosition(pos);
 
+        if (chatMode === 'agent') {
+            const lastSlash = val.lastIndexOf('/', pos);
+            if (lastSlash !== -1 && lastSlash < pos) {
+                const charBeforeSlash = lastSlash === 0 ? ' ' : val[lastSlash - 1];
+                const query = val.slice(lastSlash + 1, pos);
+                if ((charBeforeSlash === ' ' || charBeforeSlash === '\n') && !query.includes(' ') && !query.includes('\n')) {
+                    setSlashQuery(query);
+                    setShowSlashMenu(true);
+                    setShowSuggestions(false);
+                    return;
+                }
+            }
+        }
+        setShowSlashMenu(false);
+
         const lastAt = val.lastIndexOf('@', pos);
         if (lastAt !== -1 && lastAt < pos) {
             const charBefore = lastAt === 0 ? ' ' : val[lastAt - 1];
@@ -232,6 +373,92 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             }
         }
         setShowSuggestions(false);
+    };
+
+    const getVisibleToolFlows = () => {
+        const q = slashQuery.trim().toLowerCase();
+        return [...savedToolFlows, ...BUILTIN_AGENT_TOOL_FLOWS].filter((flow) => {
+            if (!q) return true;
+            const hay = `${flow.name} ${flow.description} ${getFlowToolsText(flow)}`.toLowerCase();
+            return hay.includes(q);
+        });
+    };
+
+    const getVisibleAgentTools = () => {
+        const q = slashQuery.trim().toLowerCase();
+        return getAgentToolOptions().filter((tool) => {
+            if (!q) return true;
+            return `${tool.name} ${tool.label} ${tool.description}`.toLowerCase().includes(q);
+        });
+    };
+
+    const handleSelectToolFlow = (flow) => {
+        const normalized = normalizeAgentToolFlow(flow, flow.source || 'builtin');
+        const before = input.slice(0, input.lastIndexOf('/', cursorPosition));
+        const after = input.slice(cursorPosition);
+        setInput(`${before}${after}`.trimStart());
+        setSelectedToolFlow(normalized);
+        setShowSlashMenu(false);
+        setShowSaveFlowForm(false);
+        setFlowNameDraft(normalized.name);
+        setFlowDescriptionDraft(normalized.description || '');
+        inputRef.current?.focus();
+    };
+
+    const handleSelectAgentTool = (toolName) => {
+        const before = input.slice(0, input.lastIndexOf('/', cursorPosition));
+        const after = input.slice(cursorPosition);
+        setInput(`${before}${after}`.trimStart());
+        setSelectedToolFlow((current) => {
+            const base = current?.tools?.length
+                ? current
+                : {
+                    id: `custom_flow_${Date.now()}`,
+                    name: '自定义工具流程',
+                    description: '用户通过 / 自主选择工具顺序。',
+                    source: 'custom',
+                    tools: [],
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                };
+            const next = normalizeAgentToolFlow({
+                ...base,
+                id: base.id || `custom_flow_${Date.now()}`,
+                name: base.source === 'saved' ? `${base.name} 副本` : base.name,
+                source: 'custom',
+                description: base.description || '用户通过 / 自主选择工具顺序。',
+                tools: [...(base.tools || []), { toolName, defaultParams: {} }],
+                updatedAt: Date.now()
+            }, 'custom');
+            setFlowNameDraft(next.name);
+            setFlowDescriptionDraft(next.description || '');
+            return next;
+        });
+        setShowSlashMenu(false);
+        setShowSaveFlowForm(false);
+        inputRef.current?.focus();
+    };
+
+    const handleSaveSelectedToolFlow = () => {
+        if (!selectedToolFlow?.tools?.length) return;
+        const name = flowNameDraft.trim() || selectedToolFlow.name || '自定义工具流程';
+        const flow = normalizeAgentToolFlow({
+            ...selectedToolFlow,
+            id: `saved_flow_${Date.now()}`,
+            source: 'saved',
+            name,
+            description: flowDescriptionDraft.trim(),
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        }, 'saved');
+        setSavedToolFlows((prev) => [flow, ...prev]);
+        setSelectedToolFlow(flow);
+        setShowSaveFlowForm(false);
+    };
+
+    const handleDeleteSavedToolFlow = (flowId) => {
+        setSavedToolFlows((prev) => prev.filter((flow) => flow.id !== flowId));
+        setSelectedToolFlow((current) => current?.id === flowId ? null : current);
     };
 
     const fetchSuggestions = async (query) => {
@@ -318,7 +545,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         }
     }, [input]);
 
-    const handleDirectMessage = async (msgText, attachments = []) => {
+    const handleDirectMessage = async (msgText, attachments = [], forcedToolFlow = null) => {
         const pureText = String(msgText || '').trim();
         if ((!pureText && attachments.length === 0) || isSending) return;
 
@@ -330,6 +557,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         addChatMessage('user', uiUserMessage);
         setIsSending(true);
         setToolCalls([]);
+        setAgentPlan(null);
+        setExpandedPlanSteps({});
+        setShowToolLog(false);
         // Don't clear pending actions here if we want them to stay, but usually we do
         setPendingActions([]);
 
@@ -370,7 +600,6 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             if (chatMode === 'agent') {
                 let fullResponse = "";
                 const collectedActions = [];
-                let planInjected = false;
                 let contentDeltaSeen = false;
 
                 await streamAgentChat(history, settings, (delta) => {
@@ -381,17 +610,31 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                     scheduleStreamCommit(fullResponse);
                 }, (toolInfo) => {
                     if (toolInfo?.status === 'plan') {
-                        const planText = String(toolInfo.planMarkdown || '').trim();
-                        if (planText) {
-                            if (!planInjected) {
-                                fullResponse = `${planText}\n\n`;
-                                planInjected = true;
-                            } else if (!fullResponse.includes(planText)) {
-                                fullResponse = `${planText}\n\n${fullResponse}`;
-                            }
-                            scheduleStreamCommit(fullResponse);
+                        if (toolInfo.plan) {
+                            setAgentPlan(toolInfo.plan);
                         }
                         return;
+                    }
+
+                    if (toolInfo?.id) {
+                        setAgentPlan((current) => current ? {
+                            ...current,
+                            steps: (current.steps || []).map((step) => (
+                                step.id === toolInfo.id
+                                    ? {
+                                        ...step,
+                                        status: toolInfo.status === 'calling'
+                                            ? 'running'
+                                            : toolInfo.status === 'done'
+                                                ? 'done'
+                                                : toolInfo.status === 'error'
+                                                    ? 'error'
+                                                    : step.status,
+                                        result: toolInfo.result?.message || toolInfo.error || step.result
+                                    }
+                                    : step
+                            ))
+                        } : current);
                     }
 
                     setToolCalls(prev => {
@@ -410,17 +653,14 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                     if (toolInfo.status === 'done' && toolInfo.result && toolInfo.result._action) {
                         collectedActions.push(toolInfo.result);
                     }
-                });
+                }, forcedToolFlow ? { forcedToolFlow } : {});
 
                 // Agent fallback: ensure user still gets feedback when model returns empty text
                 if (!contentDeltaSeen) {
                     const fallbackMsg = collectedActions.length > 0
                         ? 'Done. I completed the requested action.'
                         : 'Done. What should I help with next?'
-                    const merged = planInjected && fullResponse.trim()
-                        ? `${fullResponse}${fallbackMsg}`
-                        : fallbackMsg;
-                    await flushStreamCommit(merged, true);
+                    await flushStreamCommit(fallbackMsg, true);
                 } else {
                     await flushStreamCommit(fullResponse, true);
                 }
@@ -455,9 +695,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         if ((!input.trim() && imageAttachments.length === 0) || isSending) return;
         const userMsg = input.trim();
         const attachments = imageAttachments;
+        const forcedToolFlow = chatMode === 'agent' ? selectedToolFlow : null;
         setInput('');
         setImageAttachments([]);
-        handleDirectMessage(userMsg, attachments);
+        setSelectedToolFlow(null);
+        setShowSlashMenu(false);
+        setShowSaveFlowForm(false);
+        handleDirectMessage(userMsg, attachments, forcedToolFlow);
     };
 
 
@@ -494,6 +738,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         };
     }, [isResizing]);
 
+    const visibleToolFlows = getVisibleToolFlows();
+    const visibleAgentTools = getVisibleAgentTools();
+
     return (
         <div
             ref={sidebarRef}
@@ -519,13 +766,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             {/* Header */}
             <div className={`h-14 flex items-center justify-between px-4 border-b border-phy-border shrink-0 ${isMobileSheet ? 'bg-transparent' : 'bg-phy-glassHeavy/50 backdrop-blur-md'}`}>
                 <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${chatMode === 'agent' ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-indigo-100 text-indigo-600 shadow-sm'}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${chatMode === 'agent' ? '工具执行模式' : '学习辅导模式'}`}>
                         {chatMode === 'agent' ? <Zap size={18} /> : <Bot size={18} />}
                     </div>
                     <div className="flex flex-col -space-y-0.5">
-                        <span className="text-sm font-bold text-phy-text">{chatMode === 'agent' ? 'AI Agent' : 'AI Tutor'}</span>
+                        <span className="text-sm font-bold text-phy-text">{chatMode === 'agent' ? '工具执行模式' : '学习辅导模式'}</span>
                         <span className="text-[10px] text-phy-muted font-medium uppercase tracking-wider">
-                            {chatMode === 'agent' ? '鍏ㄨ兘鍔╂墜' : '瀛︿範瀵艰埅'}
+                            {chatMode === 'agent' ? '工具执行模式' : '学习辅导模式'}
                         </span>
                     </div>
                 </div>
@@ -539,7 +786,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                 ? 'bg-phy-accent text-white shadow-sm'
                                 : 'text-phy-muted hover:text-phy-text'
                                 }`}
-                            title="瀵煎笀妯″紡"
+                            title="导师模式"
                         >
                             <MessageCircle size={14} />
                             <span className="text-[11px] font-bold">鑱婂ぉ</span>
@@ -616,10 +863,10 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm("纭畾瑕佸垹闄ゆ瀵硅瘽鍚楋紵")) removeChatSession(session.id);
+                                    if (confirm('确定要删除这条对话吗？')) removeChatSession(session.id);
                                 }}
                                 className="absolute right-2 top-3 p-1.5 text-phy-text hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                                title="鍒犻櫎"
+                                title="删除"
                             >
                                 <Trash2 size={14} />
                             </button>
@@ -643,7 +890,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         {chatMode === 'agent' ? <Zap size={28} /> : <Bot size={28} />}
                                     </div>
                                     <h2 className="text-lg font-bold text-phy-text mb-1">
-                                        {chatMode === 'agent' ? 'VerbaPath Agent' : 'VerbaPath Tutor'}
+                                        {chatMode === 'agent' ? '工具执行模式' : '学习辅导模式'}
                                     </h2>
                                     <p className="text-xs text-phy-muted max-w-[240px] mx-auto leading-relaxed">
                                         {chatMode === 'agent'
@@ -707,42 +954,51 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                 </div>
                             </div>
                         ))}
-
-                                                {/* Tool Call Visualization (Agent Mode) */}
-                        {chatMode === 'agent' && toolCalls.length > 0 && (
-                            <div className="mx-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 animate-fade-in">
-                                <div className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
-                                    <Database size={12} />
-                                    {isSending ? 'Agent tool calls running...' : 'Latest Agent tool calls'}
+                        {/* Agent Plan Card */}
+                        {chatMode === 'agent' && agentPlan?.steps?.length > 0 && (
+                            <div className="mx-1 rounded-2xl border border-cyan-300/25 bg-gradient-to-br from-cyan-500/10 via-phy-glass to-indigo-500/10 p-3 shadow-lg shadow-cyan-500/5 space-y-3 animate-fade-in">
+                                <div className="flex items-start gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-cyan-400/15 text-cyan-200 border border-cyan-300/20 flex items-center justify-center shrink-0">
+                                        <Zap size={15} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-xs font-black text-phy-text">Agent 执行计划</div>
+                                        <div className="text-[11px] text-phy-muted leading-relaxed line-clamp-2">{agentPlan.goal}</div>
+                                    </div>
                                 </div>
-                                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                                    {toolCalls.map((tc, i) => {
-                                        const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '*' };
-                                        const argsText = formatToolArgs(tc.args);
-                                        const resultText = summarizeToolResult(tc);
-                                        const isError = tc.status === 'error';
+                                <div className="space-y-2">
+                                    {agentPlan.steps.map((step, index) => {
+                                        const expanded = !!expandedPlanSteps[step.id || index];
+                                        const risky = isRiskyTool(step.tool, step.riskLevel);
+                                        const toolInfo = TOOL_LABELS[step.tool] || { label: step.displayToolName || step.tool, icon: '工具' };
                                         return (
-                                            <div key={`${tc.id || tc.name}-${i}`} className="rounded-lg border border-amber-200/80 bg-white/70 px-2.5 py-2 text-xs text-amber-700 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{toolInfo.icon}</span>
-                                                    <span className="font-semibold">{toolInfo.label}</span>
-                                                    <span className="text-[10px] text-amber-500 font-mono">{tc.name}</span>
-                                                    {tc.status === 'calling' ? (
-                                                        <Loader2 size={12} className="animate-spin ml-auto text-amber-400" />
-                                                    ) : isError ? (
-                                                        <X size={12} className="ml-auto text-red-500" />
-                                                    ) : (
-                                                        <CheckCircle2 size={12} className="ml-auto text-green-500" />
-                                                    )}
-                                                </div>
-                                                {argsText && (
-                                                    <div className="text-[10px] text-amber-700/90">
-                                                        Args: {argsText}
+                                            <div key={step.id || index} className={`rounded-xl border px-3 py-2 ${getPlanStepStyle(step.status)}`}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setExpandedPlanSteps((prev) => ({ ...prev, [step.id || index]: !expanded }))}
+                                                    className="w-full flex items-center gap-2 text-left"
+                                                >
+                                                    <span className="w-6 h-6 rounded-lg bg-black/10 flex items-center justify-center text-[10px] font-black shrink-0">
+                                                        {step.status === 'done' ? <CheckSquare size={13} /> : step.status === 'running' ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />}
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className={`text-xs font-bold truncate ${step.status === 'done' ? 'line-through opacity-80' : ''}`}>{step.purpose}</div>
+                                                        <div className="text-[10px] opacity-75 truncate">{toolInfo.label}</div>
                                                     </div>
-                                                )}
-                                                {resultText && (
-                                                    <div className={`text-[10px] ${isError ? 'text-red-600' : 'text-emerald-700'}`}>
-                                                        {resultText}
+                                                    {risky && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full border border-red-300/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-black text-red-200">
+                                                            <AlertTriangle size={10} /> 高风险
+                                                        </span>
+                                                    )}
+                                                    <span className="text-[10px] font-black shrink-0">{getPlanStepLabel(step.status)}</span>
+                                                    {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                                </button>
+                                                {expanded && (
+                                                    <div className="mt-2 space-y-1.5 rounded-lg bg-black/10 p-2 text-[10px] leading-relaxed">
+                                                        <div><span className="opacity-60">工具：</span><span className="font-mono">{step.tool}</span></div>
+                                                        <div><span className="opacity-60">范围：</span>{step.scopeSummary || step.inputs || '-'}</div>
+                                                        {step.canUndo && <div className="text-amber-200">可撤销：执行后可用“撤销闪卡操作”恢复上次批量改动。</div>}
+                                                        {step.result && <div><span className="opacity-60">结果：</span>{step.result}</div>}
                                                     </div>
                                                 )}
                                             </div>
@@ -752,13 +1008,58 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             </div>
                         )}
 
+                        {/* Tool Call Visualization (Agent Mode) */}
+                        {chatMode === 'agent' && toolCalls.length > 0 && (
+                            <div className="mx-1 rounded-2xl border border-amber-300/25 bg-gradient-to-br from-amber-500/10 via-phy-glass to-cyan-500/10 p-3 shadow-lg shadow-amber-500/5 space-y-2 animate-fade-in">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowToolLog((value) => !value)}
+                                    className="w-full flex items-center justify-between gap-2 text-left"
+                                >
+                                    <div className="text-xs font-black text-phy-text flex items-center gap-2">
+                                        <span className="w-6 h-6 rounded-lg bg-amber-400/15 text-amber-300 flex items-center justify-center border border-amber-300/20">
+                                            <Database size={13} />
+                                        </span>
+                                        执行日志
+                                    </div>
+                                    <span className="text-[10px] uppercase tracking-[0.18em] text-phy-muted flex items-center gap-1">
+                                        {isSending ? 'RUNNING' : 'COMPLETED'} {showToolLog ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                    </span>
+                                </button>
+                                {showToolLog && (
+                                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                        {toolCalls.map((tc, i) => {
+                                            const toolInfo = TOOL_LABELS[tc.name] || { label: tc.name, icon: '工具' };
+                                            const argsText = formatToolArgs(tc.args);
+                                            const resultText = summarizeToolResult(tc);
+                                            const isError = tc.status === 'error';
+                                            return (
+                                                <div key={`${tc.id || tc.name}-${i}`} className="rounded-xl border border-phy-border bg-phy-bg/70 px-3 py-2 text-xs text-phy-text space-y-1.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="min-w-7 h-7 px-1 rounded-lg bg-phy-glassHeavy text-amber-300 border border-amber-300/15 flex items-center justify-center text-[10px] font-black">
+                                                            {toolInfo.icon}
+                                                        </span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="font-bold text-phy-text truncate">{toolInfo.label}</div>
+                                                            <div className="text-[10px] text-phy-muted font-mono truncate">{tc.name}</div>
+                                                        </div>
+                                                        {tc.status === 'calling' ? <Loader2 size={12} className="animate-spin ml-auto text-amber-400" /> : isError ? <X size={12} className="ml-auto text-red-500" /> : <CheckCircle2 size={12} className="ml-auto text-green-500" />}
+                                                    </div>
+                                                    {argsText && <div className="rounded-lg bg-phy-glass px-2 py-1 text-[10px] text-phy-muted">输入：{argsText}</div>}
+                                                    {resultText && <div className={`rounded-lg px-2 py-1 text-[10px] ${isError ? 'bg-red-500/10 text-red-300' : 'bg-emerald-500/10 text-emerald-300'}`}>{resultText}</div>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {/* Action Card (After Agent finishes, show clickable navigation buttons) */}
                         {!isSending && pendingActions.length > 0 && (
-                            <div className="mx-2 p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl space-y-3 animate-fade-in">
-                                <div className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                            <div className="mx-1 p-4 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-300/20 rounded-2xl space-y-3 animate-fade-in shadow-lg shadow-emerald-500/5">
+                                <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                                     <CheckCircle2 size={14} />
-                                    浠诲姟宸插畬鎴愩€傝鐐瑰嚮涓嬫柟鐩爣鍓嶅線鏌ョ湅锛?
-                                </div>
+                                    任务已完成。点击下方入口查看结果。                                </div>
                                 <div className="space-y-2">
                                     {pendingActions.map((action, i) => {
                                         if (action._action === 'chat_quiz') {
@@ -810,26 +1111,35 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         const Icon = info.icon;
 
                                         return (
-                                            <button
-                                                key={i}
-                                                onClick={() => handleNavigate(
-                                                    action._navigateToParams
-                                                        ? { view: viewId, params: action._navigateToParams }
-                                                        : viewId
-                                                )}
-                                                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-md hover:scale-[1.01] active:scale-[0.99] ${info.color}`}
-                                            >
-                                                <div className="p-1.5 rounded-lg bg-white/80 shadow-sm">
-                                                    <Icon size={16} />
-                                                </div>
-                                                <div className="flex-1 text-left">
-                                                    <div className="font-bold text-sm">{info.label}</div>
-                                                    <div className="text-[11px] opacity-70 truncate">
-                                                        {action.message || action._action}
+                                            <div key={i} className="space-y-2">
+                                                <button
+                                                    onClick={() => handleNavigate(
+                                                        action._navigateToParams
+                                                            ? { view: viewId, params: action._navigateToParams }
+                                                            : viewId
+                                                    )}
+                                                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-md hover:scale-[1.01] active:scale-[0.99] ${info.color}`}
+                                                >
+                                                    <div className="p-1.5 rounded-lg bg-white/80 shadow-sm">
+                                                        <Icon size={16} />
                                                     </div>
-                                                </div>
-                                                <ChevronRight size={16} className="opacity-40" />
-                                            </button>
+                                                    <div className="flex-1 text-left">
+                                                        <div className="font-bold text-sm">{info.label}</div>
+                                                        <div className="text-[11px] opacity-70 truncate">
+                                                            {action.message || action._action}
+                                                        </div>
+                                                    </div>
+                                                    <ChevronRight size={16} className="opacity-40" />
+                                                </button>
+                                                {action.canUndo && (
+                                                    <button
+                                                        onClick={() => handleDirectMessage('撤销上一次闪卡批量操作')}
+                                                        className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs font-black text-amber-200 hover:bg-amber-500/20 transition-colors"
+                                                    >
+                                                        撤销本次闪卡操作
+                                                    </button>
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -847,16 +1157,15 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                     </div>
 
                     {/* Input Area */}
-                    <div 
-                        className="p-3 md:p-4 bg-phy-glassHeavy border-t border-phy-border relative shrink-0"
+                    <div
+                        className="p-3 md:p-4 bg-gradient-to-t from-phy-bg via-phy-glassHeavy to-phy-glass border-t border-phy-border relative shrink-0"
                         style={{ paddingBottom: isMobileSheet ? 'calc(1rem + env(safe-area-inset-bottom, 0px))' : undefined }}
                     >
                         {/* Context Menu Suggestion UI */}
                         {showSuggestions && suggestions.length > 0 && (
                             <div className="absolute bottom-full left-4 right-4 mb-2 bg-phy-glass rounded-xl shadow-2xl border border-phy-border overflow-hidden max-h-60 overflow-y-auto animate-fade-in z-50">
                                 <div className="px-3 py-2 bg-phy-bg border-b border-phy-border text-xs font-bold text-phy-muted uppercase tracking-wider">
-                                    寮曠敤涓婁笅鏂?
-                                </div>
+                                    引用上下文                                </div>
                                 {suggestions.map((item, idx) => (
                                     <button
                                         key={idx}
@@ -880,6 +1189,170 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             </div>
                         )}
 
+                        {chatMode === 'agent' && showSlashMenu && (
+                            <div className="absolute bottom-full left-4 right-4 mb-2 bg-phy-glass rounded-xl shadow-2xl border border-phy-border overflow-hidden max-h-72 overflow-y-auto animate-fade-in z-50">
+                                <div className="px-3 py-2 bg-phy-bg border-b border-phy-border text-xs font-bold text-phy-muted uppercase tracking-wider flex items-center justify-between">
+                                    <span>工具流程 / 全部工具</span>
+                                    <span className="normal-case tracking-normal text-[10px]">点工具会追加到当前流程</span>
+                                </div>
+                                {visibleToolFlows.length > 0 && (
+                                    <div>
+                                        <div className="px-3 py-1.5 text-[10px] font-black text-phy-muted bg-phy-bg/60">已保存 / 推荐流程</div>
+                                        {visibleToolFlows.map((flow) => (
+                                            <div
+                                                key={`${flow.source || 'flow'}_${flow.id}`}
+                                                className="flex items-stretch border-b border-phy-border/60 last:border-0 hover:bg-phy-glassHover transition-colors"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSelectToolFlow(flow)}
+                                                    className="min-w-0 flex-1 px-4 py-3 text-left flex items-start gap-3"
+                                                >
+                                                    <div className="mt-0.5 min-w-8 h-8 rounded-xl bg-amber-400/15 text-amber-300 border border-amber-300/20 flex items-center justify-center text-[10px] font-black">
+                                                        流程
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="font-bold text-sm text-phy-text truncate">{flow.name}</div>
+                                                            <span className="rounded-full bg-phy-bg px-2 py-0.5 text-[10px] font-black text-phy-muted">
+                                                                {flow.source === 'saved' ? '已保存' : '推荐'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-0.5 text-xs text-phy-muted line-clamp-1">{flow.description || '按固定工具顺序执行'}</div>
+                                                        <div className="mt-1 text-[10px] font-mono text-phy-muted line-clamp-1">{getFlowToolsText(flow)}</div>
+                                                    </div>
+                                                </button>
+                                                {flow.source === 'saved' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                            handleDeleteSavedToolFlow(flow.id);
+                                                        }}
+                                                        className="m-3 self-start rounded-lg p-1.5 text-red-300 hover:bg-red-500/10"
+                                                        title="删除保存的流程"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {visibleAgentTools.length > 0 && (
+                                    <div>
+                                        <div className="px-3 py-1.5 text-[10px] font-black text-phy-muted bg-phy-bg/60">全部工具</div>
+                                        {visibleAgentTools.map((tool) => (
+                                            <button
+                                                key={tool.name}
+                                                type="button"
+                                                onClick={() => handleSelectAgentTool(tool.name)}
+                                                className="w-full px-4 py-3 text-left flex items-start gap-3 border-b border-phy-border/60 last:border-0 hover:bg-phy-glassHover transition-colors"
+                                            >
+                                                <div className={`mt-0.5 min-w-8 h-8 rounded-xl border flex items-center justify-center text-[10px] font-black ${tool.isRisky ? 'bg-red-500/10 text-red-200 border-red-300/20' : 'bg-cyan-400/10 text-cyan-200 border-cyan-300/20'}`}>
+                                                    {tool.icon}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="font-bold text-sm text-phy-text truncate">{tool.label}</div>
+                                                        {tool.isRisky && <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-black text-red-200">高风险</span>}
+                                                    </div>
+                                                    <div className="mt-0.5 text-[10px] text-phy-muted font-mono truncate">{tool.name}</div>
+                                                    <div className="mt-1 text-xs text-phy-muted line-clamp-1">{tool.description}</div>
+                                                </div>
+                                                <Plus size={14} className="mt-2 text-phy-muted" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {!visibleToolFlows.length && !visibleAgentTools.length && (
+                                    <div className="px-4 py-5 text-sm text-phy-muted">没有匹配的流程或工具。</div>
+                                )}
+                            </div>
+                        )}
+
+                        {chatMode === 'agent' && selectedToolFlow && (
+                            <div className="mb-2 rounded-2xl border border-amber-300/25 bg-amber-500/10 p-3 space-y-2">
+                                <div className="flex items-start gap-2">
+                                    <div className="min-w-8 h-8 rounded-xl bg-amber-400/15 text-amber-200 border border-amber-300/20 flex items-center justify-center">
+                                        <Zap size={14} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="text-sm font-black text-phy-text truncate">{selectedToolFlow.name}</div>
+                                            <span className="rounded-full bg-phy-bg px-2 py-0.5 text-[10px] font-black text-phy-muted">
+                                                {selectedToolFlow.source === 'saved' ? '已保存流程' : selectedToolFlow.source === 'custom' ? '自选工具' : '推荐流程'}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap gap-1.5">
+                                            {(selectedToolFlow.tools || []).map((tool, index) => (
+                                                <span key={`${tool.toolName}_${index}`} className="rounded-full border border-amber-300/20 bg-phy-bg/70 px-2 py-1 text-[10px] font-bold text-phy-text">
+                                                    {index + 1}. {TOOL_LABELS[tool.toolName]?.label || tool.toolName}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedToolFlow(null);
+                                            setShowSaveFlowForm(false);
+                                        }}
+                                        className="rounded-lg p-1.5 text-phy-muted hover:bg-phy-glassHover hover:text-phy-text"
+                                        title="取消当前流程"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                                {selectedToolFlow.source !== 'saved' && !showSaveFlowForm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setFlowNameDraft(selectedToolFlow.name);
+                                            setFlowDescriptionDraft(selectedToolFlow.description || '');
+                                            setShowSaveFlowForm(true);
+                                        }}
+                                        className="rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-100 hover:bg-amber-400/20"
+                                    >
+                                        保存当前流程
+                                    </button>
+                                )}
+                                {showSaveFlowForm && (
+                                    <div className="grid grid-cols-1 gap-2 rounded-xl border border-phy-border bg-phy-bg/70 p-2">
+                                        <input
+                                            value={flowNameDraft}
+                                            onChange={(event) => setFlowNameDraft(event.target.value)}
+                                            className="rounded-lg border border-phy-border bg-phy-glass px-3 py-2 text-xs text-phy-text outline-none focus:border-phy-accent"
+                                            placeholder="流程名称"
+                                        />
+                                        <input
+                                            value={flowDescriptionDraft}
+                                            onChange={(event) => setFlowDescriptionDraft(event.target.value)}
+                                            className="rounded-lg border border-phy-border bg-phy-glass px-3 py-2 text-xs text-phy-text outline-none focus:border-phy-accent"
+                                            placeholder="流程说明（可选）"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveSelectedToolFlow}
+                                                className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-black text-amber-950"
+                                            >
+                                                保存
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowSaveFlowForm(false)}
+                                                className="rounded-lg border border-phy-border px-3 py-1.5 text-xs font-black text-phy-muted"
+                                            >
+                                                取消
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {imageAttachments.length > 0 && (
                             <div className="mb-2 flex flex-wrap gap-2">
                                 {imageAttachments.map((img) => (
@@ -888,16 +1361,14 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         <button
                                             onClick={() => removeImageAttachment(img.id)}
                                             className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] flex items-center justify-center"
-                                            title="绉婚櫎"
-                                        >
-                                            脳
-                                        </button>
+                                            title="移除"
+                                        >×</button>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        <div className="relative">
+                        <div className="relative rounded-2xl border border-phy-border bg-phy-glass shadow-inner focus-within:border-phy-accent focus-within:ring-4 focus-within:ring-phy-accentGlass transition-all">
                             <input
                                 ref={imageInputRef}
                                 type="file"
@@ -926,6 +1397,12 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                 }}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
+                                        if (showSlashMenu && (visibleToolFlows.length > 0 || visibleAgentTools.length > 0)) {
+                                            e.preventDefault();
+                                            if (visibleToolFlows.length > 0) handleSelectToolFlow(visibleToolFlows[0]);
+                                            else handleSelectAgentTool(visibleAgentTools[0].name);
+                                            return;
+                                        }
                                         if (showSuggestions && suggestions.length > 0) {
                                             e.preventDefault();
                                             handleSelectSuggestion(suggestions[0]);
@@ -934,22 +1411,25 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         e.preventDefault();
                                         handleSend();
                                     }
-                                    if (e.key === 'Escape') setShowSuggestions(false);
+                                    if (e.key === 'Escape') {
+                                        setShowSuggestions(false);
+                                        setShowSlashMenu(false);
+                                    }
                                 }}
-                                placeholder={chatMode === 'agent' ? 'Ask the Agent to read data and do actions (create/edit/delete/navigate)...' : 'Ask me anything... (use @ to reference context)'}
-                                className={`w-full bg-phy-glass border border-phy-border rounded-xl pl-4 pr-20 py-3 text-sm text-phy-text focus:bg-phy-glassHeavy focus:border-phy-accent focus:ring-4 focus:ring-phy-accentGlass outline-none transition-all resize-none min-h-[56px] max-h-48 overflow-y-auto`}
+                                placeholder={chatMode === 'agent' ? '输入 / 选择工具流程；也可以直接让 Agent 整理闪卡、编辑笔记、生成深度笔记...' : '问语法、词汇、阅读、写作；也可以用 @ 引用上下文...'}
+                                className="w-full bg-transparent border-0 rounded-2xl pl-4 pr-24 py-3 text-sm text-phy-text placeholder:text-phy-muted/70 focus:outline-none resize-none min-h-[58px] max-h-48 overflow-y-auto"
                             />
                             <button
                                 onClick={() => imageInputRef.current?.click()}
-                                className="absolute right-11 top-2 p-2 text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy rounded-lg transition-colors"
-                                title="Upload image or paste screenshot"
+                                className="absolute right-12 top-2.5 p-2 text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy rounded-xl transition-colors"
+                                title="上传图片或粘贴截图"
                             >
                                 <ImagePlus size={16} />
                             </button>
                             <button
                                 onClick={handleSend}
                                 disabled={(!input.trim() && imageAttachments.length === 0) || isSending}
-                                className={`absolute right-2 top-2 p-2 text-white bg-phy-accent hover:bg-phy-accentHover rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md shadow-phy-accent/20 border border-phy-accentHover`}
+                                className="absolute right-2 top-2.5 p-2 text-white bg-gradient-to-br from-phy-accent to-blue-500 hover:brightness-110 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-phy-accent/20 border border-white/10"
                             >
                                 <Send size={16} />
                             </button>
@@ -962,6 +1442,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
 };
 
 export default ChatSidebar;
+
+
+
 
 
 

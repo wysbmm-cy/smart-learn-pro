@@ -11,7 +11,9 @@ import {
     getFolders,
     getTasks,
     getWritingMaterials,
+    saveFile,
     saveFlashcard,
+    saveListeningData,
     saveWritingMaterial,
     saveNote,
     saveTask,
@@ -21,6 +23,7 @@ import {
     deleteNote,
     deleteTask
 } from './db';
+import { analyzePassageStructure, generateListeningQuizFromTranscript, sendChat, synthesizeSpeech } from './ai';
 import { resolveTodayNotesFolderName } from '../utils/noteFolders';
 import { normalizeMaterialCategory } from '../data/writingMaterials';
 import {
@@ -36,6 +39,8 @@ const isDue = (c, now = Date.now()) => !c.nextReview || c.nextReview <= now;
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 const clean = (v) => String(v ?? '').trim();
 const AGENT_FLASHCARD_BATCH_UNDO_KEY = 'agent_flashcard_last_batch_undo_v1';
+const EXAM_SESSION_KEY = 'exam_adversarial_session_v2';
+const EXAM_HISTORY_KEY = 'exam_adversarial_history_v1';
 const byCount = (list, pick) => {
     const m = new Map();
     for (const item of list || []) {
@@ -66,11 +71,447 @@ const writeUndoSnapshot = (payload) => {
     }
 };
 
+const readLocalJson = (key, fallback = null) => {
+    try {
+        if (typeof localStorage === 'undefined') return fallback;
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch {
+        return fallback;
+    }
+};
+
+const clipText = (value = '', limit = 14000) => {
+    const text = String(value || '');
+    const max = Math.max(1000, Math.min(30000, Number(limit) || 14000));
+    return {
+        text: text.slice(0, max),
+        truncated: text.length > max,
+        originalLength: text.length
+    };
+};
+
+const sanitizeFileName = (value = 'AI Listening') =>
+    clean(value || 'AI Listening').replace(/[\\/:*?"<>|]/g, '-').slice(0, 80) || 'AI Listening';
+
+const stripCodeFence = (text = '') => String(text || '')
+    .trim()
+    .replace(/^```[a-z]*\s*/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
+const estimateListeningWords = ({ durationSeconds, wordCount, level }) => {
+    if (Number(wordCount) > 0) return Math.max(60, Math.min(900, Number(wordCount) || 180));
+    const seconds = Math.max(30, Math.min(600, Number(durationSeconds) || 90));
+    const levelText = clean(level).toLowerCase();
+    const wpm = /beginner|a1|a2|初级/.test(levelText)
+        ? 95
+        : /advanced|c1|c2|高级|雅思|托福/.test(levelText)
+            ? 140
+            : 120;
+    return Math.max(60, Math.min(900, Math.round((seconds / 60) * wpm)));
+};
+
+const buildFallbackListeningScript = ({ topic = '', level = 'B1-B2', style = 'short lecture', wordCount = 160 } = {}) => {
+    const title = sanitizeFileName(topic || 'Everyday English Listening');
+    const target = Math.max(80, Math.min(420, Number(wordCount) || 160));
+    const base = [
+        `Today we are going to talk about ${title}.`,
+        `This listening practice is designed for ${level} learners, so the language is clear, natural, and useful.`,
+        `First, think about the main idea. ${title} is not only a topic for vocabulary practice, but also a way to notice how English speakers organize information.`,
+        `For example, a speaker may introduce a problem, give one or two reasons, and then finish with a practical suggestion.`,
+        `As you listen, pay attention to transition words such as however, therefore, in addition, and as a result.`,
+        `These words help you follow the logic of the passage.`,
+        `After listening, try to summarize the topic in two sentences, then write down three useful expressions you want to remember.`,
+        `This is a ${style} practice, so focus on meaning first and details second.`
+    ];
+    let script = base.join(' ');
+    while (script.split(/\s+/).length < target) {
+        script += ` Another useful exercise is to repeat one sentence aloud and replace one key word with your own idea. This helps turn passive listening into active speaking and writing practice.`;
+    }
+    return script.split(/\s+/).slice(0, target).join(' ');
+};
+
+const generateListeningScript = async (params = {}, settings = {}) => {
+    const directText = clean(params.text || params.content || params.script);
+    if (directText) {
+        return {
+            title: clean(params.title) || sanitizeFileName(directText.split(/\s+/).slice(0, 8).join(' ')),
+            transcript: directText,
+            source: 'provided_text'
+        };
+    }
+
+    const topic = clean(params.topic);
+    if (!topic) throw new Error('topic or text is required.');
+    const level = clean(params.level) || 'B1-B2';
+    const style = clean(params.style) || 'short lecture';
+    const wordCount = estimateListeningWords({
+        durationSeconds: params.durationSeconds,
+        wordCount: params.wordCount,
+        level
+    });
+
+    if (!settings?.apiKey) {
+        return {
+            title: clean(params.title) || sanitizeFileName(topic),
+            transcript: buildFallbackListeningScript({ topic, level, style, wordCount }),
+            source: 'heuristic'
+        };
+    }
+
+    const prompt = `Generate an English listening script for language learners.
+
+Return strict JSON only:
+{
+  "title": "short title",
+  "transcript": "natural spoken English transcript"
+}
+
+Topic: ${topic}
+Level: ${level}
+Style: ${style}
+Target word count: about ${wordCount}
+Requirements:
+- Use natural spoken English.
+- Keep the transcript coherent and useful for listening practice.
+- Avoid markdown, stage directions, SSML, or speaker labels unless the style explicitly needs a dialogue.
+- If dialogue is requested, use clear short turns but still keep it easy for TTS.`;
+
+    const result = await sendChat([
+        { role: 'system', content: 'You create clean English listening scripts for learners. Return valid JSON only.' },
+        { role: 'user', content: prompt }
+    ], settings, true);
+    const parsed = parseJsonObjectFromText(result);
+    const transcript = clean(parsed?.transcript || stripCodeFence(result));
+    if (!transcript) throw new Error('AI did not return a listening transcript.');
+    return {
+        title: clean(params.title || parsed?.title) || sanitizeFileName(topic),
+        transcript,
+        source: 'ai'
+    };
+};
+
+const normalizeExamQuestion = (q = {}, index = 0) => ({
+    id: q.id ?? index + 1,
+    question: clean(q.question || q.text || q.stem),
+    options: arr(q.options).map((x) => String(x || '')),
+    answer: clean(q.answer),
+    explanation: clean(q.explanation),
+    evidence_sentence: clean(q.evidence_sentence || q.evidence)
+});
+
+const normalizeExamMatching = (matching = null) => {
+    if (!matching) return null;
+    return {
+        paragraphs: arr(matching.paragraphs).map((p, index) => ({
+            label: clean(p.label) || String.fromCharCode(65 + index),
+            text: String(p.text || '')
+        })),
+        statements: arr(matching.statements).map((s, index) => ({
+            id: s.id ?? index + 1,
+            text: clean(s.text || s.question || s.statement || s.stem),
+            answer: clean(s.answer),
+            explanation: clean(s.explanation),
+            evidence_sentence: clean(s.evidence_sentence || s.evidence)
+        }))
+    };
+};
+
+const normalizeCurrentExamArticle = (session = {}, maxPassageChars = 14000) => {
+    const paper = session?.paper || {};
+    const clipped = clipText(paper.passage || session?.setup?.passage || '', maxPassageChars);
+    if (!clean(clipped.text)) return null;
+    return {
+        id: 'current',
+        source: 'current_exam_session',
+        title: clean(paper.title) || '当前阅读与考试文章',
+        mode: clean(paper.mode || session?.setup?.mode) || 'reading',
+        passage: clipped.text,
+        passageTruncated: clipped.truncated,
+        passageOriginalLength: clipped.originalLength,
+        questions: arr(paper.questions).map(normalizeExamQuestion).filter((q) => q.question),
+        matching: normalizeExamMatching(paper.matching),
+        wordMarks: arr(session.wordMarks).map((m) => ({
+            id: m.id || '',
+            text: clean(m.text),
+            definition: clean(m.definition),
+            context: clean(m.context),
+            source: clean(m.source) || 'article'
+        })).filter((m) => m.text),
+        sentenceMarks: arr(session.sentenceMarks).map((m) => ({
+            id: m.id || '',
+            text: clean(m.text),
+            analysis: clean(m.analysis),
+            context: clean(m.context),
+            source: clean(m.source) || 'article'
+        })).filter((m) => m.text),
+        sentenceAnalysis: clean(session.sentenceAnalysis),
+        answers: session.answers || {},
+        submitted: Boolean(session.submitted),
+        score: session.score || null,
+        updatedAt: session.updatedAt || null
+    };
+};
+
+const normalizeHistoryExamArticle = (record = {}, maxPassageChars = 14000) => {
+    const snap = record?.paperSnapshot || {};
+    const clipped = clipText(snap.passage || record?.setupSnapshot?.passage || record?.passagePreview || '', maxPassageChars);
+    if (!clean(clipped.text)) return null;
+    return {
+        id: record.id || `history_${record.createdAt || Date.now()}`,
+        source: 'exam_history',
+        title: clean(snap.title || record.title) || '历史阅读与考试文章',
+        mode: clean(record.mode || record.setupSnapshot?.mode) || 'reading',
+        passage: clipped.text,
+        passageTruncated: clipped.truncated,
+        passageOriginalLength: clipped.originalLength,
+        questions: arr(snap.questions).map(normalizeExamQuestion).filter((q) => q.question),
+        matching: normalizeExamMatching(snap.matching),
+        rows: arr(record.rows),
+        answers: record.answersSnapshot || {},
+        result: record.result || null,
+        folderId: record.folderId || null,
+        createdAt: record.createdAt || null
+    };
+};
+
+const getReadingExamArticles = (params = {}) => {
+    const source = clean(params.source || 'current_or_latest').toLowerCase();
+    const limit = Math.max(1, Math.min(5, Number(params.limit) || 1));
+    const maxPassageChars = Math.max(1000, Math.min(30000, Number(params.maxPassageChars) || 14000));
+    const historyId = clean(params.historyId || params.id);
+
+    if (clean(params.passage)) {
+        const clipped = clipText(params.passage, maxPassageChars);
+        return [{
+            id: 'inline',
+            source: 'inline_passage',
+            title: clean(params.title) || '用户提供的阅读文章',
+            mode: clean(params.mode) || 'reading',
+            passage: clipped.text,
+            passageTruncated: clipped.truncated,
+            passageOriginalLength: clipped.originalLength,
+            questions: [],
+            matching: null
+        }];
+    }
+
+    const articles = [];
+    if (source === 'current' || source === 'current_or_latest') {
+        const current = normalizeCurrentExamArticle(readLocalJson(EXAM_SESSION_KEY, {}), maxPassageChars);
+        if (current) articles.push(current);
+    }
+
+    if (articles.length >= limit && !historyId) return articles.slice(0, limit);
+
+    const history = arr(readLocalJson(EXAM_HISTORY_KEY, []));
+    const historyArticles = history
+        .filter((record) => !historyId || String(record.id) === historyId)
+        .map((record) => normalizeHistoryExamArticle(record, maxPassageChars))
+        .filter(Boolean);
+
+    if (source === 'history' || source === 'latest_history' || historyId) {
+        return historyArticles.slice(0, limit);
+    }
+
+    const seen = new Set(articles.map((item) => item.id));
+    historyArticles.forEach((item) => {
+        if (!seen.has(item.id)) articles.push(item);
+    });
+    return articles.slice(0, limit);
+};
+
+const parseJsonObjectFromText = (text = '') => {
+    const raw = String(text || '').trim()
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```$/i, '')
+        .trim();
+    try {
+        return JSON.parse(raw);
+    } catch {
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        try {
+            return JSON.parse(match[0]);
+        } catch {
+            return null;
+        }
+    }
+};
+
+const READING_STOPWORDS = new Set([
+    'about', 'above', 'after', 'again', 'against', 'almost', 'along', 'already', 'although', 'always',
+    'among', 'another', 'because', 'before', 'between', 'could', 'during', 'every', 'first', 'found',
+    'from', 'have', 'however', 'into', 'more', 'most', 'other', 'people', 'should', 'since', 'some',
+    'such', 'their', 'there', 'these', 'those', 'through', 'under', 'until', 'using', 'where', 'which',
+    'while', 'would', 'without', 'with', 'this', 'that', 'they', 'were', 'been', 'being'
+]);
+
+const getTextContext = (text = '', index = 0, length = 0, radius = 70) => {
+    const start = Math.max(0, index - radius);
+    const end = Math.min(text.length, index + length + radius);
+    return text.slice(start, end).replace(/\s+/g, ' ').trim();
+};
+
+const buildHeuristicReadingLearningPoints = (article = {}, maxWords = 12, maxSentences = 6) => {
+    const passage = String(article.passage || '');
+    const wordMap = new Map();
+    const re = /\b[A-Za-z][A-Za-z'-]{5,}\b/g;
+    let match = null;
+    while ((match = re.exec(passage))) {
+        const word = match[0];
+        const key = word.toLowerCase();
+        if (READING_STOPWORDS.has(key)) continue;
+        const item = wordMap.get(key) || { word, count: 0, index: match.index };
+        item.count += 1;
+        wordMap.set(key, item);
+    }
+    const vocabulary = Array.from(wordMap.values())
+        .sort((a, b) => (b.count - a.count) || (b.word.length - a.word.length))
+        .slice(0, maxWords)
+        .map((item) => ({
+            word: item.word,
+            phonetic: '',
+            definition: '',
+            example: '',
+            context: getTextContext(passage, item.index, item.word.length),
+            reason: item.count > 1 ? `文中出现 ${item.count} 次，适合加入阅读词卡。` : '较长或较抽象的阅读词，适合复习。'
+        }));
+
+    const sentences = passage
+        .replace(/\n+/g, ' ')
+        .split(/(?<=[.!?])\s+/)
+        .map((x) => x.trim())
+        .filter((x) => x.length > 80);
+    const grammar = sentences
+        .map((sentence) => {
+            const lower = sentence.toLowerCase();
+            const signal = ['which', 'that', 'although', 'whereas', 'while', 'because', 'despite', 'however', 'therefore']
+                .filter((x) => lower.includes(x));
+            return { sentence, signal, score: sentence.length + signal.length * 50 };
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxSentences)
+        .map((item) => ({
+            sentence: item.sentence,
+            analysis: item.signal.length
+                ? `疑似包含 ${item.signal.join(', ')} 等连接/从句信号，建议拆分主干和修饰成分。`
+                : '句子较长，建议拆分主干、修饰语和逻辑关系。',
+            translation: '',
+            pattern: item.signal.join(', ') || 'long sentence'
+        }));
+
+    const selectedSentences = grammar.slice(0, 4).map((item) => item.sentence);
+    return {
+        source: 'heuristic',
+        vocabulary,
+        grammar,
+        noteOutline: [
+            `# 阅读学习点：${article.title || 'Untitled'}`,
+            '',
+            '## 文章核心',
+            '- 待结合原文和题目进一步整理主旨、论点与证据。',
+            '',
+            '## 生词',
+            ...vocabulary.map((item) => `- ${item.word}: ${item.definition || item.reason}`),
+            '',
+            '## 长难句/语法',
+            ...grammar.map((item) => `- ${item.sentence}\n  - ${item.analysis}`)
+        ].join('\n'),
+        deepNoteTargets: vocabulary.slice(0, 5).map((item) => ({
+            type: 'word',
+            text: item.word,
+            reason: item.reason
+        })),
+        translationExamples: selectedSentences.map((sentence) => ({
+            chinese: '',
+            answer: sentence,
+            hint: '先理解逻辑关系，再尝试中译英复现原句结构。'
+        })),
+        writingPrompts: selectedSentences.slice(0, 3).map((sentence, index) => ({
+            title: `阅读句型迁移 ${index + 1}`,
+            prompt: `仿照这个句子的逻辑结构写一个新句子：${sentence}`
+        }))
+    };
+};
+
+const normalizeReadingLearningPreview = (raw = {}, fallback = {}) => ({
+    source: raw.source || 'ai',
+    vocabulary: arr(raw.vocabulary).map((item) => ({
+        word: clean(item.word),
+        phonetic: clean(item.phonetic),
+        definition: clean(item.definition || item.meaning),
+        example: clean(item.example),
+        context: clean(item.context),
+        reason: clean(item.reason)
+    })).filter((item) => item.word),
+    grammar: arr(raw.grammar || raw.sentences).map((item) => ({
+        sentence: clean(item.sentence || item.text),
+        analysis: clean(item.analysis),
+        translation: clean(item.translation),
+        pattern: clean(item.pattern)
+    })).filter((item) => item.sentence),
+    noteOutline: clean(raw.noteOutline || raw.note || fallback.noteOutline),
+    deepNoteTargets: arr(raw.deepNoteTargets).map((item) => ({
+        type: clean(item.type) || 'word',
+        text: clean(item.text || item.word || item.sentence),
+        reason: clean(item.reason)
+    })).filter((item) => item.text),
+    translationExamples: arr(raw.translationExamples).map((item) => ({
+        chinese: clean(item.chinese),
+        answer: clean(item.answer || item.english),
+        hint: clean(item.hint || item.reason)
+    })).filter((item) => item.answer || item.chinese),
+    writingPrompts: arr(raw.writingPrompts).map((item) => ({
+        title: clean(item.title),
+        prompt: clean(item.prompt || item.task),
+        targetWords: arr(item.targetWords).map(clean).filter(Boolean)
+    })).filter((item) => item.title || item.prompt)
+});
+
 const normalizeWordNeedles = (values = []) =>
     arr(values).map((x) => clean(x).toLowerCase()).filter(Boolean);
 
 const clampBatchLimit = (value, fallback = 200) =>
     Math.max(1, Math.min(500, Number(value) || fallback));
+
+const parseDateBoundary = (value, endOfDay = false) => {
+    const text = clean(value);
+    if (!text) return null;
+    const normalized = /^\d{4}-\d{1,2}-\d{1,2}$/.test(text)
+        ? text.split('-').map((part, index) => index === 0 ? part : part.padStart(2, '0')).join('-')
+        : text;
+    const date = new Date(endOfDay ? `${normalized}T23:59:59.999` : `${normalized}T00:00:00.000`);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : null;
+};
+
+const getCreatedRange = (params = {}) => {
+    const createdOn = clean(params.createdOn);
+    let createdAfter = parseDateBoundary(params.createdAfter, false);
+    let createdBefore = parseDateBoundary(params.createdBefore, true);
+    if (createdOn) {
+        createdAfter = parseDateBoundary(createdOn, false);
+        createdBefore = parseDateBoundary(createdOn, true);
+    }
+    return { createdAfter, createdBefore };
+};
+
+const hasPreciseBatchScope = (params = {}) => {
+    return arr(params.ids).length > 0
+        || arr(params.words).length > 0
+        || !!clean(params.query)
+        || !!clean(params.folderId)
+        || !!clean(params.folderName)
+        || !!clean(params.createdOn)
+        || !!clean(params.createdAfter)
+        || !!clean(params.createdBefore)
+        || params.onlyDue === true
+        || params.onlyMastered === true
+        || params.onlyFlagged === true;
+};
 
 const pickCardsByCriteria = async (params = {}, now = Date.now()) => {
     const [cards, folders] = await Promise.all([getFlashcards(), getFolders()]);
@@ -88,6 +529,7 @@ const pickCardsByCriteria = async (params = {}, now = Date.now()) => {
     const onlyMastered = params.onlyMastered === true;
     const onlyFlagged = params.onlyFlagged === true;
     const limit = clampBatchLimit(params.limit, 200);
+    const { createdAfter, createdBefore } = getCreatedRange(params);
 
     const matched = allCards.filter((c) => {
         const cardId = String(c.id || '');
@@ -97,12 +539,15 @@ const pickCardsByCriteria = async (params = {}, now = Date.now()) => {
         const folderId = String(c.folderId || '');
         const folderName = String(folderById.get(folderId) || '').toLowerCase();
         const hay = `${front}\n${back}\n${arr(c.tags).join(' ')}`.toLowerCase();
+        const createdAt = Number(c.createdAt || 0);
 
         if (ids.size > 0 && !ids.has(cardId)) return false;
         if (words.length > 0 && !words.some((w) => word === w || word.includes(w) || hay.includes(w))) return false;
         if (query && !hay.includes(query)) return false;
         if (resolvedFolderId && folderId !== resolvedFolderId) return false;
         if (!resolvedFolderId && folderNameInput && folderName !== folderNameInput) return false;
+        if (createdAfter !== null && (!createdAt || createdAt < createdAfter)) return false;
+        if (createdBefore !== null && (!createdAt || createdAt > createdBefore)) return false;
         if (onlyDue && !isDue(c, now)) return false;
         if (onlyMastered && !c.isMastered) return false;
         if (onlyFlagged && !c.isFlagged) return false;
@@ -135,6 +580,35 @@ const inferGuidanceCategory = (text = '', section = '') => {
     if (/evidence|example|data|proof/.test(hay)) return 'evidence';
     if (/vocabulary|replace|lexical/.test(hay)) return 'vocabulary';
     return 'argument';
+};
+
+const buildVocabularyMaterialPayload = (params = {}, existing = null) => {
+    const sourceTerm = clean(params.sourceTerm ?? params.source ?? existing?.sourceTerm);
+    const targetTerm = clean(params.targetTerm ?? params.target ?? existing?.targetTerm);
+    const replaceReason = clean(params.replaceReason ?? params.reason ?? existing?.replaceReason);
+    const beforeExample = clean(params.beforeExample ?? existing?.beforeExample);
+    const afterExample = clean(params.afterExample ?? existing?.afterExample);
+    const title = clean(params.title ?? existing?.title) || (sourceTerm && targetTerm ? `${sourceTerm} -> ${targetTerm}` : clean(existing?.title));
+    const content = sourceTerm && targetTerm ? `${sourceTerm} -> ${targetTerm}` : clean(params.content ?? existing?.content);
+    const usage = clean(params.usage ?? existing?.usage) || replaceReason || '用于提升词汇准确度与表达层次。';
+    const caution = clean(params.caution ?? existing?.caution) || '注意语境和词性，避免机械替换。';
+    return {
+        title,
+        content,
+        rewrite: clean(params.rewrite ?? existing?.rewrite) || afterExample,
+        usage,
+        caution,
+        sourceTerm,
+        targetTerm,
+        replaceReason,
+        beforeExample,
+        afterExample,
+        category: 'vocabulary',
+        topic: clean(params.topic ?? existing?.topic),
+        examType: clean(params.examType ?? existing?.examType),
+        tags: arr(params.tags !== undefined ? params.tags : existing?.tags).map((x) => clean(x)).filter(Boolean).slice(0, 12),
+        source: clean(params.sourceLabel ?? existing?.source) || 'agent'
+    };
 };
 
 const clearLinkedWritingMaterialsByNoteId = async (noteId) => {
@@ -299,12 +773,27 @@ const syncNoteKnowledgeToTargets = async ({
 };
 
 const normalizeCard = (raw = {}) => {
-    const front = raw.front
-        ? String(raw.front).trim()
-        : [raw.word, raw.phonetic, raw.example ? `Example: ${raw.example}` : ''].filter(Boolean).join('\n').trim();
-    const back = raw.back
-        ? String(raw.back).trim()
-        : [raw.chinese_meaning, raw.example_translation ? `Example Translation: ${raw.example_translation}` : '', raw.context ? `Context: ${raw.context}` : ''].filter(Boolean).join('\n').trim();
+    const word = clean(raw.word || raw.term || raw.vocab || firstLine(raw.front));
+    const phonetic = clean(raw.phonetic || raw.pronunciation || raw.ipa).replace(/^\/|\/$/g, '');
+    const meaning = clean(raw.chinese_meaning || raw.meaning || raw.definition || raw.cn || raw.translation || raw.back);
+    const example = clean(raw.example);
+    const exampleTranslation = clean(raw.example_translation || raw.exampleTranslation);
+    const context = clean(raw.context);
+
+    let front = clean(raw.front) || word;
+    if (phonetic && !/\/[^/]+\//.test(front)) {
+        front = [front, `/${phonetic}/`].filter(Boolean).join('\n');
+    }
+    if (example && !front.includes(example)) {
+        front = [front, `Example: ${example}`].filter(Boolean).join('\n');
+    }
+
+    const back = clean(raw.back) || [
+        meaning,
+        exampleTranslation ? `例句翻译：${exampleTranslation}` : '',
+        context ? `语境：${context}` : ''
+    ].filter(Boolean).join('\n').trim();
+
     return { front, back };
 };
 
@@ -323,26 +812,48 @@ const generateDeepNoteMarkdown = async ({ word, context = '', translation = '', 
     if (!apiKey || !apiBaseUrl) return null;
 
     const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
-    const prompt = `
-You are an expert English vocabulary tutor.
-Create a practical deep-learning vocabulary note in Markdown for: "${word}".
-Learner context sentence: "${context || 'Not provided'}".
-Reference translation/meaning: "${translation || 'Not provided'}".
+    const fallbackPrompt = `
+Role: Expert English Teacher.
+Task: Create a "Deep Dive Vocabulary Note" for the word: "{{word}}".
+Context: The word appears in this sentence: "{{context}}".
 
-Requirements:
-1) Keep output concise but exam-oriented (CET/IELTS/TOEFL writing & reading).
-2) Use clear Chinese explanations where helpful for Chinese learners.
-3) Output strictly with this structure:
+Output Format: Markdown (Strictly follow this structure):
 
-## ${word}
+## {{word}}
 ### 1. 词性与词源
+*   **词性：** [e.g. Noun/Verb]
+*   **词源：** [Brief etymology]
+
 ### 2. 核心释义
+1.  **[Meaning 1]：** [Definition]
+2.  **[Meaning 2]：** [Definition]
+
 ### 3. 常见搭配与用法
-### 4. 近义词辨析
-### 5. 例句（英文 + 中文）
-### 6. 提分应用建议
-### 7. 记忆钩子
+*   **[Collocation 1]**：[CN Meaning]
+*   **[Collocation 2]**：[CN Meaning]
+    > [Example sentence]
+
+### 4. 同/近义词辨析
+| 单词 | 侧重点 | 例句 |
+| :--- | :--- | :--- |
+| **{{word}}** | ... | ... |
+| **[Synonym]** | ... | ... |
+
+### 5. 例句展示
+1.  [Sentence 1] ([CN Translation])
+2.  [Sentence 2] ([CN Translation])
+
+**记忆要点：** [Mnemonic or key takeaway]
+
+### 6. 考试应用与备考策略
+- **考察频率：** [High/Medium]
+- **写作/翻译提分点：** [Tips]
 `.trim();
+    const promptTemplate = clean(settings.deepNotePrompt) || fallbackPrompt;
+    const prompt = promptTemplate
+        .replace(/{{word}}/g, word || 'N/A')
+        .replace(/{{context}}/g, context || 'No specific context')
+        .replace(/{{translation}}/g, translation || 'Not provided');
 
     const response = await fetch(`${cleanUrl}/chat/completions`, {
         method: 'POST',
@@ -386,6 +897,22 @@ export const AGENT_TOOLS = [
     fn('get_study_logs', 'Get study logs summary.', { limit: { type: 'number' } }),
     fn('get_user_goal', 'Get user goal.'),
     fn('get_drill_performance', 'Get drill performance.', { days: { type: 'number' } }),
+    fn('get_current_reading_exam_article', 'Get the current or recent Reading & Exam article from the reading exam workspace, including passage, questions, marked vocabulary, marked difficult sentences, and score state.', {
+        source: { type: 'string', enum: ['current_or_latest', 'current', 'latest_history', 'history'] },
+        historyId: { type: 'string' },
+        limit: { type: 'number' },
+        maxPassageChars: { type: 'number' }
+    }),
+    fn('extract_reading_learning_points_preview', 'Preview learning points from a Reading & Exam article without saving: vocabulary, grammar/long sentences, passage structure, note outline, deep-note targets, translation examples, and writing prompts.', {
+        source: { type: 'string', enum: ['current_or_latest', 'current', 'latest_history', 'history'] },
+        historyId: { type: 'string' },
+        title: { type: 'string' },
+        passage: { type: 'string' },
+        maxWords: { type: 'number' },
+        maxSentences: { type: 'number' },
+        includeStructure: { type: 'boolean' },
+        maxPassageChars: { type: 'number' }
+    }),
     fn('get_writing_history', 'Get writing history.', { limit: { type: 'number' } }),
     fn('list_writing_materials', 'List writing materials in the writing pack.', {
         query: { type: 'string' },
@@ -410,6 +937,20 @@ export const AGENT_TOOLS = [
         examType: { type: 'string' },
         tags: { type: 'array', items: { type: 'string' } }
     }, ['id']),
+    fn('upsert_writing_vocabulary', 'Create or update one writing vocabulary replacement record. Use this for the writing desk vocabulary replacement table, not for inserting text into drafts.', {
+        id: { type: 'string' },
+        sourceTerm: { type: 'string' },
+        targetTerm: { type: 'string' },
+        replaceReason: { type: 'string' },
+        beforeExample: { type: 'string' },
+        afterExample: { type: 'string' },
+        usage: { type: 'string' },
+        caution: { type: 'string' },
+        title: { type: 'string' },
+        topic: { type: 'string' },
+        examType: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } }
+    }, ['sourceTerm', 'targetTerm']),
     fn('delete_writing_materials', 'Delete writing materials by ids or titles.', {
         ids: { type: 'array', items: { type: 'string' } },
         titles: { type: 'array', items: { type: 'string' } },
@@ -427,7 +968,7 @@ export const AGENT_TOOLS = [
         words: { type: 'array', items: { type: 'string' } },
         limit: { type: 'number' }
     }),
-    fn('create_flashcards', 'Create flashcards.', {
+    fn('create_flashcards', 'Create flashcards. Prefer structured items with word, phonetic, and Chinese meaning; the app will save front as word + /phonetic/ and back as Chinese meaning.', {
         cards: {
             type: 'array',
             items: {
@@ -458,17 +999,20 @@ export const AGENT_TOOLS = [
         isMastered: { type: 'boolean' },
         isFlagged: { type: 'boolean' }
     }, ['id']),
-    fn('delete_flashcards', 'Delete flashcards by ids or words.', {
+    fn('delete_flashcards', 'Delete flashcards by explicit ids or exact words only.', {
         ids: { type: 'array', items: { type: 'string' } },
         words: { type: 'array', items: { type: 'string' } },
         limit: { type: 'number' }
     }),
-    fn('flashcard_batch_delete', 'Batch delete flashcards by mixed filters (ids/words/query/folder/due/mastered/flagged).', {
+    fn('flashcard_batch_delete', 'Batch delete flashcards by explicit filters. Use createdOn/createdAfter/createdBefore for date-based deletes.', {
         ids: { type: 'array', items: { type: 'string' } },
         words: { type: 'array', items: { type: 'string' } },
         query: { type: 'string' },
         folderId: { type: 'string' },
         folderName: { type: 'string' },
+        createdOn: { type: 'string' },
+        createdAfter: { type: 'string' },
+        createdBefore: { type: 'string' },
         onlyDue: { type: 'boolean' },
         onlyMastered: { type: 'boolean' },
         onlyFlagged: { type: 'boolean' },
@@ -534,6 +1078,19 @@ export const AGENT_TOOLS = [
     fn('create_task_item', 'Create task.', { text: { type: 'string' }, type: { type: 'string' } }, ['text']),
     fn('update_task_item', 'Update task.', { id: { type: 'string' }, text: { type: 'string' }, completed: { type: 'boolean' } }, ['id']),
     fn('delete_task_items', 'Delete tasks.', { ids: { type: 'array', items: { type: 'string' } } }, ['ids']),
+    fn('create_listening_audio', 'Generate an English listening script from a topic or provided text, synthesize it with the existing TTS audio interface, save it into Listening Lab, and store the transcript.', {
+        topic: { type: 'string' },
+        text: { type: 'string' },
+        title: { type: 'string' },
+        level: { type: 'string' },
+        style: { type: 'string' },
+        durationSeconds: { type: 'number' },
+        wordCount: { type: 'number' },
+        folder: { type: 'string' },
+        voice: { type: 'string' },
+        generateQuiz: { type: 'boolean' },
+        quizQuestionCount: { type: 'number' }
+    }),
     fn('create_writing_task', 'Create in-chat writing exercise.', {
         title: { type: 'string' },
         sentences: {
@@ -558,7 +1115,7 @@ export const AGENT_TOOLS = [
     fn('navigate_to', 'Navigate to view.', {
         view: {
             type: 'string',
-            enum: ['dashboard', 'flashcards', 'writer', 'coach', 'notes', 'study', 'exam', 'plan', 'knowledge', 'import', 'review']
+            enum: ['dashboard', 'flashcards', 'writer', 'coach', 'notes', 'study', 'exam', 'plan', 'knowledge', 'import', 'review', 'listening']
         }
     }, ['view']),
     fn('create_interactive_quiz', 'Create quiz widget.', {
@@ -704,6 +1261,138 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 dimensions: Array.from(m.values()).map((x) => ({ ...x, accuracy: x.total ? Number(((x.correct / x.total) * 100).toFixed(1)) : 0 }))
             };
         }
+        case 'get_current_reading_exam_article': {
+            const articles = getReadingExamArticles(params);
+            if (!articles.length) {
+                return {
+                    error: 'No Reading & Exam article found. Open 阅读与考试 and generate/read an article first, or choose a history item.'
+                };
+            }
+            return {
+                _action: 'got_reading_exam_article',
+                _navigateTo: 'exam',
+                total: articles.length,
+                article: articles[0],
+                articles,
+                message: `Loaded ${articles.length} Reading & Exam article${articles.length > 1 ? 's' : ''}.`
+            };
+        }
+        case 'extract_reading_learning_points_preview': {
+            const maxWords = Math.max(3, Math.min(20, Number(params.maxWords) || 12));
+            const maxSentences = Math.max(2, Math.min(12, Number(params.maxSentences) || 6));
+            const articles = getReadingExamArticles({ ...params, limit: 1 });
+            const article = articles[0];
+            if (!article?.passage) {
+                return {
+                    error: 'No Reading & Exam passage available for extraction. Provide passage, or open 阅读与考试 first.'
+                };
+            }
+
+            const fallback = buildHeuristicReadingLearningPoints(article, maxWords, maxSentences);
+            const warnings = [];
+            let aiPreview = null;
+            let structure = null;
+
+            if (params.includeStructure !== false) {
+                try {
+                    structure = await analyzePassageStructure(article.passage, settings || {});
+                } catch (error) {
+                    warnings.push(`Structure analysis fallback used: ${error?.message || error}`);
+                }
+            }
+
+            if (settings?.apiKey) {
+                try {
+                    const markedVocabulary = arr(article.wordMarks)
+                        .map((m) => `${m.text}${m.definition ? `: ${m.definition}` : ''}`)
+                        .join('\n');
+                    const markedSentences = arr(article.sentenceMarks)
+                        .map((m) => `${m.text}${m.analysis ? `\n${m.analysis}` : ''}`)
+                        .join('\n\n');
+                    const questionContext = [
+                        ...arr(article.questions).slice(0, 8).map((q, index) => `Q${index + 1}: ${q.question}\nAnswer: ${q.answer}\nEvidence: ${q.evidence_sentence}`),
+                        ...arr(article.matching?.statements).slice(0, 8).map((q, index) => `M${index + 1}: ${q.text}\nAnswer: ${q.answer}\nEvidence: ${q.evidence_sentence}`)
+                    ].join('\n\n');
+
+                    const prompt = `请从“阅读与考试”文章中提取学习点预览。只返回严格 JSON，不要 Markdown。
+
+要求：
+1. vocabulary 提取 ${maxWords} 个左右值得做闪卡的词，必须尽量来自原文。
+2. grammar 提取 ${maxSentences} 个左右长难句/语法点，sentence 尽量使用原文原句。
+3. noteOutline 生成可直接写入笔记的中文 Markdown 摘要。
+4. deepNoteTargets 给出适合生成深度笔记的词或句。
+5. translationExamples 选择适合中译英复现的句子，answer 可以是英文原句。
+6. writingPrompts 生成基于文章表达的写作迁移练习。
+
+JSON schema:
+{
+  "vocabulary": [{ "word": "", "phonetic": "", "definition": "", "example": "", "context": "", "reason": "" }],
+  "grammar": [{ "sentence": "", "analysis": "", "translation": "", "pattern": "" }],
+  "noteOutline": "",
+  "deepNoteTargets": [{ "type": "word|sentence|grammar", "text": "", "reason": "" }],
+  "translationExamples": [{ "chinese": "", "answer": "", "hint": "" }],
+  "writingPrompts": [{ "title": "", "prompt": "", "targetWords": [] }]
+}
+
+文章标题：${article.title}
+
+已标记生词：
+${markedVocabulary || '(none)'}
+
+已标记疑难句：
+${markedSentences || '(none)'}
+
+题目/证据上下文：
+${questionContext || '(none)'}
+
+文章原文：
+${article.passage}`;
+
+                    const result = await sendChat([
+                        { role: 'system', content: 'You are a strict Reading & Exam learning point extractor. Return valid JSON only.' },
+                        { role: 'user', content: prompt }
+                    ], settings, true);
+                    const parsed = parseJsonObjectFromText(result);
+                    if (!parsed) throw new Error('AI returned invalid JSON');
+                    aiPreview = normalizeReadingLearningPreview(parsed, fallback);
+                } catch (error) {
+                    warnings.push(`AI extraction failed; heuristic preview kept: ${error?.message || error}`);
+                }
+            } else {
+                warnings.push('AI extraction skipped because API key is not configured; heuristic preview returned.');
+            }
+
+            const preview = aiPreview ? {
+                source: 'ai',
+                vocabulary: aiPreview.vocabulary.length ? aiPreview.vocabulary : fallback.vocabulary,
+                grammar: aiPreview.grammar.length ? aiPreview.grammar : fallback.grammar,
+                noteOutline: aiPreview.noteOutline || fallback.noteOutline,
+                deepNoteTargets: aiPreview.deepNoteTargets.length ? aiPreview.deepNoteTargets : fallback.deepNoteTargets,
+                translationExamples: aiPreview.translationExamples.length ? aiPreview.translationExamples : fallback.translationExamples,
+                writingPrompts: aiPreview.writingPrompts.length ? aiPreview.writingPrompts : fallback.writingPrompts
+            } : fallback;
+
+            return {
+                _action: 'reading_learning_points_preview',
+                _navigateTo: 'exam',
+                article: {
+                    id: article.id,
+                    source: article.source,
+                    title: article.title,
+                    mode: article.mode,
+                    passageOriginalLength: article.passageOriginalLength,
+                    passageTruncated: article.passageTruncated,
+                    questionsCount: arr(article.questions).length,
+                    matchingCount: arr(article.matching?.statements).length,
+                    wordMarksCount: arr(article.wordMarks).length,
+                    sentenceMarksCount: arr(article.sentenceMarks).length
+                },
+                structure,
+                preview,
+                warnings,
+                message: `Preview ready: ${preview.vocabulary.length} vocabulary items, ${preview.grammar.length} grammar items, ${preview.translationExamples.length} translation examples.`
+            };
+        }
         case 'get_writing_history': {
             const limit = Math.max(1, Math.min(100, Number(params.limit) || 20));
             const list = (await getWritings()) || [];
@@ -776,6 +1465,38 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 _navigateToParams: { openMaterials: true, materialId: updated.id },
                 id: updated.id,
                 message: `Updated writing material: ${updated.title}`
+            };
+        }
+        case 'upsert_writing_vocabulary': {
+            const sourceTerm = clean(params.sourceTerm ?? params.source);
+            const targetTerm = clean(params.targetTerm ?? params.target);
+            if (!sourceTerm || !targetTerm) return { error: 'sourceTerm and targetTerm are required.' };
+            const all = arr(await getWritingMaterials());
+            const materialId = clean(params.id);
+            const existing = materialId
+                ? all.find((m) => String(m.id) === materialId)
+                : all.find((m) => (
+                    normalizeMaterialCategory(m.category) === 'vocabulary'
+                    && clean(m.sourceTerm).toLowerCase() === sourceTerm.toLowerCase()
+                ));
+            if (materialId && !existing) return { error: `Vocabulary material not found: ${materialId}` };
+            const payload = buildVocabularyMaterialPayload(params, existing);
+            if (!payload.replaceReason) {
+                return { error: 'replaceReason is required so the vocabulary table has useful detail.' };
+            }
+            const saved = await saveWritingMaterial({
+                ...(existing || {}),
+                ...payload,
+                id: existing?.id || id('agent_vocab')
+            });
+            return {
+                _action: existing ? 'updated_writing_vocabulary' : 'created_writing_vocabulary',
+                _navigateTo: 'writer',
+                _navigateToParams: { openMaterials: true, materialCategory: 'vocabulary', materialId: saved.id },
+                id: saved.id,
+                sourceTerm: saved.sourceTerm,
+                targetTerm: saved.targetTerm,
+                message: `${existing ? 'Updated' : 'Created'} vocabulary replacement: ${saved.sourceTerm} -> ${saved.targetTerm}`
             };
         }
         case 'delete_writing_materials': {
@@ -1004,19 +1725,45 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             const words = arr(params.words).map((w) => String(w).trim().toLowerCase()).filter(Boolean);
             const limit = Math.max(1, Math.min(200, Number(params.limit) || 20));
             let targetIds = [...ids];
+            let matchedCards = [];
             if (!targetIds.length && words.length) {
                 const matched = ((await getFlashcards()) || []).filter((c) => {
                     const w = firstLine(c.front).toLowerCase();
-                    return words.some((x) => w === x || w.includes(x));
+                    return words.some((x) => w === x);
                 });
-                targetIds = matched.slice(0, limit).map((c) => c.id);
+                matchedCards = matched.slice(0, limit);
+                targetIds = matchedCards.map((c) => c.id);
             }
             if (!targetIds.length) return { error: 'Provide ids or words for deleting flashcards.' };
+            if (!matchedCards.length) {
+                const cards = arr(await getFlashcards());
+                const targetSet = new Set(targetIds.map(String));
+                matchedCards = cards.filter((c) => targetSet.has(String(c.id)));
+            }
+            writeUndoSnapshot({
+                op: 'delete_flashcards',
+                createdAt: Date.now(),
+                cards: matchedCards
+            });
             for (const x of targetIds) await deleteFlashcard(x);
-            return { _action: 'deleted_flashcards', _navigateTo: 'flashcards', deleted: targetIds.length, ids: targetIds, message: `Deleted ${targetIds.length} flashcards.` };
+            return {
+                _action: 'deleted_flashcards',
+                _navigateTo: 'flashcards',
+                deleted: targetIds.length,
+                ids: targetIds,
+                words: matchedCards.map((c) => firstLine(c.front)).slice(0, 20),
+                canUndo: true,
+                scope: ids.length ? 'explicit ids' : 'exact words',
+                message: `Deleted ${targetIds.length} flashcards. Undo is available.`
+            };
         }
         case 'flashcard_batch_delete': {
             const dryRun = params.dryRun === true;
+            if (!hasPreciseBatchScope(params)) {
+                return {
+                    error: 'Batch delete refused: provide a clear scope such as ids, exact words, folder, query, createdOn, createdAfter/createdBefore, due/mastered/flagged.'
+                };
+            }
             const matched = await pickCardsByCriteria(params, now);
             if (!matched.length) return { error: 'No flashcards matched the batch delete filters.' };
 
@@ -1033,6 +1780,15 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                     count: matched.length,
                     ids: matched.map((c) => c.id),
                     words: matched.map((c) => firstLine(c.front)).slice(0, 20),
+                    scope: {
+                        folderId: clean(params.folderId) || null,
+                        folderName: clean(params.folderName) || null,
+                        createdOn: clean(params.createdOn) || null,
+                        createdAfter: clean(params.createdAfter) || null,
+                        createdBefore: clean(params.createdBefore) || null,
+                        query: clean(params.query) || null
+                    },
+                    canUndo: false,
                     message: `Preview: ${matched.length} flashcards would be deleted.`
                 };
             }
@@ -1044,6 +1800,16 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 _navigateTo: 'flashcards',
                 deleted: matched.length,
                 ids: matched.map((c) => c.id),
+                words: matched.map((c) => firstLine(c.front)).slice(0, 20),
+                canUndo: true,
+                scope: {
+                    folderId: clean(params.folderId) || null,
+                    folderName: clean(params.folderName) || null,
+                    createdOn: clean(params.createdOn) || null,
+                    createdAfter: clean(params.createdAfter) || null,
+                    createdBefore: clean(params.createdBefore) || null,
+                    query: clean(params.query) || null
+                },
                 message: `Deleted ${matched.length} flashcards in batch. You can undo this operation.`
             };
         }
@@ -1354,6 +2120,75 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             for (const x of ids) await deleteTask(x);
             return { _action: 'deleted_tasks', _navigateTo: 'plan', deleted: ids.length, ids, message: `Deleted ${ids.length} tasks.` };
         }
+        case 'create_listening_audio': {
+            const generated = await generateListeningScript(params, settings || {});
+            const transcript = clean(generated.transcript);
+            if (!transcript) return { error: 'No listening transcript was generated.' };
+            if (transcript.length > 4000) {
+                return { error: 'Listening transcript is too long for TTS. Keep it under 4000 characters.' };
+            }
+
+            const ttsSettings = params.voice
+                ? { ...(settings || {}), ttsVoice: clean(params.voice) }
+                : (settings || {});
+            const audioBlob = await synthesizeSpeech(transcript, ttsSettings);
+            const safeTitle = sanitizeFileName(params.title || generated.title || params.topic || 'AI Listening');
+            const ext = audioBlob.type?.includes('wav') ? 'wav' : 'mp3';
+            const fileId = id('agent_listening_audio');
+            const folder = clean(params.folder) || 'AI生成';
+            const fileRecord = {
+                id: fileId,
+                name: `[AI听力] ${safeTitle}.${ext}`,
+                type: audioBlob.type || 'audio/mpeg',
+                blob: audioBlob,
+                timestamp: Date.now(),
+                listeningFolder: folder,
+                source: 'agent',
+                generatedBy: 'create_listening_audio',
+                topic: clean(params.topic),
+                level: clean(params.level) || null,
+                style: clean(params.style) || null
+            };
+            await saveFile(fileRecord);
+
+            let quizData = null;
+            if (params.generateQuiz === true) {
+                try {
+                    const count = Math.max(3, Math.min(10, Number(params.quizQuestionCount) || 6));
+                    quizData = await generateListeningQuizFromTranscript(transcript, settings || {}, count);
+                } catch (error) {
+                    quizData = {
+                        error: `Quiz generation failed: ${error?.message || error}`
+                    };
+                }
+            }
+
+            await saveListeningData({
+                fileId,
+                transcript,
+                quizData,
+                source: 'agent',
+                topic: clean(params.topic),
+                title: safeTitle
+            });
+
+            return {
+                _action: 'created_listening_audio',
+                _navigateTo: 'listening',
+                id: fileId,
+                fileId,
+                name: fileRecord.name,
+                folder,
+                type: fileRecord.type,
+                transcript,
+                transcriptLength: transcript.length,
+                transcriptWordCount: transcript.split(/\s+/).filter(Boolean).length,
+                scriptSource: generated.source,
+                quizGenerated: Boolean(quizData && !quizData.error),
+                quizError: quizData?.error || null,
+                message: `Created listening audio: ${fileRecord.name}`
+            };
+        }
         case 'create_writing_task': {
             const title = params.title || 'Sentence Writing Practice';
             const sentences = arr(params.sentences)
@@ -1457,7 +2292,7 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             const note = {
                 id: targetCard ? `dn_${targetCard.id}` : id('agent_deep_note'),
                 title: clean(params.title) || `深度笔记 - ${word}`,
-                content: `# ${word}\n\n${translation ? `> ${translation}\n\n` : ''}${markdown}`,
+                content: markdown,
                 folder,
                 date: new Date().toISOString(),
                 updatedAt: Date.now()
@@ -1636,8 +2471,12 @@ Execution policy:
 - If a user asks to do something in-app, call the matching tool.
 - Before write operations, prefer read/list tools first to confirm target ids or names.
 - For deletion, prefer precise ids and keep scope limited when matching by names/words.
+- For writing desk vocabulary replacement records, use upsert_writing_vocabulary. Include sourceTerm, targetTerm, replaceReason, and useful before/after examples or usage/caution when possible.
 - For batch flashcard deletes, prefer dryRun=true first, then execute after user confirmation intent is clear.
-- For deep note requests, prefer generate_deep_note and save results into Notes.
+- If the user says "today/yesterday/this date", pass createdOn or createdAfter/createdBefore. Never infer delete targets from totalMatched alone.
+- If a delete result has canUndo=true, tell the user it can be restored with flashcard_undo_last_batch.
+  - For flashcard creation/import, pass word + phonetic + chinese_meaning whenever possible. Do not leave the back empty.
+  - For deep note requests, prefer generate_deep_note and save results into Notes. It must follow the user's deepNotePrompt from Settings.
 - For note linking requests, use note_partial_sync_to_materials or note_create_deep_note with sync options.
 - For note editing, first read existing content with get_note_detail, then update with update_note or note_append_today_folder.
 - Never claim write success until tool result confirms verification fields (for notes: noteId/contentLength).

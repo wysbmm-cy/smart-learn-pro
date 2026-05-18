@@ -86,7 +86,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     const shouldAutoHideSidebar = !isMobileViewport && currentView === 'writer' && isChatOpen && isWriterMaterialPanelOpen;
     const isSidebarVisible = isSidebarOpen && !shouldAutoHideSidebar;
     const writerCanvasClass = 'max-w-[1700px] mx-auto h-full';
-    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam' || currentView === 'writer' || currentView === 'translation' || currentView === 'flow';
+    const isFixedCanvasView = currentView === 'notes' || currentView === 'exam' || currentView === 'writer' || currentView === 'translation' || currentView === 'flow' || currentView === 'listening';
     const contentContainerClass = currentView === 'notes'
         ? 'h-full w-full max-w-none mx-0 p-0'
         : currentView === 'exam'
@@ -95,7 +95,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
                 ? writerCanvasClass
             : currentView === 'translation'
                 ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
-            : currentView === 'flow'
+            : currentView === 'flow' || currentView === 'listening'
                 ? 'w-full max-w-none h-full'
             : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto pt-4 md:pt-6 pb-24 md:pb-8`;
     const splitPaneContainerClass = currentView === 'exam'
@@ -104,7 +104,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
             ? writerCanvasClass
         : currentView === 'translation'
             ? `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full`
-        : currentView === 'flow'
+        : currentView === 'flow' || currentView === 'listening'
             ? 'w-full max-w-none h-full'
         : `${isExamExpanded ? 'max-w-[1700px]' : 'max-w-6xl'} mx-auto h-full pt-6`;
 

@@ -4,11 +4,28 @@
  * Handles API communication using Parallel Requests for performance.
  */
 
+import { stripOutlineParagraphLabel } from '../utils/writerText';
+
 // Helper for delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const sendChat = async (messages, settings, jsonRequired = false) => {
   return await fetchFromAI(messages, settings, jsonRequired);
+};
+
+const parseLooseJsonObject = (text) => {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = String(text).match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
 };
 
 const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3, options = {}) => {
@@ -69,6 +86,76 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3,
   }
 
   throw lastError || new Error("AI request failed after retries.");
+};
+
+export const analyzeLearningFlowBrain = async ({ node, upstreamOutputs = [], recentStudyContext = {}, canvas = {} }, settings) => {
+  if (!settings?.apiKey) throw new Error("Missing API Key");
+
+  const systemPrompt = `
+You are the AI Brain node inside VerbaPath's learning-flow canvas.
+Your job is to analyze upstream node outputs plus recent study context, then recommend the next learning route.
+You do not execute actions. You only produce a safe recommendation.
+
+Return ONLY valid JSON:
+{
+  "summary": "one concise Chinese judgement",
+  "evidence": ["evidence point 1", "evidence point 2"],
+  "weaknesses": ["weakness 1", "weakness 2"],
+  "recommendedNodeType": "flashcards|exam|translation|writer|notes",
+  "reason": "Chinese explanation",
+  "suggestedConfig": {},
+  "reviewNoteDraft": "optional Chinese markdown review draft"
+}
+
+Rules:
+- recommendedNodeType must be one of: flashcards, exam, translation, writer, notes.
+- suggestedConfig should only contain simple front-end config fields for that node.
+- Prefer concrete, actionable advice over generic encouragement.
+- If data is sparse, say so in evidence and still give a conservative next step.
+`.trim();
+
+  const payload = {
+    brainNode: {
+      title: node?.title,
+      objective: node?.config?.objective,
+      analysisScope: node?.config?.analysisScope || node?.config?.evidence,
+      outputMode: node?.config?.outputMode
+    },
+    upstreamOutputs,
+    recentStudyContext,
+    canvas: {
+      nodes: (canvas?.nodes || []).map((item) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        status: item.status,
+        goal: item.goal,
+        config: item.config
+      })),
+      edges: canvas?.edges || []
+    }
+  };
+
+  const content = await fetchFromAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: JSON.stringify(payload, null, 2) }
+  ], settings, true);
+
+  const parsed = parseLooseJsonObject(content);
+  if (!parsed) throw new Error("AI returned invalid learning-flow brain JSON");
+
+  const allowedTypes = new Set(['flashcards', 'exam', 'translation', 'writer', 'notes']);
+  const recommendedNodeType = allowedTypes.has(parsed.recommendedNodeType) ? parsed.recommendedNodeType : 'notes';
+  return {
+    summary: String(parsed.summary || '已完成学习流分析。'),
+    evidence: Array.isArray(parsed.evidence) ? parsed.evidence.map(String).slice(0, 6) : [],
+    weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses.map(String).slice(0, 6) : [],
+    recommendedNodeType,
+    reason: String(parsed.reason || '根据当前学习流和近期记录，建议继续推进这个节点。'),
+    suggestedConfig: parsed.suggestedConfig && typeof parsed.suggestedConfig === 'object' ? parsed.suggestedConfig : {},
+    reviewNoteDraft: String(parsed.reviewNoteDraft || ''),
+    source: 'ai'
+  };
 };
 
 export const digitalizeExam = async (text, settings, drillType = null) => {
@@ -416,7 +503,7 @@ const extractJSON = (str) => {
   }
 };
 
-const toOptionText = (opt = "") => String(opt).replace(/^[A-D][\.\)\:\-\s]+/i, "").trim();
+const toOptionText = (opt = "") => String(opt).replace(/^[A-D][.):\-\s]+/i, "").trim();
 const MATCHING_LABELS = "ABCDEFGHIJKL".split("");
 const isStrictCETMatchingMode = (mode = "") => String(mode || "").toLowerCase() === "cet_strict_matching";
 const toAnswerKey = (value = "A") => {
@@ -465,6 +552,7 @@ const chunkTextIntoParagraphs = (text = "", targetCount = 12) => {
     let end = Math.min(total, cursor + avg);
     if (end < total) {
       const probe = clean.slice(end, Math.min(total, end + 120));
+      // eslint-disable-next-line no-useless-escape
       const punctAt = probe.search(/[\.!?;。！？；]/);
       if (punctAt >= 0) end += punctAt + 1;
     }
@@ -1075,6 +1163,7 @@ Rules:
 - Keep it specific and exam-ready.
 - At least 4 paragraphs (intro/body/body/conclusion).
 - Include one concession paragraph when appropriate.
+- topic_sentence must be the sentence only; do not prefix it with "Paragraph 1:", "P1:", numbering, or section labels.
 - No markdown, no extra text.
 `;
 
@@ -1099,12 +1188,86 @@ Rules:
     paragraphs: paragraphs.map((p, idx) => ({
       paragraph_index: Number(p.paragraph_index ?? idx) || idx,
       purpose: p.purpose || '',
-      topic_sentence: p.topic_sentence || '',
+      topic_sentence: stripOutlineParagraphLabel(p.topic_sentence || ''),
       keywords: Array.isArray(p.keywords) ? p.keywords : [],
       evidence_hint: p.evidence_hint || '',
       concession: Boolean(p.concession)
     })),
     checklist: Array.isArray(parsed.checklist) ? parsed.checklist : []
+  };
+};
+
+export const assembleWritingMaterials = async (payload, settings, options = {}) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+  const signal = options?.signal;
+  const materials = Array.isArray(payload?.materials) ? payload.materials : [];
+  const compactMaterials = materials.slice(0, 30).map((item, idx) => ({
+    id: item.id || `material_${idx + 1}`,
+    title: String(item.title || '').slice(0, 120),
+    category: item.category || 'argument',
+    topic: String(item.topic || '').slice(0, 120),
+    content: String(item.content || '').slice(0, 700),
+    rewrite: String(item.rewrite || '').slice(0, 700),
+    usage: String(item.usage || '').slice(0, 360),
+    caution: String(item.caution || '').slice(0, 360),
+    sourceTerm: String(item.sourceTerm || '').slice(0, 120),
+    targetTerm: String(item.targetTerm || '').slice(0, 120),
+    replaceReason: String(item.replaceReason || '').slice(0, 240)
+  }));
+
+  const systemPrompt = `
+Role: Exam writing coach and material editor.
+Task: Choose and adapt the user's writing materials for the current draft.
+
+Return STRICT JSON:
+{
+  "title": "short Chinese title",
+  "assembled_text": "ready-to-use English paragraph or sentence block",
+  "usage_plan": ["Chinese note about where/how to use it"],
+  "selected_material_ids": ["material id"],
+  "warnings": ["Chinese caution if any"]
+}
+
+Rules:
+- Do not simply concatenate materials.
+- Select only materials that fit the prompt, outline, and current draft.
+- Rewrite them into coherent exam English that can be inserted as one block.
+- Preserve the user's stance and avoid off-topic claims.
+- Keep assembled_text concise: 80-180 English words unless the draft clearly needs less.
+- If vocabulary replacements are included, weave them naturally into sentences.
+- No markdown, no extra text.
+`.trim();
+
+  const userPayload = {
+    examContext: payload?.examContext || {},
+    outline: payload?.outline || null,
+    currentDraft: String(payload?.content || '').slice(0, 3000),
+    insertTargetHint: payload?.insertTargetHint || '',
+    materials: compactMaterials
+  };
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    { role: "user", content: JSON.stringify(userPayload, null, 2) }
+  ], settings, true, 3, { signal });
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    parsed = extractJSON(jsonStr);
+  }
+  if (!parsed) throw new Error("Material assembly parsing failed");
+
+  const assembledText = String(parsed.assembled_text || parsed.text || '').trim();
+  if (!assembledText) throw new Error("AI returned empty assembled material");
+
+  return {
+    title: String(parsed.title || 'AI 组装素材').trim(),
+    assembledText,
+    usagePlan: Array.isArray(parsed.usage_plan) ? parsed.usage_plan.map(String).filter(Boolean).slice(0, 5) : [],
+    selectedMaterialIds: Array.isArray(parsed.selected_material_ids) ? parsed.selected_material_ids.map(String).filter(Boolean).slice(0, 12) : [],
+    warnings: Array.isArray(parsed.warnings) ? parsed.warnings.map(String).filter(Boolean).slice(0, 5) : []
   };
 };
 
@@ -1369,6 +1532,72 @@ export const streamChatMessage = async (messages, settings, onDelta) => {
   }
 };
 
+const getContentTypeParam = (contentType, names) => {
+  const parts = contentType.split(';').slice(1);
+  for (const part of parts) {
+    const [rawKey, rawValue] = part.split('=');
+    const key = rawKey?.trim().toLowerCase();
+    const value = rawValue?.trim().replace(/^"|"$/g, '');
+    if (key && value && names.includes(key)) {
+      return value;
+    }
+  }
+  return '';
+};
+
+const toPositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const wrapPcmAsWav = async (pcmBlob, contentType, settings = {}) => {
+  const sampleRate = toPositiveInteger(
+    settings.ttsPcmSampleRate
+      || getContentTypeParam(contentType, ['rate', 'sample-rate', 'sample_rate', 'samplerate']),
+    24000
+  );
+  const channels = toPositiveInteger(
+    settings.ttsPcmChannels || getContentTypeParam(contentType, ['channels', 'channel']),
+    1
+  );
+  const bitsPerSample = toPositiveInteger(
+    settings.ttsPcmBitDepth || getContentTypeParam(contentType, ['bits', 'bit-depth', 'bit_depth']),
+    16
+  );
+
+  if (![8, 16, 24, 32].includes(bitsPerSample)) {
+    throw new Error(`TTS returned PCM audio with unsupported bit depth: ${bitsPerSample}`);
+  }
+
+  const pcmBuffer = await pcmBlob.arrayBuffer();
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const writeAscii = (offset, value) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  const blockAlign = channels * bitsPerSample / 8;
+  const byteRate = sampleRate * blockAlign;
+
+  writeAscii(0, 'RIFF');
+  view.setUint32(4, 36 + pcmBuffer.byteLength, true);
+  writeAscii(8, 'WAVE');
+  writeAscii(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeAscii(36, 'data');
+  view.setUint32(40, pcmBuffer.byteLength, true);
+
+  return new Blob([header, pcmBuffer], { type: 'audio/wav' });
+};
+
 export const transcribeAudio = async (file, settings) => {
   // Use specific audio settings if available, otherwise fallback to main settings
   const apiKey = settings.audioApiKey || settings.apiKey;
@@ -1409,26 +1638,34 @@ export const transcribeAudio = async (file, settings) => {
 
 export const synthesizeSpeech = async (text, settings) => {
   const apiKey = settings.ttsApiKey || settings.audioApiKey || settings.apiKey;
-  const apiBaseUrl = settings.ttsApiBaseUrl || settings.audioApiBaseUrl || settings.apiBaseUrl;
-  const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
+  const apiUrl = settings.ttsApiBaseUrl || settings.audioApiBaseUrl || settings.apiBaseUrl;
+  const cleanUrl = apiUrl.replace(/\/+$/, '');
+  const speechEndpoint = /\/audio\/speech$/i.test(cleanUrl) ? cleanUrl : `${cleanUrl}/audio/speech`;
 
   const modelName = settings.ttsModelName || "tts-1";
   const voice = settings.ttsVoice || "alloy";
+  const responseFormat = settings.ttsResponseFormat;
 
   if (!apiKey) throw new Error("Missing AI/TTS API Key");
 
   try {
-    const response = await fetch(`${cleanUrl}/audio/speech`, {
+    const speechRequest = {
+      model: modelName,
+      input: text,
+      voice: voice
+    };
+
+    if (responseFormat) {
+      speechRequest.response_format = responseFormat;
+    }
+
+    const response = await fetch(speechEndpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: modelName,
-        input: text,
-        voice: voice
-      })
+      body: JSON.stringify(speechRequest)
     });
 
     if (!response.ok) {
@@ -1437,7 +1674,55 @@ export const synthesizeSpeech = async (text, settings) => {
     }
 
     // Return Blob for playback
-    return await response.blob();
+    const audioBlob = await response.blob();
+    const contentType = response.headers.get('content-type') || audioBlob.type || '';
+    const normalizedType = contentType.toLowerCase();
+    const isAudioResponse = normalizedType.startsWith('audio/');
+    const isGenericBinary = normalizedType.includes('application/octet-stream');
+
+    if (!audioBlob.size) {
+      throw new Error("TTS returned an empty audio file");
+    }
+
+    if (normalizedType.startsWith('audio/pcm')) {
+      return wrapPcmAsWav(audioBlob, contentType, settings);
+    }
+
+    const headerBytes = new Uint8Array(await audioBlob.slice(0, 16).arrayBuffer());
+    const headerHex = Array.from(headerBytes).map((byte) => byte.toString(16).padStart(2, '0')).join(' ');
+    const headerText = Array.from(headerBytes).map((byte) => (byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.')).join('');
+    const detectedMime =
+      // MP3: ID3 tag or MPEG frame sync
+      (headerBytes[0] === 0x49 && headerBytes[1] === 0x44 && headerBytes[2] === 0x33)
+      || (headerBytes[0] === 0xff && (headerBytes[1] & 0xe0) === 0xe0)
+        ? 'audio/mpeg'
+      // WAV
+        : (headerBytes[0] === 0x52 && headerBytes[1] === 0x49 && headerBytes[2] === 0x46 && headerBytes[3] === 0x46)
+          ? 'audio/wav'
+      // OGG
+          : (headerBytes[0] === 0x4f && headerBytes[1] === 0x67 && headerBytes[2] === 0x67 && headerBytes[3] === 0x53)
+            ? 'audio/ogg'
+      // WebM / Matroska
+            : (headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3)
+              ? 'audio/webm'
+      // MP4 / M4A
+              : (headerBytes[4] === 0x66 && headerBytes[5] === 0x74 && headerBytes[6] === 0x79 && headerBytes[7] === 0x70)
+                ? 'audio/mp4'
+                : '';
+
+    if ((!isAudioResponse && !isGenericBinary) || !detectedMime) {
+      const preview = await audioBlob.text().catch(() => '');
+      const detail = preview.trim()
+        ? preview.slice(0, 200)
+        : `bytes=${headerHex} text=${headerText}`;
+      throw new Error(`TTS returned unsupported audio content (${contentType || 'unknown'}): ${detail}`);
+    }
+
+    if (!audioBlob.type || audioBlob.type === "application/octet-stream") {
+      return new Blob([audioBlob], { type: detectedMime });
+    }
+
+    return audioBlob;
 
   } catch (error) {
     console.error("TTS Error:", error);
@@ -3150,24 +3435,47 @@ export const generateKnowledgeGraphReferences = async (vocabList, settings) => {
 import { AGENT_TOOLS, AGENT_SYSTEM_PROMPT, executeAgentTool } from './agentTools';
 
 const AGENT_TOOL_PLAN_PURPOSE = {
-  list_flashcard_folders: 'Locate candidate flashcard folders.',
-  list_flashcards: 'Read full flashcard content by filters.',
-  organize_flashcards_to_note: 'Write folder cards into one note with verification.',
-  create_note: 'Create a new note in Notes.',
-  update_note: 'Update existing note content.',
-  get_note_detail: 'Read note detail before/after editing.',
-  note_append_today_folder: 'Append content into today note folder.',
-  note_partial_sync_to_materials: 'Sync note blocks into writing/translation links.',
-  create_flashcards: 'Create flashcards from provided items.',
-  update_flashcard: 'Edit flashcard content or metadata.',
-  delete_flashcards: 'Delete selected flashcards.',
-  flashcard_batch_delete: 'Batch delete cards by mixed filters.',
-  flashcard_batch_move_folder: 'Batch move cards to another folder.',
-  flashcard_batch_edit: 'Batch edit card content/tags/status.',
-  get_flashcard_stats: 'Read flashcard statistics.',
-  get_study_history: 'Read recent study/import history.',
-  get_writing_history: 'Read writing records.',
-  list_writing_materials: 'Read writing materials in the pack.'
+  list_flashcard_folders: '查找目标闪卡文件夹。',
+  list_flashcards: '读取闪卡列表和正反面内容。',
+  organize_flashcards_to_note: '把闪卡文件夹整理成笔记。',
+  create_note: '创建一篇新笔记。',
+  update_note: '更新已有笔记内容。',
+  get_note_detail: '读取笔记详情用于编辑核对。',
+  note_append_today_folder: '追加内容到今日笔记。',
+  note_partial_sync_to_materials: '同步笔记中的素材/例句指令。',
+  create_flashcards: '创建新的闪卡。',
+  update_flashcard: '编辑闪卡内容或状态。',
+  delete_flashcards: '删除明确指定的闪卡。',
+  flashcard_batch_delete: '按明确范围批量删除闪卡。',
+  flashcard_batch_move_folder: '批量移动闪卡文件夹。',
+  flashcard_batch_edit: '批量编辑闪卡内容、标签或状态。',
+  flashcard_undo_last_batch: '撤销上一次闪卡批量操作。',
+  get_flashcard_stats: '读取闪卡统计。',
+  get_study_history: '读取最近学习/导入历史。',
+  get_writing_history: '读取写作记录。',
+  list_writing_materials: '读取写作素材包。'
+};
+
+const AGENT_TOOL_DISPLAY_NAMES = {
+  list_flashcards: '读取闪卡列表',
+  delete_flashcards: '删除指定闪卡',
+  flashcard_batch_delete: '批量删除闪卡',
+  flashcard_batch_move_folder: '批量移动闪卡',
+  flashcard_batch_edit: '批量编辑闪卡',
+  flashcard_undo_last_batch: '撤销闪卡操作',
+  create_flashcards: '创建闪卡',
+  update_flashcard: '编辑闪卡',
+  create_note: '创建笔记',
+  update_note: '更新笔记',
+  get_note_detail: '读取笔记',
+  organize_flashcards_to_note: '闪卡整理成笔记',
+  navigate_to: '跳转页面'
+};
+
+const getToolRiskLevel = (name = '') => {
+  if (/delete|batch_delete/.test(name)) return 'high';
+  if (/batch_edit|batch_move|update/.test(name)) return 'medium';
+  return 'low';
 };
 
 const parseToolArgsSafe = (raw) => {
@@ -3198,22 +3506,130 @@ const getLatestUserGoal = (messages = []) => {
   return '';
 };
 
-const buildAgentPlanMarkdown = (toolCalls = [], userGoal = '') => {
-  const lines = ['### Agent Tool Plan'];
-  if (userGoal) {
-    lines.push(`Goal: ${userGoal.slice(0, 180)}`);
-  }
-  lines.push('');
-  lines.push('| Step | Tool | Purpose | Key Inputs |');
-  lines.push('| --- | --- | --- | --- |');
-  toolCalls.forEach((call, idx) => {
-    const name = call?.function?.name || 'unknown_tool';
-    const args = parseToolArgsSafe(call?.function?.arguments);
-    const purpose = AGENT_TOOL_PLAN_PURPOSE[name] || 'Execute requested in-app action.';
-    const inputs = summarizeToolInputs(args);
-    lines.push(`| ${idx + 1} | \`${name}\` | ${purpose} | ${inputs} |`);
+const buildAgentPlan = (toolCalls = [], userGoal = '') => {
+  return {
+    goal: userGoal ? userGoal.slice(0, 180) : 'Execute the requested in-app action.',
+    steps: toolCalls.map((call, idx) => {
+      const name = call?.function?.name || 'unknown_tool';
+      const args = parseToolArgsSafe(call?.function?.arguments);
+      const purpose = AGENT_TOOL_PLAN_PURPOSE[name] || 'Execute requested in-app action.';
+      const inputs = summarizeToolInputs(args);
+      const riskLevel = getToolRiskLevel(name);
+      return {
+        id: call?.id || `tool_${idx + 1}`,
+        step: idx + 1,
+        tool: name,
+        displayToolName: AGENT_TOOL_DISPLAY_NAMES[name] || name,
+        purpose,
+        inputs,
+        scopeSummary: inputs,
+        riskLevel,
+        canUndo: /delete|batch_edit|batch_move/.test(name),
+        status: 'pending'
+      };
+    })
+  };
+};
+
+const getAgentToolDefinition = (toolName = '') =>
+  AGENT_TOOLS.find((tool) => tool?.function?.name === toolName)?.function || null;
+
+const normalizeForcedToolFlow = (flow = {}) => {
+  const tools = Array.isArray(flow?.tools)
+    ? flow.tools
+      .map((item) => ({
+        toolName: String(item?.toolName || item?.name || '').trim(),
+        defaultParams: item?.defaultParams && typeof item.defaultParams === 'object' ? item.defaultParams : {}
+      }))
+      .filter((item) => item.toolName && getAgentToolDefinition(item.toolName))
+    : [];
+  if (!tools.length) return null;
+  return {
+    id: flow.id || `forced_flow_${Date.now()}`,
+    name: String(flow.name || '固定工具流程').trim(),
+    description: String(flow.description || '').trim(),
+    tools
+  };
+};
+
+const buildForcedToolPlan = (flow, userGoal = '') => ({
+  goal: `按固定流程「${flow.name}」执行${userGoal ? `：${userGoal.slice(0, 160)}` : ''}`,
+  steps: flow.tools.map((step, idx) => {
+    const name = step.toolName;
+    const inputs = summarizeToolInputs(step.defaultParams);
+    return {
+      id: `forced_${idx + 1}_${name}`,
+      step: idx + 1,
+      tool: name,
+      displayToolName: AGENT_TOOL_DISPLAY_NAMES[name] || name,
+      purpose: AGENT_TOOL_PLAN_PURPOSE[name] || '执行固定流程中的工具步骤。',
+      inputs,
+      scopeSummary: inputs,
+      riskLevel: getToolRiskLevel(name),
+      canUndo: /delete|batch_edit|batch_move/.test(name),
+      status: 'pending'
+    };
+  })
+});
+
+const buildForcedToolArgs = async ({ cleanUrl, apiKey, modelName, messages, flow, step, stepIndex, previousResults }) => {
+  const toolDef = getAgentToolDefinition(step.toolName);
+  const userGoal = getLatestUserGoal(messages);
+  const response = await fetch(`${cleanUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: modelName || "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: AGENT_SYSTEM_PROMPT },
+        {
+          role: "system",
+          content: [
+            'You are preparing arguments for one fixed Agent tool step.',
+            'The user selected a fixed tool flow. Do not reorder tools.',
+            'Return only JSON: {"skip":false,"reason":"","args":{...}}.',
+            'Use previous step results when they contain ids, noteIds, card ids, folder names, or created content.',
+            'Skip only when this exact step cannot be applied from the user request or previous results.'
+          ].join('\n')
+        },
+        ...messages.slice(-8),
+        {
+          role: "user",
+          content: [
+            `Fixed flow: ${flow.name}`,
+            flow.description ? `Flow description: ${flow.description}` : '',
+            `Current step ${stepIndex + 1}/${flow.tools.length}: ${step.toolName}`,
+            `Default params: ${JSON.stringify(step.defaultParams || {})}`,
+            `Tool schema: ${JSON.stringify(toolDef?.parameters || {})}`,
+            `Previous step results: ${JSON.stringify(previousResults).slice(0, 6000)}`,
+            `User goal: ${userGoal}`,
+            '',
+            'Generate the exact args object for this tool step. Preserve the fixed order.'
+          ].filter(Boolean).join('\n')
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2
+    })
   });
-  return lines.join('\n');
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`API Error: ${response.status} - ${err}`);
+  }
+
+  const data = await response.json();
+  const parsed = parseLooseJsonObject(data?.choices?.[0]?.message?.content);
+  return {
+    skip: parsed?.skip === true,
+    reason: String(parsed?.reason || '').trim(),
+    args: parsed?.args && typeof parsed.args === 'object'
+      ? { ...(step.defaultParams || {}), ...parsed.args }
+      : { ...(step.defaultParams || {}) }
+  };
 };
 
 /**
@@ -3224,8 +3640,9 @@ const buildAgentPlanMarkdown = (toolCalls = [], userGoal = '') => {
  * @param {Object} settings - API settings
  * @param {Function} onDelta - Called with text content deltas
  * @param {Function} onToolCall - Called with { name, status } for UI visualization
+ * @param {Object} options - Optional { forcedToolFlow }
  */
-export const streamAgentChat = async (messages, settings, onDelta, onToolCall) => {
+export const streamAgentChat = async (messages, settings, onDelta, onToolCall, options = {}) => {
   if (!settings.apiKey) throw new Error("Missing API Key");
   const { apiKey, apiBaseUrl, modelName } = settings;
   const cleanUrl = apiBaseUrl.replace(/\/+$/, '');
@@ -3309,6 +3726,138 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall) =
   };
 
   try {
+    const forcedFlow = normalizeForcedToolFlow(options?.forcedToolFlow);
+    if (forcedFlow) {
+      const previousResults = [];
+      const plan = buildForcedToolPlan(forcedFlow, getLatestUserGoal(messages));
+      if (onToolCall) {
+        onToolCall({
+          status: 'plan',
+          plan,
+          toolCount: forcedFlow.tools.length,
+          createdAt: Date.now(),
+          forced: true
+        });
+      }
+
+      for (let i = 0; i < forcedFlow.tools.length; i += 1) {
+        const step = forcedFlow.tools[i];
+        const stepId = `forced_${i + 1}_${step.toolName}`;
+        const startedAt = Date.now();
+        let prepared = null;
+
+        try {
+          prepared = await buildForcedToolArgs({
+            cleanUrl,
+            apiKey,
+            modelName,
+            messages,
+            flow: forcedFlow,
+            step,
+            stepIndex: i,
+            previousResults
+          });
+        } catch (argError) {
+          prepared = { skip: false, reason: '', args: { ...(step.defaultParams || {}) } };
+          previousResults.push({
+            step: i + 1,
+            toolName: step.toolName,
+            warning: `AI 参数生成失败，已使用默认参数：${argError?.message || argError}`
+          });
+        }
+
+        if (prepared.skip) {
+          const skipped = { skipped: true, message: prepared.reason || `Skipped ${step.toolName}.` };
+          previousResults.push({ step: i + 1, toolName: step.toolName, args: prepared.args, result: skipped });
+          if (onToolCall) {
+            onToolCall({
+              id: stepId,
+              name: step.toolName,
+              args: prepared.args,
+              status: 'done',
+              result: skipped,
+              startedAt,
+              endedAt: Date.now()
+            });
+          }
+          continue;
+        }
+
+        if (onToolCall) {
+          onToolCall({
+            id: stepId,
+            name: step.toolName,
+            args: prepared.args,
+            status: 'calling',
+            startedAt
+          });
+        }
+
+        let result = null;
+        try {
+          result = await executeAgentTool(step.toolName, prepared.args, { settings });
+          previousResults.push({ step: i + 1, toolName: step.toolName, args: prepared.args, result });
+
+          if (result?.error) {
+            if (onToolCall) {
+              onToolCall({
+                id: stepId,
+                name: step.toolName,
+                args: prepared.args,
+                status: 'error',
+                error: result.error,
+                result,
+                startedAt,
+                endedAt: Date.now()
+              });
+            }
+            break;
+          }
+
+          if (onToolCall) {
+            onToolCall({
+              id: stepId,
+              name: step.toolName,
+              args: prepared.args,
+              status: 'done',
+              result,
+              startedAt,
+              endedAt: Date.now()
+            });
+          }
+        } catch (toolError) {
+          const errorMessage = toolError instanceof Error ? toolError.message : String(toolError || 'Unknown tool error');
+          result = { error: errorMessage };
+          previousResults.push({ step: i + 1, toolName: step.toolName, args: prepared.args, result });
+          if (onToolCall) {
+            onToolCall({
+              id: stepId,
+              name: step.toolName,
+              args: prepared.args,
+              status: 'error',
+              error: errorMessage,
+              startedAt,
+              endedAt: Date.now()
+            });
+          }
+          break;
+        }
+      }
+
+      await streamFinalResponse([
+        ...finalMessages,
+        {
+          role: "user",
+          content: [
+            `固定工具流程「${forcedFlow.name}」已经按用户选择的顺序执行。`,
+            '请用中文简洁总结：完成了哪些步骤、创建/更新了什么、失败或跳过了什么、用户下一步可以去哪里查看。',
+            `执行结果 JSON：${JSON.stringify(previousResults).slice(0, 9000)}`
+          ].join('\n')
+        }
+      ]);
+      return;
+    }
+
     // Step 1: Call AI with tools enabled (non-streaming to capture tool_calls)
     let assistantMsg = await callWithTools(finalMessages);
     let loopMessages = [...finalMessages, assistantMsg];
@@ -3322,7 +3871,7 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall) =
       if (!planPushed && onToolCall) {
         onToolCall({
           status: 'plan',
-          planMarkdown: buildAgentPlanMarkdown(assistantMsg.tool_calls, getLatestUserGoal(messages)),
+          plan: buildAgentPlan(assistantMsg.tool_calls, getLatestUserGoal(messages)),
           toolCount: assistantMsg.tool_calls.length,
           createdAt: Date.now()
         });

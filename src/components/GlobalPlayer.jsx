@@ -117,6 +117,16 @@ const GlobalPlayer = () => {
         }
     }, [audioState.isPlaying]);
 
+    useEffect(() => {
+        if (!audioRef.current || !audioState.file?.url) return;
+        audioRef.current.load();
+        setCurrentTime(0);
+        setDuration(0);
+        if (audioState.isPlaying) {
+            audioRef.current.play().catch(e => console.log("Play interrupted", e));
+        }
+    }, [audioState.file?.url]);
+
     // Update state when audio ends or pauses naturally
     const handleAudioEvents = (e) => {
         if (e.type === 'pause') toggleAudioPlay(false);

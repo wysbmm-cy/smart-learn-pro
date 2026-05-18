@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, deleteFile, saveNote, getNotes, deleteNote, saveFlashcard, getFlashcards, deleteFlashcard, saveTask, getTasks, deleteTask, getAllData, getHighlightsByDate, saveDailyImage, getDailyImages, deleteDailyImage, getFolders, saveFolder, getWritingMaterials, saveWritingMaterial, deleteWritingMaterial, getWritings, getTranslationLogs, getChatSessions } from '../services/db';
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
-import { resolveTodayNotesFolderName } from '../utils/noteFolders';
+import { normalizeNoteTags, resolveTodayNotesFolderName } from '../utils/noteFolders';
 import { parseKnowledgeBlocks, normalizeKnowledgeLinkingSettings, getDefaultKnowledgeLinkingSettings, upsertTranslationLinkedExamplesForNote, removeTranslationLinkedExamplesByNoteId } from '../utils/knowledgeLinking';
 import { FSRS, Rating, createEmptyCard, State, generatorParameters } from 'ts-fsrs';
 
 // ===== FSRS Algorithm Setup =====
-const fsrsParams = generatorParameters({ request_retention: 0.9 });
+const fsrsParams = generatorParameters({ request_retention: 0.85 });
 const fsrs = new FSRS(fsrsParams);
 
 /**
@@ -66,8 +66,8 @@ export const BUILTIN_API_CONFIG = {
     audioModelName: 'TeleAI/TeleSpeechASR',
     ttsApiBaseUrl: '/api/tts',
     ttsApiKey: 'server-managed',
-    ttsModelName: 'fnlp/MOSS-TTSD-v0.5',
-    ttsVoice: 'fnlp/MOSS-TTSD-v0.5:alex',
+    ttsModelName: 'x-ai/grok-voice-tts-1.0',
+    ttsVoice: 'Eve',
 };
 
 // Initial default settings
@@ -124,7 +124,7 @@ Output Format: Markdown (Strictly follow this structure):
     audioApiKey: BUILTIN_API_CONFIG.audioApiKey,
     audioModelName: BUILTIN_API_CONFIG.audioModelName,
 
-    // TTS Settings (SiliconFlow / MOSS)
+    // TTS Settings (OpenRouter / xAI Grok Voice)
     ttsApiBaseUrl: BUILTIN_API_CONFIG.ttsApiBaseUrl,
     ttsApiKey: BUILTIN_API_CONFIG.ttsApiKey, // Same as audioApiKey
     ttsModelName: BUILTIN_API_CONFIG.ttsModelName,
@@ -184,7 +184,7 @@ const normalizePublicApiDefaults = (input = {}) => {
         next.audioModelName = BUILTIN_API_CONFIG.audioModelName;
     }
 
-    if (!next.ttsApiBaseUrl) {
+    if (!next.ttsApiBaseUrl || next.ttsModelName === 'fnlp/MOSS-TTSD-v0.5') {
         next.ttsApiBaseUrl = BUILTIN_API_CONFIG.ttsApiBaseUrl;
         next.ttsApiKey = BUILTIN_API_CONFIG.ttsApiKey;
         next.ttsModelName = BUILTIN_API_CONFIG.ttsModelName;
@@ -852,12 +852,17 @@ export const AppProvider = ({ children }) => {
             }
         }
 
+        const inputTags = normalizeNoteTags(noteObj.tags);
+        const tags = noteObj.tags === undefined && folderName && folderName !== 'Uncategorized'
+            ? normalizeNoteTags([...inputTags, folderName])
+            : inputTags;
+
         const record = {
             id: noteObj.id || Date.now().toString(),
             title: noteObj.title || "New Note",
             content: noteObj.content || "",
             folder: folderName || "Uncategorized",
-            tags: Array.isArray(noteObj.tags) ? noteObj.tags : [],
+            tags,
             updatedAt: Date.now()
         };
         await saveNote(record);

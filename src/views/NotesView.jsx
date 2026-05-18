@@ -11,12 +11,17 @@ import {
 import { useApp } from '../context/AppContext';
 import { saveHighlight, getFolders, saveFolder } from '../services/db';
 import { chatNoteKnowledgeLinking } from '../services/ai';
-import { getTodayNotesFolderName } from '../utils/noteFolders';
+import { getTodayNotesFolderName, isDateNoteTag, normalizeNoteTags } from '../utils/noteFolders';
 import { parseWikiLinks, parseWikiLinkLabel, resolveWikiTarget } from '../utils/noteLinks';
 import { parseKnowledgeBlocks } from '../utils/knowledgeLinking';
 import toast from 'react-hot-toast';
 
 const NOTE_LINK_TOOLBAR_HIDDEN_KEY = 'notes_link_toolbar_hidden';
+const splitTagInput = (value) => normalizeNoteTags(String(value || '').split(/[,，]/));
+
+const normalizeSearchText = (value) =>
+    String(value || '').trim().replace(/^#+/, '').toLowerCase();
+
 const NOTE_LINKING_TEMPLATES = {
     material: `@素材[argument]{title=请填写素材标题}
 content: 请写可直接插入写作的句子
@@ -247,25 +252,25 @@ const NotesView = ({ params }) => {
 
     const refreshNotes = async () => {
         const noteData = await loadUserNotes();
-        const datePattern = /^\d{4}\/\d{1,2}\/\d{1,2}$/;
-        
         const tagsSet = new Set();
-        noteData.forEach(n => {
-            if (!Array.isArray(n.tags)) n.tags = [];
+        const normalizedNotes = (noteData || []).map(n => {
+            const tags = normalizeNoteTags(n.tags);
             // Migration for old notes with only 'folder'
-            if (n.folder && n.folder !== 'Uncategorized' && !n.tags.includes(n.folder)) {
-                n.tags.push(n.folder);
+            if (n.folder && n.folder !== 'Uncategorized') {
+                tags.push(n.folder);
             }
-            n.tags.forEach(t => tagsSet.add(t));
+            const normalizedTags = normalizeNoteTags(tags);
+            normalizedTags.forEach(t => tagsSet.add(t));
+            return { ...n, tags: normalizedTags };
         });
 
         const allTags = Array.from(tagsSet);
-        const dates = allTags.filter(t => datePattern.test(t)).sort((a,b) => new Date(b) - new Date(a));
-        const topics = allTags.filter(t => !datePattern.test(t)).sort((a,b) => a.localeCompare(b, 'zh-Hans-CN'));
+        const dates = allTags.filter(isDateNoteTag).sort((a,b) => b.localeCompare(a));
+        const topics = allTags.filter(t => !isDateNoteTag(t)).sort((a,b) => a.localeCompare(b, 'zh-Hans-CN'));
 
         setRecentDateTags(dates.slice(0, 3));
         setTopicTags(topics);
-        setNotes(noteData);
+        setNotes(normalizedNotes);
     };
 
     const handleCreate = async () => {
@@ -328,11 +333,14 @@ const NotesView = ({ params }) => {
     const filteredNotes = notes.filter(n => {
         const titleStr = (n.title || '').toLowerCase();
         const contentStr = (n.content || '').toLowerCase();
-        const tagsCombo = (n.tags || []).join(' ').toLowerCase();
-        const query = searchQuery.toLowerCase();
+        const tags = Array.isArray(n.tags) ? n.tags : [];
+        const tagsCombo = tags.flatMap((tag) => [tag, `#${tag}`]).join(' ').toLowerCase();
+        const query = normalizeSearchText(searchQuery);
+        const terms = query.split(/\s+/).filter(Boolean);
         
-        const matchesSearch = titleStr.includes(query) || contentStr.includes(query) || tagsCombo.includes(query);
-        const matchesTag = activeTag === 'All' || (n.tags || []).includes(activeTag);
+        const haystack = `${titleStr}\n${contentStr}\n${tagsCombo}`;
+        const matchesSearch = terms.length === 0 || terms.every((term) => haystack.includes(term));
+        const matchesTag = terms.length > 0 || activeTag === 'All' || tags.includes(activeTag);
         return matchesSearch && matchesTag;
     });
 
@@ -1400,9 +1408,9 @@ const NotesView = ({ params }) => {
     if (isMobile && viewingMobileId) {
         const note = activeNoteForMobile;
         return (
-            <div className="h-full flex flex-col bg-phy-bg overscroll-none animate-in slide-in-from-right duration-300">
+            <div className="h-full min-h-0 overflow-hidden flex flex-col bg-phy-bg overscroll-none animate-in slide-in-from-right duration-300">
                 {/* Mobile Navbar */}
-                <div className="px-4 h-16 flex items-center justify-between border-b border-phy-border bg-white/40 dark:bg-black/20 backdrop-blur-md sticky top-0 z-50">
+                <div className="px-4 h-16 shrink-0 flex items-center justify-between border-b border-phy-border bg-white/40 dark:bg-black/20 backdrop-blur-md sticky top-0 z-50">
                     <div className="flex items-center gap-3">
                         <button onClick={() => setViewingMobileId(null)} className="p-2 -ml-2 rounded-full hover:bg-phy-glass">
                             <ArrowLeft size={20} />
@@ -1445,7 +1453,7 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Tab Switcher */}
-                <div className="flex p-2 gap-1 bg-phy-glass/40 mx-4 mt-4 rounded-2xl border border-phy-border/30">
+                <div className="shrink-0 flex p-2 gap-1 bg-phy-glass/40 mx-4 mt-4 rounded-2xl border border-phy-border/30">
                     <button 
                         onClick={() => setViewMode('edit')}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${viewMode === 'edit' ? 'bg-phy-accent text-white shadow-md' : 'text-phy-muted'}`}
@@ -1461,7 +1469,7 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Content Area */}
-                <div ref={mobileReadPaneRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-32 overscroll-contain">
+                <div ref={mobileReadPaneRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-32 overscroll-contain touch-pan-y">
                     {viewMode === 'edit' ? (
                         <div className="h-full flex flex-col rounded-2xl border border-phy-border/50 bg-phy-glass/20 overflow-hidden">
                             {renderKnowledgeLinkToolBar('mobile')}
@@ -1519,7 +1527,7 @@ const NotesView = ({ params }) => {
                                     </div>
                                     <input 
                                         value={(note?.tags || []).join(', ')}
-                                        onChange={(e) => handleUpdate({ tags: e.target.value.split(',').map(t=>t.trim()).filter(Boolean) })}
+                                        onChange={(e) => handleUpdate({ tags: splitTagInput(e.target.value) })}
                                         className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 outline-none text-sm text-phy-text placeholder:text-phy-muted/60 focus:ring-2 focus:ring-phy-accent/40 transition-all font-medium"
                                         placeholder="Tag 1, Tag 2"
                                     />
@@ -1588,7 +1596,7 @@ const NotesView = ({ params }) => {
 
     if (isMobile) {
         return (
-            <div className="h-full flex flex-col bg-phy-bg px-5 pt-10 pb-20 overscroll-none animate-in fade-in duration-500">
+            <div className="h-full min-h-0 overflow-hidden flex flex-col bg-phy-bg px-5 pt-10 pb-20 overscroll-none animate-in fade-in duration-500">
                 {/* Mobile Header */}
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex flex-col">
@@ -1618,7 +1626,7 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Card List */}
-                <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-32 custom-scrollbar">
+                <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1 pb-32 custom-scrollbar overscroll-contain touch-pan-y">
                     {filteredNotes.map(renderNoteCard)}
                     {filteredNotes.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-20 text-phy-muted gap-4 opacity-50">
@@ -1809,7 +1817,7 @@ const NotesView = ({ params }) => {
                                 )}
                                 <input 
                                     value={(activeNote.tags || []).join(', ')}
-                                    onChange={e => handleUpdate({ tags: e.target.value.split(',').map(t=>t.trim()).filter(Boolean) })}
+                                    onChange={e => handleUpdate({ tags: splitTagInput(e.target.value) })}
                                     className="bg-phy-bg border border-phy-border/60 rounded-lg outline-none font-bold text-[11px] text-phy-muted px-3 py-1.5 focus:ring-1 focus:ring-phy-accent/40 w-[180px] transition-all"
                                     placeholder="Add tags (comma separated)..."
                                 />
