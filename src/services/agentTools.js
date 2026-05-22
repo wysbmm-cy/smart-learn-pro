@@ -35,7 +35,11 @@ import {
 const id = (p) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const firstLine = (t) => (t || '').split('\n')[0].split('/')[0].trim();
 const today = () => new Date().toISOString().split('T')[0];
-const isDue = (c, now = Date.now()) => !c.nextReview || c.nextReview <= now;
+const getDueAt = (card = {}) => Number(card.nextReview || card.fsrs_due || 0) || null;
+const isDue = (c, now = Date.now()) => {
+    const dueAt = getDueAt(c);
+    return !dueAt || dueAt <= now;
+};
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 const clean = (v) => String(v ?? '').trim();
 const AGENT_FLASHCARD_BATCH_UNDO_KEY = 'agent_flashcard_last_batch_undo_v1';
@@ -637,18 +641,95 @@ const resolveFlashcardFolder = async ({ folderId, folderName } = {}) => {
     return null;
 };
 
-const stringifyCardContent = (card = {}) => {
+const getEffectiveFlashcardWeaknessScore = (card = {}) => {
+    const base = Number(card.weaknessScore || 0);
+    const notesBonus = card.notes ? 3 : 0;
+    const flagBonus = card.isFlagged ? 2 : 0;
+    return Math.max(0, base + notesBonus + flagBonus);
+};
+
+const getFlashcardWeaknessStatus = (card = {}) => {
+    const score = getEffectiveFlashcardWeaknessScore(card);
+    if (score >= 15) return { level: 'critical', label: '需强化', score };
+    if (score >= 10) return { level: 'weak', label: '较弱', score };
+    if (score >= 5) return { level: 'developing', label: '一般', score };
+    if (score >= 1) return { level: 'good', label: '良好', score };
+    return { level: 'strong', label: '熟练', score };
+};
+
+const getFlashcardMasteryStatus = (card = {}) => {
+    const state = card.fsrs_state;
+    if (state === undefined || state === 0) return { level: 'new', label: '新卡' };
+    if (state === 1 || state === 3) return { level: 'learning', label: '学习中' };
+    if (state === 2) {
+        const stability = Number(card.fsrs_stability || 0);
+        if (stability >= 30) return { level: 'mastered', label: '掌握' };
+        if (stability >= 14) return { level: 'proficient', label: '较熟练' };
+        if (stability >= 7) return { level: 'developing', label: '发展中' };
+        return { level: 'reviewing', label: '复习中' };
+    }
+    return { level: 'new', label: '新卡' };
+};
+
+const getFlashcardRetrievability = (card = {}, now = Date.now()) => {
+    const stability = Number(card.fsrs_stability || 0);
+    const lastReview = Number(card.fsrs_last_review || card.lastReviewed || card.lastReview || 0);
+    if (!stability || stability <= 0 || !lastReview) return null;
+    const elapsedDays = Math.max(0, (now - lastReview) / 86400000);
+    const value = Math.pow(1 + (19 / 81) * elapsedDays / stability, -0.5);
+    return Math.max(0, Math.min(1, value));
+};
+
+const buildFlashcardStatus = (card = {}, now = Date.now()) => {
+    const dueAt = getDueAt(card);
+    const weakness = getFlashcardWeaknessStatus(card);
+    const mastery = getFlashcardMasteryStatus(card);
+    const retrievability = getFlashcardRetrievability(card, now);
+    return {
+        label: weakness.label,
+        level: weakness.level,
+        weaknessScore: weakness.score,
+        weaknessLabel: weakness.label,
+        masteryLabel: mastery.label,
+        masteryLevel: mastery.level,
+        isDue: isDue(card, now),
+        dueAt,
+        dueInDays: dueAt ? Math.round(((dueAt - now) / 86400000) * 10) / 10 : null,
+        retrievability: retrievability === null ? null : Math.round(retrievability * 1000) / 1000,
+        retrievabilityPercent: retrievability === null ? null : Math.round(retrievability * 100),
+        isFlagged: Boolean(card.isFlagged),
+        isMastered: Boolean(card.isMastered),
+        hasDeepNote: Boolean(card.notes),
+        drillCount: arr(card.drillCards).length,
+        reviewCount: Number(card.fsrs_reps || card.reviews || card.repetitions || 0),
+        lastReviewed: Number(card.fsrs_last_review || card.lastReviewed || card.lastReview || 0) || null,
+        fsrs: {
+            state: card.fsrs_state ?? null,
+            stability: card.fsrs_stability ?? null,
+            difficulty: card.fsrs_difficulty ?? null,
+            scheduledDays: card.fsrs_scheduled_days ?? null,
+            lapses: card.fsrs_lapses ?? null
+        }
+    };
+};
+
+const stringifyCardContent = (card = {}, { folderMap = null, includeStatus = true, now = Date.now() } = {}) => {
     const front = String(card.front || '').trim();
     const back = String(card.back || '').trim();
     const word = firstLine(front) || '(untitled card)';
-    return {
+    const row = {
         id: String(card.id || ''),
         word,
         front,
         back,
         folderId: clean(card.folderId) || null,
+        folderName: folderMap ? clean(folderMap.get(clean(card.folderId))) || null : undefined,
+        tags: arr(card.tags).map(clean).filter(Boolean),
+        createdAt: Number(card.createdAt || 0) || null,
         updatedAt: Number(card.updatedAt || card.createdAt || 0) || null
     };
+    if (includeStatus) row.status = buildFlashcardStatus(card, now);
+    return row;
 };
 
 const buildFlashcardsMarkdownBlock = (cards = [], folderName = '', heading = '') => {
@@ -961,11 +1042,12 @@ export const AGENT_TOOLS = [
     fn('list_flashcard_folders', 'List flashcard folders and optional card counts.', {
         includeCounts: { type: 'boolean' }
     }),
-    fn('list_flashcards', 'List flashcards with folder/name/query filters and full front/back content.', {
+    fn('list_flashcards', 'List flashcards with folder/name/query filters, full front/back content, and review status such as 需强化/较弱/一般/良好/熟练.', {
         folderId: { type: 'string' },
         folderName: { type: 'string' },
         query: { type: 'string' },
         words: { type: 'array', items: { type: 'string' } },
+        includeStatus: { type: 'boolean' },
         limit: { type: 'number' }
     }),
     fn('create_flashcards', 'Create flashcards. Prefer structured items with word, phonetic, and Chinese meaning; the app will save front as word + /phonetic/ and back as Chinese meaning.', {
@@ -1187,9 +1269,22 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
             const due = (cards || []).filter((c) => isDue(c, now));
             const reviewedToday = (cards || []).filter((c) => (c.lastReview || '').startsWith(t));
             const weakCards = [...(cards || [])]
-                .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0))
+                .sort((a, b) => getEffectiveFlashcardWeaknessScore(b) - getEffectiveFlashcardWeaknessScore(a))
                 .slice(0, 10)
-                .map((c) => ({ id: c.id, word: firstLine(c.front), weaknessScore: c.weaknessScore || 0, nextReview: c.nextReview || null }));
+                .map((c) => {
+                    const status = buildFlashcardStatus(c, now);
+                    return {
+                        id: c.id,
+                        word: firstLine(c.front),
+                        folderId: clean(c.folderId) || null,
+                        folderName: clean(folderMap.get(c.folderId)) || null,
+                        weaknessScore: status.weaknessScore,
+                        statusLabel: status.label,
+                        masteryLabel: status.masteryLabel,
+                        isDue: status.isDue,
+                        nextReview: status.dueAt
+                    };
+                });
             return {
                 totalCards: (cards || []).length,
                 dueNow: due.length,
@@ -1197,6 +1292,7 @@ export async function executeAgentTool(toolName, params = {}, options = {}) {
                 mastered: (cards || []).filter((c) => c.isMastered).length,
                 flagged: (cards || []).filter((c) => c.isFlagged).length,
                 folderDistribution: byCount(cards || [], (c) => folderMap.get(c.folderId) || 'Uncategorized'),
+                statusDistribution: byCount(cards || [], (c) => buildFlashcardStatus(c, now).label),
                 weakCards
             };
         }
@@ -1560,10 +1656,13 @@ ${article.passage}`;
         }
         case 'list_flashcards': {
             const limit = Math.max(1, Math.min(500, Number(params.limit) || 100));
+            const includeStatus = params.includeStatus !== false;
             const folder = await resolveFlashcardFolder({
                 folderId: params.folderId,
                 folderName: params.folderName
             });
+            const folders = arr(await getFolders());
+            const folderMap = new Map(folders.map((f) => [String(f.id), clean(f.name)]));
             const words = normalizeWordNeedles(params.words);
             const queryNeedle = clean(params.query).toLowerCase();
             const cards = arr(await getFlashcards());
@@ -1578,7 +1677,7 @@ ${article.passage}`;
             const rows = filtered
                 .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
                 .slice(0, limit)
-                .map(stringifyCardContent);
+                .map((card) => stringifyCardContent(card, { folderMap, includeStatus, now }));
             return {
                 totalMatched: filtered.length,
                 returned: rows.length,

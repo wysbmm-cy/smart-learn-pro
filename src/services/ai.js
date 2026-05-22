@@ -896,6 +896,99 @@ Please generate exam-grade reading drill with evidence anchors.
   return normalizeReadingDrill(parsed, passage, mode);
 };
 
+export const importReadingExamBatch = async (payload, settings, options = {}) => {
+  if (!settings.apiKey) throw new Error("Missing API Key");
+
+  const rawText = String(payload?.text || "").trim().slice(0, 60000);
+  const mode = String(payload?.mode || "mixed").toLowerCase();
+  const maxItems = Math.max(1, Math.min(12, Number(payload?.maxItems) || 8));
+  if (rawText.length < 80) throw new Error("Batch import text is too short");
+
+  const systemPrompt = `
+Role: Senior reading exam digitizer for VerbaPath.
+Task: Split a large pasted document into multiple independent reading exam papers.
+
+The user may paste many articles and their questions together. Identify boundaries, pair each article with its own questions, and convert them into normalized JSON.
+
+Rules:
+1. Use ONLY the user's pasted content. Do not invent new articles or unrelated questions.
+2. Preserve article paragraph breaks with \\n\\n inside each "passage".
+3. If a set contains MCQs, fill "questions" with options, answer, explanation, and evidence_sentence when available.
+4. If a set contains paragraph matching, fill "matching.paragraphs" and "matching.statements".
+5. If answers are not explicitly provided, infer conservatively from the passage only. If uncertain, still choose the best answer and mention uncertainty in explanation.
+6. Return up to ${maxItems} complete papers. Drop fragments that do not contain both a passage and at least one valid question.
+7. Return strict JSON only.
+
+Output schema:
+{
+  "items": [
+    {
+      "title": "string",
+      "mode": "reading|matching|mixed|cet_strict_matching",
+      "passage": "string",
+      "questionText": "optional original question block",
+      "questions": [
+        {
+          "id": 1,
+          "question": "string",
+          "options": ["string","string","string","string"],
+          "answer": "A|B|C|D",
+          "explanation": "string",
+          "evidence_sentence": "string",
+          "rebuttal_hint": "string"
+        }
+      ],
+      "matching": {
+        "paragraphs": [{ "label": "A", "text": "string" }],
+        "statements": [
+          {
+            "id": 1,
+            "text": "string",
+            "answer": "A|B|C|D|E|F|G|H|I|J|K|L",
+            "explanation": "string",
+            "evidence_sentence": "string"
+          }
+        ]
+      }
+    }
+  ]
+}
+`.trim();
+
+  const jsonStr = await fetchFromAI([
+    { role: "system", content: systemPrompt },
+    {
+      role: "user",
+      content: `Preferred mode: ${mode}\n\nBulk pasted reading exam material:\n${rawText}`
+    }
+  ], settings, true, 3, options);
+
+  const parsed = extractJSON(jsonStr);
+  const rawItems = Array.isArray(parsed?.items)
+    ? parsed.items
+    : Array.isArray(parsed?.papers)
+      ? parsed.papers
+      : [];
+
+  const items = rawItems
+    .slice(0, maxItems)
+    .map((item) => {
+      const fallbackPassage = String(item?.passage || item?.article || item?.content || "").trim();
+      const normalized = normalizeReadingDrill(item, fallbackPassage, item?.mode || mode);
+      return {
+        ...normalized,
+        questionText: String(item?.questionText || item?.questionsText || item?.question_block || "").trim()
+      };
+    })
+    .filter((item) => {
+      const totalQuestions = (item.questions?.length || 0) + (item.matching?.statements?.length || 0);
+      return item.passage?.trim() && totalQuestions > 0;
+    });
+
+  if (!items.length) throw new Error("AI did not find complete article-question sets");
+  return { items };
+};
+
 export const analyzePassageStructure = async (passage, settings, options = {}) => {
   const safePassage = String(passage || "").trim().slice(0, 14000);
   if (!safePassage) {

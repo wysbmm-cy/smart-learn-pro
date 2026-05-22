@@ -83,6 +83,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
     }, [currentView]);
 
     const isExamExpanded = currentView === 'exam' && examCanvasMode === 'expanded';
+    const isMobileExamView = isMobileViewport && currentView === 'exam';
     const shouldAutoHideSidebar = !isMobileViewport && currentView === 'writer' && isChatOpen && isWriterMaterialPanelOpen;
     const isSidebarVisible = isSidebarOpen && !shouldAutoHideSidebar;
     const writerCanvasClass = 'max-w-[1700px] mx-auto h-full';
@@ -168,7 +169,7 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
             </div>
 
             {/* Mobile Top Header */}
-            <div className="md:hidden relative z-30 shrink-0">
+            <div className={`md:hidden relative z-30 shrink-0 ${isMobileExamView ? 'hidden' : ''}`}>
                 <div className="h-14 flex items-center justify-between px-4 border-b border-phy-border bg-phy-glassHeavy backdrop-blur-xl">
                     <div className="flex items-center gap-3">
                         <button

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useDeferredValue, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Layers, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, RotateCw, CheckCircle, XCircle, Dices, Folder, FolderPlus, MoreVertical, LayoutGrid, Tag, Play, Star, AlertTriangle, AlertCircle, BarChart3, Undo2, Volume2, Trophy, Flame, Zap, Brain, Loader2, PanelRightClose, PanelRightOpen, Lightbulb, MessageSquare, Edit3, BookOpen, Sparkles, Link as LinkIcon, FileText, Search, X, Maximize2, Minimize2, MoreHorizontal, Settings, Download, Upload } from 'lucide-react';
 import SharedMarkdown from '../components/SharedMarkdown';
@@ -28,6 +28,23 @@ import {
 } from '../utils/flashcardUtils';
 import toast from 'react-hot-toast';
 
+const normalizeSearchText = (value) => String(value || '').toLowerCase();
+
+const cardMatchesSearch = (card, query, folderName = '') => {
+    if (!query) return true;
+    const tags = Array.isArray(card?.tags) ? card.tags.join(' ') : '';
+    const searchableText = [
+        card?.front,
+        card?.back,
+        card?.context,
+        card?.notes,
+        tags,
+        folderName
+    ].map(normalizeSearchText).join(' ');
+
+    return searchableText.includes(query);
+};
+
 const FlashcardView = ({ params }) => {
     const { loadUserFlashcards, addFlashcard, removeFlashcard, updateFlashcardProgress, updateFlashcard, flashcardStartupState, setFlashcardStartupState, settings, saveToNotes, loadUserNotes } = useApp();
     const [editingNoteCard, setEditingNoteCard] = useState(null); // Card being edited in modal
@@ -51,9 +68,17 @@ const FlashcardView = ({ params }) => {
     const [isSwapped, setIsSwapped] = useState(false); // Toggle Q/A sides
     const [showStats, setShowStats] = useState(false); // Toggle statistics panel
     const [sortMode, setSortMode] = useState('mastery_asc'); // 'default' | 'mastery_asc' | 'mastery_desc'
+    const [cardSearch, setCardSearch] = useState('');
     const [isExportingCards, setIsExportingCards] = useState(false);
     const [isImportingCards, setIsImportingCards] = useState(false);
     const importCardsInputRef = useRef(null);
+    const deferredCardSearch = useDeferredValue(cardSearch);
+    const normalizedCardSearch = deferredCardSearch.trim().toLowerCase();
+    const hasCardSearch = normalizedCardSearch.length > 0;
+    const folderNameById = useMemo(
+        () => new Map(folders.map((folder) => [folder.id, folder.name || ''])),
+        [folders]
+    );
 
     // ===== NEW: Dialog States =====
     const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -481,6 +506,12 @@ const FlashcardView = ({ params }) => {
             result = allCards.filter(c => c.folderId === selectedFolderId);
         }
 
+        if (hasCardSearch) {
+            result = result.filter((card) =>
+                cardMatchesSearch(card, normalizedCardSearch, folderNameById.get(card.folderId))
+            );
+        }
+
         // Apply Sorting
         if (sortMode === 'mastery_asc') {
             // Weakest First: Use weakness score (higher = weaker, appears first)
@@ -769,6 +800,12 @@ const FlashcardView = ({ params }) => {
                 candidates = allCards.filter(c => c.isFlagged);
             } else {
                 candidates = allCards.filter(c => c.folderId === targetFolder);
+            }
+
+            if (hasCardSearch && !overrideFolderId && !useAllCards) {
+                candidates = candidates.filter((card) =>
+                    cardMatchesSearch(card, normalizedCardSearch, folderNameById.get(card.folderId))
+                );
             }
 
             if (candidates.length === 0) {
@@ -1626,6 +1663,36 @@ const FlashcardView = ({ params }) => {
                                 </div>
                             </div>
 
+                            <div className="px-2 md:px-4 py-2 border-b border-phy-border bg-phy-glassHeavy/80 backdrop-blur">
+                                <div className="relative">
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-phy-muted pointer-events-none" />
+                                    <input
+                                        type="search"
+                                        value={cardSearch}
+                                        onChange={(e) => setCardSearch(e.target.value)}
+                                        placeholder="搜索闪卡正面、背面、笔记或标签..."
+                                        className="w-full rounded-xl border border-phy-border bg-phy-bg/70 py-2 pl-9 pr-24 text-sm text-phy-text outline-none transition-colors placeholder:text-phy-muted focus:border-phy-accent focus:bg-phy-bg"
+                                    />
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                        {hasCardSearch && (
+                                            <span className="hidden sm:inline text-[11px] font-bold text-phy-muted">
+                                                {displayCards.length} 条
+                                            </span>
+                                        )}
+                                        {cardSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setCardSearch('')}
+                                                className="rounded-lg p-1 text-phy-muted hover:bg-phy-glassHover hover:text-phy-text"
+                                                title="清空搜索"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Batch Action Toolbar */}
                             {isMultiSelect && selectedCardIds.size > 0 && (
                                 <div className="px-4 py-3 bg-phy-accentGlass border-b border-phy-border flex items-center justify-between animate-in slide-in-from-top-2">
@@ -1732,6 +1799,27 @@ const FlashcardView = ({ params }) => {
                                         ) : (
                                             <button onClick={() => setIsAddingCard(true)} className="w-full py-2 text-phy-muted text-sm font-bold border-2 border-dashed border-phy-border rounded-lg hover:border-phy-accent hover:text-phy-accent flex items-center justify-center gap-2 transition-colors">
                                                 <Plus size={16} /> 添加卡片到 '{selectedFolderId === 'all' ? '未分类' : (folders.find(f => f.id === selectedFolderId)?.name || '当前')}'
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {displayCards.length === 0 && (
+                                    <div className="mb-4 rounded-xl border border-dashed border-phy-border bg-phy-glass p-6 text-center">
+                                        <Search size={22} className="mx-auto mb-2 text-phy-muted" />
+                                        <div className="text-sm font-bold text-phy-text">
+                                            {hasCardSearch ? '没有找到匹配的闪卡' : '当前没有闪卡'}
+                                        </div>
+                                        <div className="mt-1 text-xs text-phy-muted">
+                                            {hasCardSearch ? '换个关键词试试，或清空搜索查看当前范围内的全部卡片。' : '可以先添加一张卡片，或切换到其他文件夹查看。'}
+                                        </div>
+                                        {hasCardSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setCardSearch('')}
+                                                className="mt-3 rounded-lg border border-phy-border px-3 py-1.5 text-xs font-bold text-phy-accent hover:bg-phy-accentGlass"
+                                            >
+                                                清空搜索
                                             </button>
                                         )}
                                     </div>

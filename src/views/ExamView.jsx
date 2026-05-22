@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
-import { analyzeImagesForChat, analyzePassageStructure, debateReadingEvidence, generateAdversarialReadingDrill, sendChat } from '../services/ai';
+import { analyzeImagesForChat, analyzePassageStructure, debateReadingEvidence, generateAdversarialReadingDrill, importReadingExamBatch, sendChat } from '../services/ai';
 import { extractTextFromPDF } from '../services/pdf';
 import { getFolders, saveFolder } from '../services/db';
 import {
@@ -51,6 +51,14 @@ const DEFAULT_SETUP = {
     questionCount: 6,
     passage: '',
     questionText: ''
+};
+const QUESTION_COUNT_MIN = 3;
+const QUESTION_COUNT_MAX = 10;
+
+const normalizeQuestionCount = (value, fallback = DEFAULT_SETUP.questionCount) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(QUESTION_COUNT_MIN, Math.min(QUESTION_COUNT_MAX, Math.round(parsed)));
 };
 
 const DEFAULT_HISTORY_FOLDER_ID = 'default';
@@ -213,6 +221,8 @@ const ExamView = ({ params = {} }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isLoadingFile, setIsLoadingFile] = useState(false);
     const [isParsingImages, setIsParsingImages] = useState(false);
+    const [batchImportText, setBatchImportText] = useState('');
+    const [isBatchImporting, setIsBatchImporting] = useState(false);
 
     const [debateTarget, setDebateTarget] = useState(null);
     const [debateMessages, setDebateMessages] = useState([]);
@@ -526,13 +536,80 @@ const ExamView = ({ params = {} }) => {
         }
     };
 
+    const handleUploadBatchImport = async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        setIsLoadingFile(true);
+        try {
+            const texts = await Promise.all(files.map(readUpload));
+            const appended = texts.map((text, idx) => `\n\n[导入材料 ${idx + 1}: ${files[idx]?.name || '未命名'}]\n${text}`).join('');
+            setBatchImportText((prev) => `${prev.trim()}${appended}`.trim());
+            toast.success(`已加入 ${files.length} 个批量导入文件`);
+        } catch (err) {
+            toast.error(`读取失败: ${err.message}`);
+        } finally {
+            setIsLoadingFile(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleBatchImport = async () => {
+        const text = batchImportText.trim();
+        if (text.length < 80) return toast.error('请先粘贴多套文章和题目，内容太短 AI 无法判断');
+        setIsBatchImporting(true);
+        try {
+            toast.loading('AI 正在拆分并导入多套阅读题...', { id: 'exam_batch_import' });
+            const { items } = await importReadingExamBatch({
+                text,
+                mode: setup.mode,
+                maxItems: Math.min(10, HISTORY_LIMIT)
+            }, settings);
+            const folderId = getHistoryTargetFolderId();
+            const now = Date.now();
+            const records = items.map((item, idx) => {
+                const result = evaluatePaper(item, {});
+                const itemSetup = {
+                    ...DEFAULT_SETUP,
+                    sourceType: 'import',
+                    mode: item.mode || setup.mode,
+                    questionCount: result.total || DEFAULT_SETUP.questionCount,
+                    passage: item.passage || '',
+                    questionText: item.questionText || ''
+                };
+                return {
+                    ...buildHistoryRecord({
+                        paper: item,
+                        setup: itemSetup,
+                        answers: {},
+                        result,
+                        folderId,
+                        entryType: 'saved'
+                    }),
+                    createdAt: now + idx
+                };
+            });
+            persistHistory([...records, ...examHistory]);
+            setBatchImportText('');
+            setShowHistory(true);
+            toast.success(`已批量导入 ${records.length} 套阅读题，可在历史回顾中打开练习`, { id: 'exam_batch_import' });
+        } catch (e) {
+            toast.error(`批量导入失败: ${e.message}`, { id: 'exam_batch_import' });
+        } finally {
+            setIsBatchImporting(false);
+        }
+    };
+
     const handleGenerate = async () => {
         if (!setup.passage.trim()) return toast.error('Please input or upload a passage first');
         if (setup.sourceType === 'import' && !setup.questionText.trim()) return toast.error('请先导入你的题目内容');
+        const normalizedQuestionCount = normalizeQuestionCount(setup.questionCount);
+        if (!strictSetupMode && normalizedQuestionCount !== setup.questionCount) {
+            setSetup((prev) => ({ ...prev, questionCount: normalizedQuestionCount }));
+        }
         setIsGenerating(true);
         try {
             toast.loading('正在生成对抗式阅读训练卷...', { id: 'exam_build_v2' });
-            const requestQuestionCount = strictSetupMode ? 10 : setup.questionCount;
+            const requestQuestionCount = strictSetupMode ? 10 : normalizedQuestionCount;
             const result = await generateAdversarialReadingDrill({
                 sourceType: setup.sourceType,
                 mode: setup.mode,
@@ -1612,10 +1689,20 @@ ${wordsToTranslate.join(', ')}`;
                             </select>
                             <input
                                 type="number"
-                                min="3"
-                                max="10"
+                                min={QUESTION_COUNT_MIN}
+                                max={QUESTION_COUNT_MAX}
                                 value={strictSetupMode ? 10 : setup.questionCount}
-                                onChange={(e) => setSetup((prev) => ({ ...prev, questionCount: Math.max(3, Math.min(10, Number(e.target.value) || 6)) }))}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    setSetup((prev) => ({
+                                        ...prev,
+                                        questionCount: value === '' ? '' : Number(value)
+                                    }));
+                                }}
+                                onBlur={() => setSetup((prev) => ({
+                                    ...prev,
+                                    questionCount: normalizeQuestionCount(prev.questionCount)
+                                }))}
                                 disabled={strictSetupMode}
                                 className="bg-phy-bg border border-phy-border rounded-xl px-3 py-2 text-sm text-phy-text outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                                 placeholder="题目数量 (Question count)"
@@ -1698,16 +1785,55 @@ ${wordsToTranslate.join(', ')}`;
                                     <summary className="cursor-pointer font-semibold">（可选）推荐导入格式</summary>
                                     <pre className="mt-2 whitespace-pre-wrap break-all text-[11px]">{`[Reading]\nQ1. ...\nA. ...\nB. ...\nC. ...\nD. ...\n\n[Matching]\nA. paragraph text...\nB. paragraph text...\n...\nStatement 1: ...\nStatement 2: ...`}</pre>
                                 </details>
+
+                                <div className="mt-4 rounded-2xl border border-indigo-400/25 bg-indigo-500/10 p-4">
+                                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-black text-phy-text flex items-center gap-2">
+                                                <Sparkles size={16} className="text-indigo-300" />
+                                                AI 批量导入多套阅读题
+                                            </div>
+                                            <p className="text-xs text-phy-muted mt-1 leading-relaxed">
+                                                把多篇文章和对应题目一起粘贴进来，AI 会自动拆分、配对，并批量保存到历史回顾。
+                                            </p>
+                                        </div>
+                                        <label className="shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-indigo-300/30 text-xs font-bold text-indigo-100 hover:bg-indigo-500/15 cursor-pointer">
+                                            <Upload size={14} />
+                                            上传批量文件
+                                            <input type="file" accept=".pdf,.txt,.md,.json" multiple className="hidden" onChange={handleUploadBatchImport} />
+                                        </label>
+                                    </div>
+                                    <textarea
+                                        value={batchImportText}
+                                        onChange={(e) => setBatchImportText(e.target.value)}
+                                        rows={8}
+                                        placeholder="示例：文章 1 + 题目 1 + 答案解析；文章 2 + 题目 2；也可以直接粘贴整份 OCR/PDF 文本..."
+                                        className="w-full mt-3 bg-phy-bg border border-indigo-300/25 rounded-xl p-3 text-sm text-phy-text resize-y outline-none focus:border-indigo-400"
+                                    />
+                                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                                        <button
+                                            onClick={handleBatchImport}
+                                            disabled={isBatchImporting || isLoadingFile || isParsingImages || batchImportText.trim().length < 80}
+                                            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                                        >
+                                            {isBatchImporting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                                            {isBatchImporting ? 'AI 正在批量导入...' : 'AI 拆分并批量导入'}
+                                        </button>
+                                        <span className="text-[11px] text-phy-muted">
+                                            建议一次导入 2-10 套；导入后可在历史回顾里逐套打开练习。
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
                         <button
                             onClick={handleGenerate}
-                            disabled={isGenerating || isLoadingFile || isParsingImages}
+                            disabled={isGenerating || isLoadingFile || isParsingImages || isBatchImporting}
                             className="mt-5 w-full py-3 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                         >
-                            {(isGenerating || isLoadingFile || isParsingImages) ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                            {(isGenerating || isLoadingFile || isParsingImages) ? '处理中...' : '开始生成对抗训练卷'}
+                            {(isGenerating || isLoadingFile || isParsingImages || isBatchImporting) ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                            {(isGenerating || isLoadingFile || isParsingImages || isBatchImporting) ? '处理中...' : '开始生成对抗训练卷'}
                         </button>
                     </div>
                 </div>
@@ -1716,7 +1842,7 @@ ${wordsToTranslate.join(', ')}`;
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-y-auto md:overflow-hidden pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:pb-0 custom-scrollbar">
             {HistoryModal}
             <div className="hidden md:flex shrink-0 border-b border-phy-border bg-phy-glass px-4 md:px-6 py-3 flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -1819,6 +1945,15 @@ ${wordsToTranslate.join(', ')}`;
                                 已答 {answeredCount}/{totalCount} {submitted ? `| 准确率 ${score.accuracy}%` : ''}
                             </div>
                         </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                onClick={toggleChat}
+                                className="px-2.5 py-1.5 rounded-lg border border-phy-border text-phy-muted hover:text-phy-text bg-phy-bg/70 text-xs font-black inline-flex items-center gap-1.5"
+                                title="AI 助手"
+                            >
+                                <Sparkles size={13} />
+                                AI
+                            </button>
                         <button
                             onClick={submitPaper}
                             className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black inline-flex items-center gap-1.5"
@@ -1827,6 +1962,7 @@ ${wordsToTranslate.join(', ')}`;
                             <Target size={13} />
                             提交
                         </button>
+                        </div>
                     </div>
                 )}
 
@@ -1936,9 +2072,9 @@ ${wordsToTranslate.join(', ')}`;
                 </div>
             </div>
 
-            <div className="flex-1 min-h-0 p-3 md:p-5">
-                <div className={`grid grid-cols-1 ${isReadOnly ? '' : 'xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)]'} gap-4 h-full min-h-0`}>
-                    <section className={`rounded-2xl border border-phy-border bg-phy-glass overflow-hidden min-h-0 ${(isReadOnly || mobilePane === 'article') ? 'flex flex-col' : 'hidden'} xl:flex xl:flex-col`}>
+            <div className="md:flex-1 md:min-h-0 p-3 md:p-5">
+                <div className={`grid grid-cols-1 ${isReadOnly ? '' : 'xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.95fr)]'} gap-4 md:h-full md:min-h-0`}>
+                    <section className={`rounded-2xl border border-phy-border bg-phy-glass overflow-hidden md:min-h-0 ${(isReadOnly || mobilePane === 'article') ? 'flex flex-col' : 'hidden'} xl:flex xl:flex-col`}>
                         <div className="px-4 py-3 border-b border-phy-border bg-phy-bg flex items-center gap-2">
                             <FileText size={16} className="text-indigo-400" />
                             <h3 className="font-bold text-phy-text text-sm flex-1">文章原文与分段 (Passage)</h3>
@@ -1959,7 +2095,7 @@ ${wordsToTranslate.join(', ')}`;
                                 </button>
                             </div>
                         </div>
-                        <div className="p-4 space-y-3 flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                        <div className="p-4 space-y-3 md:flex-1 md:overflow-y-auto custom-scrollbar md:min-h-0">
                             <div className="rounded-xl border border-phy-border bg-phy-glass p-3 space-y-3">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-bold text-phy-text inline-flex items-center gap-1.5">
@@ -2368,7 +2504,7 @@ ${wordsToTranslate.join(', ')}`;
                     <section
                         ref={questionPanelRef}
                         onMouseUp={captureQuestionSelection}
-                        className={`space-y-4 min-h-0 overflow-y-auto custom-scrollbar pr-1 ${!isReadOnly && mobilePane === 'questions' ? 'block' : 'hidden'} ${isReadOnly ? '' : 'xl:block'}`}
+                        className={`space-y-4 md:min-h-0 md:overflow-y-auto custom-scrollbar md:pr-1 ${!isReadOnly && mobilePane === 'questions' ? 'block' : 'hidden'} ${isReadOnly ? '' : 'xl:block'}`}
                     >
                         {!strictCETActive && (paper.questions || []).map((q, qIdx) => {
                             const key = `mcq-${q.id}`;
