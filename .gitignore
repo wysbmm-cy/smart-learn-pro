@@ -133,7 +133,20 @@ Desktop.ini
 # Electron Output
 release/
 
-release/
-
 # Local auth database
 server/data/
+
+# Local backups, build extractions, and one-off repair scripts
+backup/
+extract_asar_tmp/
+scratch/
+temp/
+*.7z
+build_error.txt
+build_log*.txt
+old_writer*.txt
+previous_dashboard*.tmp
+fix_*.js
+fix_*.py
+fix_*.ps1
+android/null_file_backup
