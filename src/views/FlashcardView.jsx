@@ -29,6 +29,7 @@ import {
 import toast from 'react-hot-toast';
 
 const normalizeSearchText = (value) => String(value || '').toLowerCase();
+const FLASHCARD_EXPORT_MIME = 'application/json;charset=utf-8';
 
 const cardMatchesSearch = (card, query, folderName = '') => {
     if (!query) return true;
@@ -43,6 +44,56 @@ const cardMatchesSearch = (card, query, folderName = '') => {
     ].map(normalizeSearchText).join(' ');
 
     return searchableText.includes(query);
+};
+
+const triggerBrowserDownload = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+};
+
+const saveWithFilePicker = async (blob, fileName) => {
+    if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') {
+        return false;
+    }
+
+    const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [
+            {
+                description: 'SmartLearn flashcards JSON',
+                accept: { 'application/json': ['.json'] }
+            }
+        ]
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+};
+
+const shareExportFile = async (blob, fileName, count) => {
+    if (typeof navigator === 'undefined' || typeof File === 'undefined' || typeof navigator.share !== 'function') {
+        return false;
+    }
+
+    const file = new File([blob], fileName, { type: 'application/json' });
+    if (typeof navigator.canShare === 'function' && !navigator.canShare({ files: [file] })) {
+        return false;
+    }
+
+    await navigator.share({
+        files: [file],
+        title: 'SmartLearn 闪卡导出',
+        text: `导出 ${count} 张闪卡`
+    });
+    return true;
 };
 
 const FlashcardView = ({ params }) => {
@@ -71,6 +122,8 @@ const FlashcardView = ({ params }) => {
     const [cardSearch, setCardSearch] = useState('');
     const [isExportingCards, setIsExportingCards] = useState(false);
     const [isImportingCards, setIsImportingCards] = useState(false);
+    const [pendingFlashcardExport, setPendingFlashcardExport] = useState(null);
+    const [isSavingPreparedExport, setIsSavingPreparedExport] = useState(false);
     const importCardsInputRef = useRef(null);
     const deferredCardSearch = useDeferredValue(cardSearch);
     const normalizedCardSearch = deferredCardSearch.trim().toLowerCase();
@@ -607,21 +660,56 @@ const FlashcardView = ({ params }) => {
                 folders: folderList.map((f) => ({ id: f.id, name: f.name, type: f.type || 'user' }))
             };
             const content = JSON.stringify(payload, null, 2);
-            const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
+            const blob = new Blob([content], { type: FLASHCARD_EXPORT_MIME });
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            anchor.href = url;
-            anchor.download = `smartlearn-flashcards-${stamp}.json`;
-            document.body.appendChild(anchor);
-            anchor.click();
-            document.body.removeChild(anchor);
-            URL.revokeObjectURL(url);
+            const fileName = `smartlearn-flashcards-${stamp}.json`;
+
+            if (isMobile) {
+                setPendingFlashcardExport({ blob, fileName, count: cards.length });
+                toast.success(`已生成 ${cards.length} 张闪卡的导出文件，请点“保存/分享”完成保存`);
+                return;
+            }
+
+            const savedWithPicker = await saveWithFilePicker(blob, fileName);
+            if (!savedWithPicker) {
+                triggerBrowserDownload(blob, fileName);
+            }
             toast.success(`已导出 ${cards.length} 张闪卡`);
         } catch (e) {
-            toast.error(`导出失败: ${e.message}`);
+            if (e?.name === 'AbortError') {
+                toast('已取消导出');
+            } else {
+                toast.error(`导出失败: ${e.message}`);
+            }
         } finally {
             setIsExportingCards(false);
+        }
+    };
+
+    const handleSavePreparedFlashcardExport = async () => {
+        if (!pendingFlashcardExport || isSavingPreparedExport) return;
+        setIsSavingPreparedExport(true);
+        const { blob, fileName, count } = pendingFlashcardExport;
+
+        try {
+            const shared = await shareExportFile(blob, fileName, count);
+            if (shared) {
+                toast.success('已打开系统保存/分享面板');
+                setPendingFlashcardExport(null);
+                return;
+            }
+
+            triggerBrowserDownload(blob, fileName);
+            toast('当前手机环境不支持系统文件分享，已尝试触发浏览器下载');
+        } catch (e) {
+            if (e?.name === 'AbortError') {
+                toast('已取消保存/分享');
+            } else {
+                console.error('Mobile flashcard export failed:', e);
+                toast.error(`保存/分享失败: ${e.message}`);
+            }
+        } finally {
+            setIsSavingPreparedExport(false);
         }
     };
 
@@ -2455,6 +2543,54 @@ const FlashcardView = ({ params }) => {
 
             {/* Note Selector Modal */}
             {isLinkingNote && <NoteSelectorModal />}
+
+            {/* Mobile Flashcard Export Modal */}
+            {pendingFlashcardExport && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="glass-modal w-full max-w-sm rounded-2xl border border-phy-border shadow-2xl overflow-hidden">
+                        <div className="p-4 border-b border-phy-border bg-phy-glassHeavy flex items-center justify-between">
+                            <div className="flex items-center gap-2 font-black text-phy-text">
+                                <Download size={18} className="text-phy-accent" />
+                                闪卡导出已准备好
+                            </div>
+                            <button
+                                onClick={() => setPendingFlashcardExport(null)}
+                                className="p-1.5 rounded-lg text-phy-muted hover:text-phy-text hover:bg-phy-glassHover"
+                                title="关闭"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-3 bg-phy-bg/70">
+                            <div className="rounded-xl border border-phy-border bg-phy-glass p-3">
+                                <div className="text-xs font-bold text-phy-muted uppercase">文件名</div>
+                                <div className="mt-1 text-sm font-bold text-phy-text break-all">
+                                    {pendingFlashcardExport.fileName}
+                                </div>
+                            </div>
+                            <p className="text-sm leading-relaxed text-phy-muted">
+                                手机端需要通过系统保存/分享面板完成落地保存。点击下方按钮后，选择“保存到文件”“发送到网盘”或其他可保存的位置。
+                            </p>
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    onClick={() => setPendingFlashcardExport(null)}
+                                    className="flex-1 rounded-xl border border-phy-border px-3 py-2 text-sm font-bold text-phy-muted hover:bg-phy-glassHover hover:text-phy-text"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleSavePreparedFlashcardExport}
+                                    disabled={isSavingPreparedExport}
+                                    className="flex-1 rounded-xl bg-phy-accent px-3 py-2 text-sm font-bold text-white shadow-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+                                >
+                                    {isSavingPreparedExport ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                                    保存/分享
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Deep Notes Modal (Library Mode) */}
             {editingNoteCard && (
