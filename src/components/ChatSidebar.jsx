@@ -1,10 +1,11 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import SharedMarkdown from './SharedMarkdown';
 import { 
     X, Send, Bot, User, Loader2, FileText, NotebookPen, Brain, 
     History, Plus, Trash2, MessageSquare, Zap, MessageCircle, 
     Database, CheckCircle2, ChevronRight, Layers, PenTool, Mic, 
-    BookOpen, ImagePlus, Calendar, BarChart3, ChevronDown, AlertTriangle, Square, CheckSquare } from 'lucide-react';
+    BookOpen, ImagePlus, Calendar, BarChart3, ChevronDown, AlertTriangle, Square, CheckSquare,
+    Copy, Reply, Volume2, VolumeX, Check, ArrowDown, Sparkles } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../context/ChatContext';
 import { analyzeImagesForChat, streamChatMessage, streamAgentChat } from '../services/ai';
@@ -209,7 +210,8 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
     } = useApp();
     const {
         isChatOpen, toggleChat, chatMessages, addChatMessage, updateLastChatMessage,
-        currentSessionId, chatSessions, createNewChatSession, loadChatSession, removeChatSession, flushChatSession
+        currentSessionId, chatSessions, createNewChatSession, loadChatSession, removeChatSession,
+        deleteChatMessage, flushChatSession, updateLastChatMessageMeta
     } = useChat();
     const [input, setInput] = useState(() => localStorage.getItem('draft_chat_input') || '');
     const [isSending, setIsSending] = useState(false);
@@ -238,6 +240,13 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
     const [flowDescriptionDraft, setFlowDescriptionDraft] = useState('');
     // Collected actions from tool execution results
     const [pendingActions, setPendingActions] = useState([]);
+
+    // Premium Sidebar states
+    const [copiedConversation, setCopiedConversation] = useState(false);
+    const [copiedMessageIndex, setCopiedMessageIndex] = useState(null);
+    const [speakingMessageIndex, setSpeakingMessageIndex] = useState(null);
+    const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+    const [quotedMessage, setQuotedMessage] = useState(null);
 
     // Persist chat mode preference
     useEffect(() => {
@@ -270,6 +279,35 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
     const streamTimerRef = useRef(null);
     const pendingStreamTextRef = useRef('');
     const autoScrollEnabledRef = useRef(true);
+    const agentPlanRef = useRef(null);
+    const toolCallsRef = useRef([]);
+    const pendingActionsRef = useRef([]);
+
+    const persistAgentTrace = ({ plan = agentPlanRef.current, calls = toolCallsRef.current, actions = pendingActionsRef.current } = {}, options = {}) => {
+        updateLastChatMessageMeta({
+            agentTrace: {
+                mode: 'agent',
+                plan: plan || null,
+                toolCalls: Array.isArray(calls) ? calls : [],
+                pendingActions: Array.isArray(actions) ? actions : [],
+                updatedAt: Date.now()
+            }
+        }, { persist: options.persist !== false, immediate: options.immediate === true });
+    };
+
+    const applyAgentTrace = (trace = null) => {
+        const nextPlan = trace?.plan || null;
+        const nextCalls = Array.isArray(trace?.toolCalls) ? trace.toolCalls : [];
+        const nextActions = Array.isArray(trace?.pendingActions) ? trace.pendingActions : [];
+        agentPlanRef.current = nextPlan;
+        toolCallsRef.current = nextCalls;
+        pendingActionsRef.current = nextActions;
+        setAgentPlan(nextPlan);
+        setToolCalls(nextCalls);
+        setPendingActions(nextActions);
+        setExpandedPlanSteps({});
+        setShowToolLog(nextCalls.length > 0);
+    };
 
     const scrollToBottom = (behavior = 'auto') => {
         const container = messagesContainerRef.current;
@@ -282,7 +320,74 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         if (!container) return;
         const distance = container.scrollHeight - (container.scrollTop + container.clientHeight);
         autoScrollEnabledRef.current = distance < 120;
+        setShowScrollBottomBtn(container.scrollTop > 300 && distance >= 150);
     };
+
+    // Premium Sidebar Action Handlers
+    const handleCopyEntireChat = async () => {
+        if (!chatMessages.length) return;
+        const formatted = chatMessages
+            .map((msg) => {
+                const role = msg.role === 'user' ? '用户' : (chatMode === 'agent' ? 'Agent' : 'AI导师');
+                return `[${role}]: ${msg.content}`;
+            })
+            .join('\n\n');
+        try {
+            await navigator.clipboard.writeText(formatted);
+            setCopiedConversation(true);
+            setTimeout(() => setCopiedConversation(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy entire chat:', err);
+        }
+    };
+
+    const handleQuoteMessage = (msg) => {
+        const previewText = msg.content.length > 80 ? msg.content.slice(0, 80) + '...' : msg.content;
+        setQuotedMessage({
+            role: msg.role,
+            content: previewText,
+            fullContent: msg.content
+        });
+        inputRef.current?.focus();
+    };
+
+    const handleDeleteMessage = (index) => {
+        if (confirm('确定要删除这条消息吗？此操作可清理对话上下文。')) {
+            deleteChatMessage(index);
+        }
+    };
+
+    const handleSpeakMessage = (text, index) => {
+        if (speakingMessageIndex === index) {
+            window.speechSynthesis.cancel();
+            setSpeakingMessageIndex(null);
+            return;
+        }
+        window.speechSynthesis.cancel();
+        
+        // Strip markdown and link syntax for clean SpeechSynthesis
+        const cleanText = text
+            .replace(/[*#`>_\-]/g, '')
+            .replace(/\[.*?\]\(.*?\)/g, '')
+            .trim();
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'en-US';
+        utterance.onend = () => {
+            setSpeakingMessageIndex(null);
+        };
+        utterance.onerror = () => {
+            setSpeakingMessageIndex(null);
+        };
+        
+        setSpeakingMessageIndex(index);
+        window.speechSynthesis.speak(utterance);
+    };
+
+    useEffect(() => {
+        return () => {
+            window.speechSynthesis.cancel();
+        };
+    }, [currentSessionId]);
 
     const scheduleStreamCommit = (fullText) => {
         pendingStreamTextRef.current = fullText;
@@ -317,6 +422,14 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             scrollToBottom('auto');
         }
     }, [chatMessages.length, isChatOpen, viewMode, toolCalls, pendingActions, agentPlan]);
+
+    useEffect(() => {
+        if (isSending) return;
+        const latestTraceMessage = [...chatMessages]
+            .reverse()
+            .find((msg) => msg?.role === 'assistant' && msg?.agentTrace);
+        applyAgentTrace(latestTraceMessage?.agentTrace || null);
+    }, [currentSessionId]);
 
     useEffect(() => {
         return () => {
@@ -562,6 +675,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
         setShowToolLog(false);
         // Don't clear pending actions here if we want them to stay, but usually we do
         setPendingActions([]);
+        agentPlanRef.current = null;
+        toolCallsRef.current = [];
+        pendingActionsRef.current = [];
 
         try {
             if (attachments.length > 0) {
@@ -595,7 +711,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                 }));
             history.push({ role: 'user', content: aiUserMessage });
 
-            addChatMessage('assistant', '');
+            addChatMessage('assistant', '', chatMode === 'agent'
+                ? { messageData: { agentTrace: { mode: 'agent', plan: null, toolCalls: [], pendingActions: [], updatedAt: Date.now() } } }
+                : {});
 
             if (chatMode === 'agent') {
                 let fullResponse = "";
@@ -611,15 +729,19 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                 }, (toolInfo) => {
                     if (toolInfo?.status === 'plan') {
                         if (toolInfo.plan) {
+                            agentPlanRef.current = toolInfo.plan;
                             setAgentPlan(toolInfo.plan);
+                            persistAgentTrace({ plan: toolInfo.plan });
                         }
                         return;
                     }
 
                     if (toolInfo?.id) {
-                        setAgentPlan((current) => current ? {
-                            ...current,
-                            steps: (current.steps || []).map((step) => (
+                        const currentPlan = agentPlanRef.current;
+                        if (currentPlan) {
+                            const nextPlan = {
+                                ...currentPlan,
+                                steps: (currentPlan.steps || []).map((step) => (
                                 step.id === toolInfo.id
                                     ? {
                                         ...step,
@@ -633,22 +755,24 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         result: toolInfo.result?.message || toolInfo.error || step.result
                                     }
                                     : step
-                            ))
-                        } : current);
+                                ))
+                            };
+                            agentPlanRef.current = nextPlan;
+                            setAgentPlan(nextPlan);
+                        }
                     }
 
-                    setToolCalls(prev => {
-                        const existing = prev.findIndex(t =>
+                    const previousToolCalls = toolCallsRef.current || [];
+                    const existing = previousToolCalls.findIndex(t =>
                             (toolInfo.id && t.id && t.id === toolInfo.id) ||
                             (!toolInfo.id && t.name === toolInfo.name && t.status === 'calling')
                         );
-                        if (existing >= 0) {
-                            const updated = [...prev];
-                            updated[existing] = { ...updated[existing], ...toolInfo };
-                            return updated;
-                        }
-                        return [...prev, { ...toolInfo, createdAt: Date.now() }];
-                    });
+                    const nextToolCalls = existing >= 0
+                        ? previousToolCalls.map((item, index) => index === existing ? { ...item, ...toolInfo } : item)
+                        : [...previousToolCalls, { ...toolInfo, createdAt: Date.now() }];
+                    toolCallsRef.current = nextToolCalls;
+                    setToolCalls(nextToolCalls);
+                    persistAgentTrace({ plan: agentPlanRef.current, calls: nextToolCalls });
 
                     if (toolInfo.status === 'done' && toolInfo.result && toolInfo.result._action) {
                         collectedActions.push(toolInfo.result);
@@ -666,7 +790,11 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                 }
 
                 if (collectedActions.length > 0) {
+                    pendingActionsRef.current = collectedActions;
                     setPendingActions(collectedActions);
+                    persistAgentTrace({ actions: collectedActions }, { immediate: true });
+                } else {
+                    persistAgentTrace({}, { immediate: true });
                 }
             } else {
                 let fullResponse = "";
@@ -693,12 +821,19 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
 
     const handleSend = () => {
         if ((!input.trim() && imageAttachments.length === 0) || isSending) return;
-        const userMsg = input.trim();
+        
+        let userMsg = input.trim();
+        if (quotedMessage) {
+            const roleLabel = quotedMessage.role === 'user' ? '用户' : 'AI';
+            userMsg = `> 引用 @${roleLabel} 的内容:\n> "${quotedMessage.fullContent}"\n\n${userMsg}`;
+        }
+        
         const attachments = imageAttachments;
         const forcedToolFlow = chatMode === 'agent' ? selectedToolFlow : null;
         setInput('');
         setImageAttachments([]);
         setSelectedToolFlow(null);
+        setQuotedMessage(null);
         setShowSlashMenu(false);
         setShowSaveFlowForm(false);
         handleDirectMessage(userMsg, attachments, forcedToolFlow);
@@ -789,7 +924,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             title="导师模式"
                         >
                             <MessageCircle size={14} />
-                            <span className="text-[11px] font-bold">鑱婂ぉ</span>
+                            <span className="text-[11px] font-bold">聊天</span>
                         </button>
                         <button
                             onClick={() => setChatMode('agent')}
@@ -806,10 +941,34 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
 
                     <div className="w-px h-4 bg-phy-border mx-0.5" />
 
+                    {viewMode === 'chat' && chatMessages.length > 0 && (
+                        <button
+                            onClick={handleCopyEntireChat}
+                            className={`p-1.5 rounded-lg transition-all ${copiedConversation ? 'bg-emerald-500/10 text-emerald-400' : 'hover:bg-phy-glassHeavy text-phy-muted hover:text-phy-text'}`}
+                            title="复制整段对话"
+                        >
+                            {copiedConversation ? <Check size={18} /> : <Copy size={18} />}
+                        </button>
+                    )}
+
+                    {viewMode === 'chat' && chatMessages.length > 1 && (
+                        <button
+                            onClick={() => {
+                                if (confirm('确定要清空当前对话，开始新对话吗？')) {
+                                    createNewChatSession();
+                                }
+                            }}
+                            className="p-1.5 hover:bg-phy-glassHeavy rounded-lg text-phy-muted hover:text-phy-text transition-colors"
+                            title="新对话"
+                        >
+                            <Plus size={18} />
+                        </button>
+                    )}
+
                     <button
                         onClick={() => setViewMode(prev => prev === 'chat' ? 'history' : 'chat')}
                         className={`p-1.5 rounded-lg transition-colors ${viewMode === 'history' ? 'bg-phy-accentGlass text-phy-accent' : 'hover:bg-phy-glassHeavy text-phy-muted'}`}
-                        title="瀵硅瘽鍘嗗彶"
+                        title="对话历史"
                     >
                         <History size={18} />
                     </button>
@@ -935,22 +1094,87 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
 
                         {chatMessages.map((msg, idx) => (
                             <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-phy-glassHeavy text-phy-accent border border-phy-border`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-phy-glassHeavy text-phy-accent border border-phy-border shadow-sm`}>
                                     {msg.role === 'user' ? <User size={14} /> :
                                         chatMode === 'agent' ? <Zap size={14} /> : <Bot size={14} />}
                                 </div>
-                                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                                    ? 'bg-phy-accent text-white rounded-br-none shadow-sm shadow-phy-accent/20 border border-phy-accentHover'
-                                    : 'glass-panel text-phy-text rounded-bl-none'
+                                
+                                <div className="relative group max-w-[85%]">
+                                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed transition-all duration-200 border ${
+                                        msg.role === 'user'
+                                            ? 'bg-phy-accent text-white rounded-br-none shadow-sm shadow-phy-accent/15 border-phy-accentHover/80 hover:brightness-105'
+                                            : 'bg-gradient-to-br from-phy-glassHeavy/50 via-phy-glass/40 to-phy-glassHeavy/20 backdrop-blur-lg text-phy-text rounded-bl-none border-phy-border/80 shadow-inner hover:border-phy-accent/30 hover:shadow-md'
                                     }`}>
-                                    {msg.role === 'user' ? (
-                                        msg.content
-                                    ) : (
-                                        <SharedMarkdown
-                                            content={msg.content}
-                                            className="break-words"
-                                        />
-                                    )}
+                                        {msg.role === 'user' ? (
+                                            msg.content
+                                        ) : (
+                                            <SharedMarkdown
+                                                content={msg.content}
+                                                className="break-words"
+                                            />
+                                        )}
+                                    </div>
+                                    
+                                    {/* Bubble Hover action overlay panel */}
+                                    <div className={`absolute top-0 -translate-y-1/2 flex items-center gap-1 bg-phy-glassHeavy/90 backdrop-blur-md px-1.5 py-0.5 rounded-lg border border-phy-border shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-150 z-10 ${
+                                        msg.role === 'user' ? 'left-2' : 'right-2'
+                                    }`}>
+                                        {/* Copy Single Message button */}
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                try {
+                                                    await navigator.clipboard.writeText(msg.content);
+                                                    setCopiedMessageIndex(idx);
+                                                    setTimeout(() => setCopiedMessageIndex(null), 1500);
+                                                } catch (e) {
+                                                    console.error(e);
+                                                }
+                                            }}
+                                            className="p-1 hover:bg-phy-glassHover rounded text-phy-muted hover:text-phy-text transition-colors"
+                                            title="复制消息"
+                                        >
+                                            {copiedMessageIndex === idx ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                        </button>
+                                        
+                                        {/* Quote/Reply button (Only for assistant messages) */}
+                                        {msg.role !== 'user' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleQuoteMessage(msg)}
+                                                className="p-1 hover:bg-phy-glassHover rounded text-phy-muted hover:text-phy-text transition-colors"
+                                                title="引用回复"
+                                            >
+                                                <Reply size={12} />
+                                            </button>
+                                        )}
+                                        
+                                        {/* Speak/TTS button (Only for assistant messages) */}
+                                        {msg.role !== 'user' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSpeakMessage(msg.content, idx)}
+                                                className="p-1 hover:bg-phy-glassHover rounded text-phy-muted hover:text-phy-text transition-colors"
+                                                title={speakingMessageIndex === idx ? "停止朗读" : "语音朗读"}
+                                            >
+                                                {speakingMessageIndex === idx ? (
+                                                    <VolumeX size={12} className="text-phy-accent animate-pulse" />
+                                                ) : (
+                                                    <Volume2 size={12} />
+                                                )}
+                                            </button>
+                                        )}
+                                        
+                                        {/* Delete message button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteMessage(idx)}
+                                            className="p-1 hover:bg-phy-glassHover hover:text-red-400 rounded text-phy-muted transition-colors"
+                                            title="删除消息"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -1155,6 +1379,22 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                             </div>
                         )}
                     </div>
+
+                    {/* Floating Scroll Snapper */}
+                    {showScrollBottomBtn && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                scrollToBottom('smooth');
+                                autoScrollEnabledRef.current = true;
+                                setShowScrollBottomBtn(false);
+                            }}
+                            className="absolute bottom-24 right-6 z-40 p-2.5 rounded-full bg-phy-accent text-white shadow-lg shadow-phy-accent/30 hover:scale-110 active:scale-95 transition-all flex items-center justify-center border border-white/20 hover:brightness-110 animate-bounce"
+                            title="回到最新消息"
+                        >
+                            <ArrowDown size={16} />
+                        </button>
+                    )}
 
                     {/* Input Area */}
                     <div
@@ -1365,6 +1605,26 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
                                         >×</button>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* Quote Preview Block */}
+                        {quotedMessage && (
+                            <div className="mb-2 p-2 rounded-xl bg-phy-glassHeavy border border-phy-border flex items-start justify-between gap-2 text-xs text-phy-muted animate-fade-in">
+                                <div className="min-w-0 flex-1 flex items-start gap-1.5">
+                                    <Reply size={14} className="mt-0.5 shrink-0 text-phy-accent" />
+                                    <div className="min-w-0 flex-1">
+                                        <span className="font-bold text-phy-accent">引用 {quotedMessage.role === 'user' ? '用户' : 'AI'}: </span>
+                                        <span className="italic truncate block">{quotedMessage.content}</span>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setQuotedMessage(null)}
+                                    className="p-1 hover:bg-phy-glassHover rounded-md text-phy-muted hover:text-phy-text"
+                                >
+                                    <X size={12} />
+                                </button>
                             </div>
                         )}
 

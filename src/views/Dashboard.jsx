@@ -1,12 +1,11 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Upload, CheckCircle, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X, Play, Route, CheckSquare, Circle } from 'lucide-react';
+import { Upload, CheckCircle, Sparkles, BookOpen, ImageIcon, Loader2, BookMarked, History as HistoryIcon, Trash2, Settings, Download, X, Play, Route } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import UserGuideModal from '../components/UserGuideModal';
 import StudyHeatmap from '../components/StudyHeatmap';
 import DailySummaryCard from '../components/DailySummaryCard';
-import { getHighlightsByDate, getFlashcards, getNotes, getHistory, deleteHighlight, getChatSessions, getDailyPlan, saveDailyPlan } from '../services/db';
-import { generateLearningFlowInsight, generateStoryComic, COMIC_STYLES } from '../services/ai';
-import { buildLearningFlowDraft, collectLearningFlowProfile, getLocalDateKey, mergeLearningFlowInsight } from '../utils/learningFlow';
+import { getHighlightsByDate, getFlashcards, getNotes, getHistory, deleteHighlight, getChatSessions } from '../services/db';
+import { generateStoryComic, COMIC_STYLES } from '../services/ai';
 import { Skeleton } from '../components/SkeletonLoader';
 
 const Dashboard = ({ onNavigate }) => {
@@ -27,8 +26,6 @@ const Dashboard = ({ onNavigate }) => {
     const [showHighlightManager, setShowHighlightManager] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [dueCount, setDueCount] = useState(0);
-    const [learningFlow, setLearningFlow] = useState(null);
-    const [isGeneratingFlow, setIsGeneratingFlow] = useState(false);
 
     // Comic generation options
     const [showComicSettings, setShowComicSettings] = useState(false);
@@ -126,64 +123,6 @@ const Dashboard = ({ onNavigate }) => {
         load();
     }, []);
 
-    useEffect(() => {
-        const loadLearningFlow = async () => {
-            try {
-                const plan = await getDailyPlan(getLocalDateKey());
-                if (plan?.version === 'learning-flow-v1') {
-                    setLearningFlow(plan);
-                }
-            } catch (e) {
-                console.error('Learning flow loading error:', e);
-            }
-        };
-        loadLearningFlow();
-    }, []);
-
-    const persistLearningFlow = async (plan) => {
-        setLearningFlow(plan);
-        await saveDailyPlan(plan.date || getLocalDateKey(), plan);
-    };
-
-    const handleGenerateLearningFlow = async () => {
-        setIsGeneratingFlow(true);
-        try {
-            const profile = await collectLearningFlowProfile();
-            const draft = buildLearningFlowDraft(profile);
-            const insight = await generateLearningFlowInsight(profile, draft, settings);
-            const plan = mergeLearningFlowInsight(draft, insight);
-            await persistLearningFlow(plan);
-        } catch (e) {
-            console.error('Learning flow generation failed:', e);
-            alert('学习流生成失败：' + e.message);
-        } finally {
-            setIsGeneratingFlow(false);
-        }
-    };
-
-    const updateLearningNodeStatus = async (nodeId, status) => {
-        if (!learningFlow) return;
-        const next = {
-            ...learningFlow,
-            updatedAt: Date.now(),
-            nodes: (learningFlow.nodes || []).map((node) => (
-                node.id === nodeId ? { ...node, status } : node
-            ))
-        };
-        await persistLearningFlow(next);
-    };
-
-    const handleLearningNodeAction = async (node) => {
-        if (!node) return;
-        if (node.type === 'flashcard' && node.params?.flashcardStartupState) {
-            setFlashcardStartupState(node.params.flashcardStartupState);
-        }
-        await updateLearningNodeStatus(node.id, 'active');
-        if (node.targetView) {
-            onNavigate({ view: node.targetView, params: node.params || {} });
-        }
-    };
-
     const handleGenerateComic = async () => {
         if (!todayHighlights.length) {
             alert('今日暂无标记内容。请先在各模块中标记一些重点内容！');
@@ -234,10 +173,6 @@ const Dashboard = ({ onNavigate }) => {
         }
     };
 
-    const completedFlowNodes = learningFlow?.nodes?.filter((node) => node.status === 'done').length || 0;
-    const totalFlowNodes = learningFlow?.nodes?.length || 0;
-    const flowProgress = totalFlowNodes ? Math.round((completedFlowNodes / totalFlowNodes) * 100) : 0;
-
     return (
         <div className="space-y-6 animate-fade-in pb-10 relative">
             {showGuide && <UserGuideModal onClose={() => setShowGuide(false)} />}
@@ -285,109 +220,15 @@ const Dashboard = ({ onNavigate }) => {
                             <BookOpen size={18} strokeWidth={2.5} />
                             使用手册
                         </button>
+                        <button
+                            onClick={() => onNavigate('flow')}
+                            className="bg-blue-600/20 backdrop-blur text-white border border-white/20 px-5 py-3 sm:px-6 sm:py-3.5 rounded-full font-bold text-sm hover:bg-blue-600/35 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Route size={18} strokeWidth={2.5} />
+                            学习流画布
+                        </button>
                     </div>
                 </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-emerald-950 via-slate-950 to-cyan-950 rounded-[2rem] border border-emerald-400/20 p-5 md:p-7 shadow-xl shadow-emerald-500/10 relative overflow-hidden">
-                <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-emerald-400/10 blur-3xl pointer-events-none"></div>
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 relative z-10">
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-emerald-200 text-xs font-black uppercase tracking-[0.2em] mb-2">
-                            <Route size={16} />
-                            Learning Line V1
-                        </div>
-                        <h2 className="text-xl md:text-2xl font-black text-white">
-                            {learningFlow?.title || '一线学习流'}
-                        </h2>
-                        <p className="text-sm text-emerald-100/75 mt-2 leading-relaxed max-w-3xl">
-                            {learningFlow?.summary || '把闪卡、阅读、翻译、写作和笔记串成一条今日路线。先生成，再按节点推进。'}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-emerald-100/70">
-                            <span>进度 {completedFlowNodes}/{totalFlowNodes || 5}</span>
-                            <span>预计 {learningFlow?.estimatedMinutes || 45} 分钟</span>
-                            {learningFlow?.sourceDate && <span>基于 {learningFlow.sourceDate}</span>}
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
-                        <button
-                            onClick={() => onNavigate?.('flow')}
-                            className="px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-cyan-400/15 hover:bg-cyan-400/25 text-cyan-100 border border-cyan-300/20"
-                        >
-                            <Route size={16} />
-                            打开画布
-                        </button>
-                        <button
-                            onClick={handleGenerateLearningFlow}
-                            disabled={isGeneratingFlow}
-                            className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${isGeneratingFlow ? 'bg-slate-700 text-phy-muted' : 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300 shadow-lg shadow-emerald-500/20'}`}
-                        >
-                            {isGeneratingFlow ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                            {learningFlow ? '重新生成' : '生成今日学习流'}
-                        </button>
-                        {learningFlow && (
-                            <button
-                                onClick={() => {
-                                    const firstPending = learningFlow.nodes?.find((node) => node.status !== 'done') || learningFlow.nodes?.[0];
-                                    handleLearningNodeAction(firstPending);
-                                }}
-                                className="px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white border border-white/10"
-                            >
-                                <Play size={16} />
-                                继续路线
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {learningFlow ? (
-                    <div className="relative z-10 mt-5">
-                        <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-4">
-                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-300 to-cyan-300 transition-all" style={{ width: `${flowProgress}%` }}></div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                            {(learningFlow.nodes || []).map((node, index) => {
-                                const isDone = node.status === 'done';
-                                const isActive = node.status === 'active';
-                                return (
-                                    <div
-                                        key={node.id}
-                                        className={`rounded-2xl border p-4 bg-white/[0.04] ${isDone ? 'border-emerald-300/40' : isActive ? 'border-cyan-300/50' : 'border-white/10'}`}
-                                    >
-                                        <div className="flex items-start justify-between gap-2 mb-3">
-                                            <div className="w-8 h-8 rounded-xl bg-white/10 text-white flex items-center justify-center text-xs font-black">
-                                                {index + 1}
-                                            </div>
-                                            <button
-                                                onClick={() => updateLearningNodeStatus(node.id, isDone ? 'pending' : 'done')}
-                                                className={`p-1.5 rounded-lg transition-colors ${isDone ? 'text-emerald-300 bg-emerald-400/10' : 'text-white/50 hover:text-white hover:bg-white/10'}`}
-                                                title={isDone ? '取消完成' : '标记完成'}
-                                            >
-                                                {isDone ? <CheckSquare size={16} /> : <Circle size={16} />}
-                                            </button>
-                                        </div>
-                                        <div className="text-sm font-black text-white leading-snug min-h-[40px]">{node.title}</div>
-                                        <div className="text-xs text-emerald-100/65 mt-2 leading-relaxed line-clamp-3">{node.description}</div>
-                                        <div className="flex items-center justify-between gap-2 mt-4">
-                                            <span className="text-[11px] text-emerald-100/50">{node.estimatedMinutes || 8} 分钟</span>
-                                            <button
-                                                onClick={() => handleLearningNodeAction(node)}
-                                                className="px-3 py-1.5 rounded-lg bg-emerald-400/15 hover:bg-emerald-400/25 text-emerald-200 text-xs font-bold"
-                                            >
-                                                {node.actionLabel || '开始'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="relative z-10 mt-5 rounded-2xl border border-dashed border-emerald-300/20 bg-white/[0.03] p-6 text-center text-emerald-100/70 text-sm">
-                        还没有今日学习流。生成后会自动串联复习、阅读、翻译、写作和笔记复盘。
-                    </div>
-                )}
             </div>
 
             {/* ⭐ 2. Code-Based Dynamic Summary Card */}

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     AlertCircle,
     CheckCircle2,
@@ -29,6 +29,7 @@ import {
 import { generateTranslationChallenge, gradeTranslation, checkTranslationComponents } from '../services/ai';
 import { getTodayNotesFolderName } from '../utils/noteFolders';
 import { readTranslationLinkedExamples, normalizeKnowledgeLinkingSettings } from '../utils/knowledgeLinking';
+import { getEffectiveWeaknessScore } from '../utils/flashcardUtils';
 
 const LS_FILTERS = 'translation_history_filters';
 const LS_FEEDBACK_COLLAPSED = 'translation_feedback_collapsed';

@@ -3,7 +3,7 @@ import SplitPane from '../components/SplitPane';
 import { useApp } from '../context/AppContext';
 import {
     PenTool, Save, Sparkles, CheckCircle, AlertCircle, FileText, Trash2, X, Loader2, Layout,
-    ChevronRight, BookOpen, History, ListChecks, Target, GraduationCap, Wand2, Plus, Search, FolderOpen, RotateCcw, PanelLeftClose, PanelLeftOpen,
+    ChevronRight, BookOpen, History, ListChecks, Target, GraduationCap, Wand2, Plus, Search, FolderOpen, RotateCcw, PanelLeftClose, PanelLeftOpen, NotebookPen,
     LayoutList, Columns
 } from 'lucide-react';
 import { saveWriting, getWritings, deleteWriting, getFlashcards, saveFlashcard, getFolders, saveFolder, saveWritingMaterial, getWritingMaterials, deleteWritingMaterial } from '../services/db';
@@ -37,6 +37,7 @@ const WRITER_MATERIAL_LAYOUT_DESKTOP_KEY = 'writer_material_layout_desktop';
 const WRITER_MATERIAL_LAYOUT_MOBILE_KEY = 'writer_material_layout_mobile';
 const CURRENT_WRITING_ID_KEY = 'draft_writer_current_id';
 const WRITER_EDITOR_LAYOUT_KEY = 'writer_editor_layout_mode';
+const WRITER_EXPERIENCE_KEY = 'writer_experience_mode';
 const WRITER_MATERIAL_VOCAB_VIEW_KEY = 'writer_material_vocab_view';
 const WRITER_MATERIAL_INSERT_MODE_KEY = 'writer_material_insert_last_mode';
 const WRITER_LEFT_PANEL_HIDDEN_KEY = 'writer_left_panel_hidden';
@@ -336,6 +337,8 @@ const WriterView = ({ params }) => {
     const [isAssemblingMaterials, setIsAssemblingMaterials] = useState(false);
     const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
+    const [writerExperience, setWriterExperience] = useState(() => localStorage.getItem(WRITER_EXPERIENCE_KEY) || 'notebook');
+    const [analyzeSetupOpen, setAnalyzeSetupOpen] = useState(false);
     const [mobileTab, setMobileTab] = useState('editor');
     const [selection, setSelection] = useState(null);
     const [cursorPos, setCursorPos] = useState(0);
@@ -369,7 +372,6 @@ const WriterView = ({ params }) => {
     const [insertAnchor, setInsertAnchor] = useState({ blockIndex: 0, offset: 0, selectedRange: null });
     const [insertModePreference, setInsertModePreference] = useState(() => localStorage.getItem(WRITER_MATERIAL_INSERT_MODE_KEY) || 'cursor');
     const [vocabView, setVocabView] = useState(() => localStorage.getItem(WRITER_MATERIAL_VOCAB_VIEW_KEY) || 'cards');
-    const [materialQuickActionsOpen, setMaterialQuickActionsOpen] = useState(false);
     const [materialFormAdvancedOpen, setMaterialFormAdvancedOpen] = useState(false);
     const [ammoPicker, setAmmoPicker] = useState({ open: false, items: [] });
     const [lastAiAction, setLastAiAction] = useState(null);
@@ -641,40 +643,6 @@ const WriterView = ({ params }) => {
         }
     };
 
-    const applyVocabularyToSelectedSentence = (item, pair = null) => {
-        const pairs = parseWriterVocabularyPairs(item);
-        const selectedPair = pair || pairs[0] || null;
-        const source = String(selectedPair?.source || '').trim();
-        const target = String(selectedPair?.target || '').trim();
-        if (!target) {
-            toast.error('这条词汇素材没有可用的“原词 -> 替换词”映射');
-            return;
-        }
-        const anchorResolved = resolveAnchorForContent(insertAnchor, content);
-        if (!anchorResolved.selectedRange) {
-            toast.error('请先在写作区选中句子，再应用词汇替换');
-            return;
-        }
-        const selectedText = anchorResolved.blockText.slice(anchorResolved.selectedRange.start, anchorResolved.selectedRange.end);
-        let replaced = selectedText;
-        if (source) {
-            if (!selectedText.toLowerCase().includes(source.toLowerCase())) {
-                toast.error(`当前选中句未包含“${source}”`);
-                return;
-            }
-            replaced = selectedText.replace(new RegExp(escapeWriterRegExp(source), 'gi'), target);
-        } else {
-            replaced = target;
-        }
-        requestInsertPreview(replaced, {
-            label: `词汇替换：${source || '选中句'} -> ${target}`,
-            materialId: item?.id || null,
-            sourceTitle: item?.title || '词汇替换',
-            mode: 'replace_selected_sentence',
-            anchor: insertAnchor
-        });
-    };
-
     const undoLastAiAction = () => {
         if (!lastAiAction?.prevContent) return;
         setContent(lastAiAction.prevContent);
@@ -810,6 +778,7 @@ const WriterView = ({ params }) => {
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_LAYOUT_DESKTOP_KEY, materialPanelMode); }, [materialPanelMode]);
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_LAYOUT_MOBILE_KEY, mobileMaterialSheetOpen ? 'sheet_open' : 'sheet_collapsed'); }, [mobileMaterialSheetOpen]);
     useEffect(() => { localStorage.setItem(WRITER_EDITOR_LAYOUT_KEY, editorLayoutMode); }, [editorLayoutMode]);
+    useEffect(() => { localStorage.setItem(WRITER_EXPERIENCE_KEY, writerExperience); }, [writerExperience]);
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_VOCAB_VIEW_KEY, vocabView); }, [vocabView]);
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_INSERT_MODE_KEY, insertModePreference); }, [insertModePreference]);
     useEffect(() => { localStorage.setItem(WRITER_MATERIAL_TAB_KEY, materialDrawerTab); }, [materialDrawerTab]);
@@ -1527,13 +1496,13 @@ const WriterView = ({ params }) => {
         await deleteWriting(id);
         if (id === currentId) {
             activeDraftIdRef.current = null;
-            setCurrentId(null); 
-            setTitle(''); 
-            setContent(''); 
-            setContentOrigin('manual'); 
-            setIsContentDirty(false); 
-            setOutline(null); 
-            setAnalysis(null); 
+            setCurrentId(null);
+            setTitle('');
+            setContent('');
+            setContentOrigin('manual');
+            setIsContentDirty(false);
+            setOutline(null);
+            setAnalysis(null);
             setExamContext({ ...DEFAULT_EXAM_CONTEXT });
             setWorkflowStep('prompt');
         }
@@ -1642,6 +1611,18 @@ const WriterView = ({ params }) => {
         } finally {
             if (req === analyzeReq.current) setIsAnalyzing(false);
         }
+    };
+
+    const requestAnalyze = () => {
+        if (!content.trim()) {
+            toast.error('请先写一点正文');
+            return;
+        }
+        if (!examContext.prompt?.trim()) {
+            setAnalyzeSetupOpen(true);
+            return;
+        }
+        runAnalyze();
     };
 
     const applyFix = (issue) => {
@@ -1807,8 +1788,19 @@ const WriterView = ({ params }) => {
                 );
             })}
             <button
+                onClick={() => {
+                    setWriterExperience('notebook');
+                    setWorkflowStep('write');
+                    setFocusMode(false);
+                }}
+                className="ml-auto hidden md:inline-flex shrink-0 px-3 py-2 rounded-xl text-xs font-bold border border-[#f08a7e]/35 bg-[#f07167]/10 text-[#f4b0aa] hover:bg-[#f07167]/18 items-center gap-1.5 transition-colors"
+            >
+                <NotebookPen size={13} />
+                返回极简写作
+            </button>
+            <button
                 onClick={toggleWriterLeftPanel}
-                className="ml-auto hidden md:inline-flex shrink-0 px-3 py-2 rounded-xl text-xs font-bold border border-indigo-400/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-200 hover:bg-indigo-500/20 items-center gap-1.5 transition-colors"
+                className="hidden md:inline-flex shrink-0 px-3 py-2 rounded-xl text-xs font-bold border border-indigo-400/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-200 hover:bg-indigo-500/20 items-center gap-1.5 transition-colors"
             >
                 {isWriterLeftPanelHidden ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
                 {isWriterLeftPanelHidden ? '显示工坊' : '隐藏工坊'}
@@ -1982,8 +1974,8 @@ const WriterView = ({ params }) => {
                             setWorkflowStep('write');
                         }} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold">进入写作</button>
                     </div>
-                </>
-            )}
+                    </>
+                )}
         </div>
     );
 
@@ -2100,8 +2092,8 @@ const WriterView = ({ params }) => {
                             setWorkflowStep('write');
                         }} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold">进入写作</button>
                     </div>
-                </>
-            )}
+                    </>
+                )}
         </div>
     );
 
@@ -2128,6 +2120,28 @@ const WriterView = ({ params }) => {
                 }
                 : null
         });
+    };
+    const syncNotebookAnchor = (startOffset, endOffset, fullTextValue = content) => {
+        const fullText = String(fullTextValue || '');
+        const safeStart = clamp(Number(startOffset) || 0, 0, fullText.length);
+        const safeEnd = clamp(Number(endOffset) || 0, 0, fullText.length);
+        const before = fullText.slice(0, safeStart);
+        const blocksBefore = before.split(/\n\s*\n/);
+        const blockIndex = Math.max(0, blocksBefore.length - 1);
+        const blockOffset = blocksBefore[blockIndex]?.length || 0;
+        const selectedText = fullText.slice(safeStart, safeEnd);
+        const sameBlockSelection = safeEnd > safeStart && !/\n\s*\n/.test(selectedText);
+        setCursorPos(safeStart);
+        setInsertAnchor({
+            blockIndex,
+            offset: blockOffset,
+            selectedRange: sameBlockSelection
+                ? { start: blockOffset, end: blockOffset + selectedText.length, text: selectedText }
+                : null
+        });
+        setSelection(safeEnd > safeStart && selectedText.trim().length >= 2
+            ? { text: selectedText.trim(), start: safeStart, end: safeEnd, blockIndex }
+            : null);
     };
     const updateParagraphFromEditor = (blockIndex, rawText) => {
         const parts = splitParagraphs(content);
@@ -2252,6 +2266,87 @@ const WriterView = ({ params }) => {
         setMobileMaterialSheetHeight(64);
     };
 
+    const NotebookWritePane = (
+        <div className="relative h-full min-h-0 flex flex-col bg-[#17161d]">
+            <div className="shrink-0 border-b border-[#2b2935] bg-[#1c1b24]/95 px-4 md:px-6 py-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="给这篇作文起个标题"
+                        className="min-w-0 flex-1 bg-transparent text-xl md:text-2xl font-black text-[#eee9e4] outline-none placeholder:text-[#8f8795]"
+                    />
+                    <div className="px-2.5 py-1 rounded-lg border border-[#34313f] bg-[#23212c] text-xs font-bold text-[#aaa2ad]">
+                        {wordCount} / {wordTarget} 词
+                    </div>
+                    <button onClick={saveDraft} disabled={isSaving} className="px-3 py-2 rounded-lg border border-[#34313f] bg-[#23212c] text-[#eee9e4] text-xs font-bold hover:border-[#f08a7e]/55 hover:bg-[#292733] disabled:opacity-60">
+                        {isSaving ? '保存中' : '保存'}
+                    </button>
+                    <button onClick={() => { setEditorLayoutMode('merged'); setWriterExperience('guided'); setWorkflowStep('write'); }} className="px-3 py-2 rounded-lg border border-[#34313f] bg-[#23212c] text-[#aaa2ad] hover:border-[#f08a7e]/55 hover:text-[#f4b0aa] text-xs font-bold">
+                        高级流程
+                    </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <label className="h-[34px] px-3 rounded-lg bg-[#23212c] border border-[#34313f] text-xs font-bold text-[#eee9e4] flex items-center gap-2">
+                        <span className="text-phy-muted">诊断模式</span>
+                        <select
+                            value={analysisMode}
+                            onChange={(e) => setAnalysisMode(e.target.value)}
+                            className="bg-transparent outline-none cursor-pointer"
+                            aria-label="诊断模式"
+                        >
+                            {ANALYSIS_MODE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <button onClick={openMaterialsPanel} className="px-3 py-2 rounded-lg border border-[#34313f] bg-[#23212c] text-[#eee9e4] text-xs font-bold hover:border-[#f08a7e]/55 hover:bg-[#292733] flex items-center gap-1.5">
+                        <FolderOpen size={13} /> 素材
+                    </button>
+                    <button onClick={assembleAmmoPack} disabled={isAssemblingMaterials} className="px-3 py-2 rounded-lg border border-[#43d6b5]/30 bg-[#16312d] text-[#8debd4] text-xs font-bold hover:bg-[#1d3d38] disabled:opacity-60 flex items-center gap-1.5">
+                        {isAssemblingMaterials ? <Loader2 size={13} className="animate-spin" /> : <ListChecks size={13} />} AI 组装
+                    </button>
+                    {lastAiAction ? (
+                        <button onClick={undoLastAiAction} className="px-3 py-2 rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-200 text-xs font-bold hover:bg-rose-500/20 flex items-center gap-1.5">
+                            <RotateCcw size={13} /> 撤销 AI 修改
+                        </button>
+                    ) : null}
+                    <button onClick={requestAnalyze} disabled={isAnalyzing} className="ml-auto px-4 py-2 rounded-lg bg-[#f07167] hover:bg-[#ff8075] text-[#211619] text-xs font-black disabled:opacity-60 shadow-lg shadow-[#f07167]/20 flex items-center gap-1.5">
+                        {isAnalyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {isAnalyzing ? '诊断中' : 'AI 诊断'}
+                    </button>
+                </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden p-3 md:p-6 pb-24 md:pb-6">
+                <textarea
+                    value={content}
+                    onChange={(e) => {
+                        setContent(e.target.value);
+                        setContentOrigin('manual');
+                        setIsContentDirty(true);
+                        setAutoSaveState('idle');
+                        syncNotebookAnchor(e.target.selectionStart || 0, e.target.selectionEnd || 0, e.target.value);
+                    }}
+                    onSelect={(e) => syncNotebookAnchor(e.target.selectionStart || 0, e.target.selectionEnd || 0, e.target.value)}
+                    onKeyUp={(e) => syncNotebookAnchor(e.target.selectionStart || 0, e.target.selectionEnd || 0, e.target.value)}
+                    onClick={(e) => syncNotebookAnchor(e.target.selectionStart || 0, e.target.selectionEnd || 0, e.target.value)}
+                    placeholder="直接开始写整篇文章。题目和要求可以稍后诊断前再补。"
+                    spellCheck="false"
+                    className="w-full h-full resize-none rounded-2xl border border-[#34313f] bg-[#1f1d27] px-4 md:px-7 py-5 md:py-7 text-lg md:text-xl leading-loose font-serif text-[#eee9e4] placeholder:text-[#756f7b] outline-none focus:border-[#f08a7e]/65 focus:bg-[#24222d] custom-scrollbar shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                />
+            </div>
+            <div className="md:hidden absolute bottom-0 left-0 right-0 border-t border-[#2b2935] bg-[#1c1b24]/95 backdrop-blur-3xl px-3 py-2 flex items-center gap-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
+                <button onClick={openMaterialsPanel} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95">素材</button>
+                <button onClick={assembleAmmoPack} disabled={isAssemblingMaterials} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 disabled:opacity-60 active:scale-95">
+                    {isAssemblingMaterials ? '组装中' : 'AI 组装'}
+                </button>
+                <button onClick={requestAnalyze} disabled={isAnalyzing} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold bg-[#f07167] text-[#211619] disabled:opacity-60 active:scale-95">
+                    {isAnalyzing ? '诊断中' : '诊断'}
+                </button>
+                <button onClick={saveDraft} className="px-3 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95">保存</button>
+            </div>
+        </div>
+    );
+
     const WritePane = (
         <div className="flex flex-col h-full relative overflow-y-auto custom-scrollbar">
             {!focusMode ? StepNav : null}
@@ -2323,7 +2418,7 @@ const WriterView = ({ params }) => {
                                 撤销
                             </button>
                         ) : null}
-                        <button onClick={runAnalyze} disabled={isAnalyzing} className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 h-[32px] disabled:opacity-60 shadow-lg shadow-indigo-500/20 transition-all">{isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {isAnalyzing ? '诊断中' : '诊断'}</button>
+                        <button onClick={requestAnalyze} disabled={isAnalyzing} className="px-3 py-1 rounded-lg bg-[#f07167] hover:bg-[#ff8075] text-[#211619] text-xs font-bold flex items-center gap-1.5 h-[32px] disabled:opacity-60 shadow-lg shadow-[#f07167]/20 transition-all">{isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {isAnalyzing ? '诊断中' : '诊断'}</button>
                     </div>
                 </div>
             </div>
@@ -2335,8 +2430,8 @@ const WriterView = ({ params }) => {
                         onClick={() => setEditorLayoutMode((v) => (v === 'merged' ? 'split' : 'merged'))}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-phy-glass border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glassHeavy flex items-center gap-1.5 transition-colors"
                     >
-                        {editorLayoutMode === 'merged' ? <LayoutList size={12} /> : <Columns size={12} />}
-                        {editorLayoutMode === 'merged' ? '分段查看' : '合并查看'}
+                        {editorLayoutMode === 'merged' ? <Columns size={12} /> : <LayoutList size={12} />}
+                        {editorLayoutMode === 'merged' ? '分段编辑' : '整篇编辑'}
                     </button>
                     <div className="ml-auto" />
                 </div>
@@ -2346,6 +2441,40 @@ const WriterView = ({ params }) => {
                 </div>
             )}
             <div className={`w-full min-h-[420px] p-4 md:p-6 ${focusMode ? 'pt-8 md:pt-10' : ''} pb-28 md:pb-8 space-y-3`}>
+                {editorLayoutMode === 'merged' ? (
+                    <textarea
+                        value={content}
+                        onChange={(e) => {
+                            setContent(e.target.value);
+                            setContentOrigin('manual');
+                            setIsContentDirty(true);
+                            setAutoSaveState('idle');
+                            syncNotebookAnchor(e.target.selectionStart || 0, e.target.selectionEnd || 0, e.target.value);
+                        }}
+                        onSelect={(e) => {
+                            const start = e.target.selectionStart || 0;
+                            const end = e.target.selectionEnd || 0;
+                            setCursorPos(start);
+                            syncNotebookAnchor(start, end, e.target.value);
+                            const text = String(e.target.value || '').substring(start, end).trim();
+                            setSelection(start !== end && text.length >= 2 ? { text, start, end, blockIndex: insertAnchor.blockIndex } : null);
+                        }}
+                        onKeyUp={(e) => {
+                            const start = e.target.selectionStart || 0;
+                            setCursorPos(start);
+                            syncNotebookAnchor(start, e.target.selectionEnd || 0, e.target.value);
+                        }}
+                        onClick={(e) => {
+                            const start = e.target.selectionStart || 0;
+                            setCursorPos(start);
+                            syncNotebookAnchor(start, e.target.selectionEnd || 0, e.target.value);
+                        }}
+                        placeholder="在这里连续写完整篇文章。需要分段时直接回车空一行。"
+                        spellCheck="false"
+                        className="w-full min-h-[calc(100vh-360px)] md:min-h-[560px] resize-y rounded-2xl border border-[#34313f] bg-[#1f1d27] px-4 md:px-6 py-5 text-base md:text-lg leading-loose font-serif text-[#eee9e4] placeholder:text-[#756f7b] outline-none focus:border-[#f08a7e]/65 focus:bg-[#24222d] custom-scrollbar"
+                    />
+                ) : (
+                    <>
                 {!editorParagraphs.length ? (
                     <button
                         onClick={appendUserParagraph}
@@ -2355,7 +2484,7 @@ const WriterView = ({ params }) => {
                     </button>
                 ) : null}
                 {editorParagraphs.length ? (
-                    <div className={`rounded-xl border border-phy-border ${editorLayoutMode === 'merged' ? 'bg-phy-glass/25 p-3 md:p-4' : 'bg-transparent border-0 p-0 space-y-3'}`}>
+                    <div className="rounded-xl border border-phy-border bg-transparent border-0 p-0 space-y-3">
                         {editorParagraphs.map((p, idx) => {
                             const offset = editorParagraphs
                                 .filter((x) => x.index < p.index)
@@ -2420,6 +2549,8 @@ const WriterView = ({ params }) => {
                 >
                     + 添加新段落（默认我写）
                 </button>
+                    </>
+                )}
             </div>
             <div
                 className="md:hidden absolute bottom-0 left-0 right-0 border-t border-phy-border bg-phy-glassHeavy backdrop-blur-3xl px-3 py-2 flex items-center gap-2"
@@ -2427,7 +2558,7 @@ const WriterView = ({ params }) => {
             >
                 <button onClick={openMaterialsPanel} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95 transition-all">素材</button>
                 <button onClick={assembleAmmoPack} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 active:scale-95 transition-all">组装</button>
-                <button onClick={runAnalyze} disabled={isAnalyzing} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white disabled:opacity-60 active:scale-95 transition-all">
+                <button onClick={requestAnalyze} disabled={isAnalyzing} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold bg-[#f07167] text-[#211619] disabled:opacity-60 active:scale-95 transition-all">
                     {isAnalyzing ? '诊断中' : '诊断'}
                 </button>
                 <button onClick={saveDraft} className="px-3 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95 transition-all">保存</button>
@@ -2436,7 +2567,7 @@ const WriterView = ({ params }) => {
     );
 
     const DiagnosePane = (
-        <div 
+        <div
             className="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4 bg-phy-bg/20"
             onMouseUp={() => captureReadOnlySelection('diagnose')}
             onClick={(e) => { if (window.innerWidth < 768) handleReadOnlyTextTap(e, 'diagnose'); }}
@@ -2740,517 +2871,292 @@ const WriterView = ({ params }) => {
         </div>
     );
 
-    const MaterialQuickPanel = ({ showClose = false, onClose = null, compact = false } = {}) => (
-        <div className={`h-full min-h-0 flex flex-col bg-phy-glassHeavy backdrop-blur-2xl ${isMobile ? 'overflow-y-auto' : ''}`}>
-            <div className="px-4 py-4 border-b border-phy-border bg-gradient-to-br from-indigo-500/5 to-amber-500/5">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                        <FolderOpen size={16} className="text-amber-500 dark:text-amber-300" />
-                    </div>
-                    <div>
-                        <div className="font-black text-phy-text text-sm">写作素材包</div>
-                        <div className="text-[10px] text-phy-muted font-medium">{materials.length} 条已存储</div>
-                    </div>
-                    <button onClick={() => setMaterialManagerModalOpen(true)} className="ml-auto px-2.5 py-1.5 rounded-lg border border-phy-border text-[11px] font-bold text-phy-muted hover:text-phy-text hover:bg-phy-glass transition-colors">管理</button>
-                    {showClose && onClose ? (
-                        <button onClick={onClose} className="p-1.5 rounded-lg text-phy-muted hover:text-rose-500 hover:bg-rose-500/10 transition-colors">
-                            <X size={16} />
-                        </button>
-                    ) : null}
-                </div>
-                <p className="text-[11px] text-phy-muted mt-1">快插入优先：搜索、预览、应用到当前写作位置。</p>
-                <div className="text-[11px] text-phy-muted mt-1">{insertAnchorHint}</div>
-            </div>
+    const ReaderMaterialPanel = ({ showClose = false, onClose = null } = {}) => {
+        const isVocabularyMode = materialCategory === 'vocabulary';
+        const detailMaterial = activeMaterial && normalizeMaterialCategory(activeMaterial.category) !== 'vocabulary'
+            ? activeMaterial
+            : null;
 
-            <div className="px-4 py-3 border-b border-phy-border space-y-3 bg-phy-bg/5">
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="inline-flex rounded-xl border border-phy-border bg-phy-glass p-1">
+        return (
+            <div className="h-full min-h-0 flex flex-col bg-[#181720]">
+                <div className="px-4 py-4 border-b border-[#2b2935] bg-[#1d1b25]">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#f07167]/10 flex items-center justify-center border border-[#f07167]/25">
+                            <FolderOpen size={16} className="text-[#f4a099]" />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="font-black text-[#eee9e4] text-sm">素材笔记本</div>
+                            <div className="text-[10px] text-[#9f98a6] font-medium">{visibleMaterials.length} 条可读素材</div>
+                        </div>
+                        <button
+                            onClick={() => setMaterialManagerModalOpen(true)}
+                            className="ml-auto px-2.5 py-1.5 rounded-lg border border-[#363340] text-[11px] font-bold text-[#b5aeba] hover:text-[#eee9e4] hover:bg-[#25232d] transition-colors"
+                        >
+                            管理
+                        </button>
+                        {showClose && onClose ? (
+                            <button onClick={onClose} className="p-1.5 rounded-lg text-[#9f98a6] hover:text-[#f4a099] hover:bg-[#f07167]/10 transition-colors">
+                                <X size={16} />
+                            </button>
+                        ) : null}
+                    </div>
+                    <p className="text-[11px] text-[#9f98a6] mt-2 leading-5">
+                        像翻笔记一样阅读模板、替换表达、使用场景和误用提醒。这里不再处理插入动作。
+                    </p>
+                </div>
+
+                <div className="px-4 py-3 border-b border-[#2b2935] space-y-3 bg-[#181720]">
+                    <div className="relative">
+                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#817989]" />
+                        <input
+                            value={materialQuery}
+                            onChange={(e) => setMaterialQuery(e.target.value)}
+                            placeholder="搜索标题、内容、主题或标签"
+                            className="w-full pl-8 pr-3 py-2 rounded-lg bg-[#201e28] border border-[#34313f] text-sm text-[#eee9e4] placeholder:text-[#756f7b] outline-none focus:border-[#f08a7e]/60"
+                        />
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                        <button
+                            onClick={() => setMaterialCategory('all')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${materialCategory === 'all' ? 'bg-[#f07167] text-[#211619] border-[#f07167]' : 'bg-[#201e28] text-[#aaa2ad] border-[#34313f] hover:text-[#eee9e4]'}`}
+                        >
+                            全部 {visibleMaterials.length}
+                        </button>
+                        {WRITING_MATERIAL_CATEGORIES.map((c) => (
+                            <button
+                                key={c.value}
+                                onClick={() => setMaterialCategory(c.value)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${materialCategory === c.value ? 'bg-[#f07167] text-[#211619] border-[#f07167]' : 'bg-[#201e28] text-[#aaa2ad] border-[#34313f] hover:text-[#eee9e4]'}`}
+                            >
+                                {c.label} {categoryCounts.get(c.value) || 0}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             onClick={() => setMaterialDrawerTab('all')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'all' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${materialDrawerTab === 'all' ? 'border-[#f08a7e]/45 bg-[#f07167]/12 text-[#f4b0aa]' : 'border-[#34313f] bg-[#201e28] text-[#9f98a6]'}`}
                         >
-                            全部素材
+                            全部来源
                         </button>
                         <button
                             onClick={() => setMaterialDrawerTab('deep_note')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${materialDrawerTab === 'deep_note' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${materialDrawerTab === 'deep_note' ? 'border-[#43d6b5]/35 bg-[#16312d] text-[#8debd4]' : 'border-[#34313f] bg-[#201e28] text-[#9f98a6]'}`}
                         >
-                            深度笔记 ({deepNoteMaterials.length})
+                            深度笔记 {deepNoteMaterials.length}
                         </button>
+                        {hiddenSourceIds.length ? (
+                            <button onClick={clearHiddenSourceMaterials} className="ml-auto text-[11px] font-bold text-[#f4b0aa]">
+                                恢复隐藏 {hiddenSourceIds.length}
+                            </button>
+                        ) : null}
                     </div>
-                    {vocabularyMaterials.length && showVocabularyWorkbench ? (
-                        <div className="ml-auto px-2.5 py-1 rounded-lg border border-cyan-400/25 bg-cyan-500/10 text-[11px] font-bold text-cyan-100">
-                            词汇表格 · {vocabularyRows.length} 组
-                        </div>
-                    ) : null}
                 </div>
 
-                <div className="relative">
-                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-phy-muted" />
-                    <input
-                        value={materialQuery}
-                        onChange={(e) => setMaterialQuery(e.target.value)}
-                        placeholder="搜索标题 / 内容 / 标签"
-                        className="w-full pl-8 pr-3 py-2 rounded-lg bg-phy-bg border border-phy-border text-sm text-phy-text"
-                    />
-                </div>
-
-                {hiddenSourceIds.length ? (
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-2.5 py-1.5">
-                        <div className="text-[11px] text-amber-200">
-                            已隐藏 {hiddenSourceIds.length} 条深度笔记素材
-                        </div>
-                        <button
-                            onClick={clearHiddenSourceMaterials}
-                            className="px-2 py-0.5 rounded-md border border-amber-300/30 text-[11px] font-bold text-amber-100 hover:bg-amber-400/10"
-                        >
-                            恢复全部
-                        </button>
-                    </div>
-                ) : null}
-
-                <div className="flex flex-wrap gap-1.5">
-                    <button
-                        onClick={() => setMaterialCategory('all')}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
-                    >
-                        全部 ({visibleMaterials.length})
-                    </button>
-                    {WRITING_MATERIAL_CATEGORIES.map((c) => (
-                        <button
-                            key={c.value}
-                            onClick={() => setMaterialCategory(c.value)}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${materialCategory === c.value ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-phy-glass text-phy-muted border-phy-border'}`}
-                        >
-                            {c.label} ({categoryCounts.get(c.value) || 0})
-                        </button>
-                    ))}
-                </div>
-
-                <div className="rounded-xl border border-phy-border bg-phy-glass/60 p-2">
-                    <button
-                        onClick={() => setMaterialQuickActionsOpen((v) => !v)}
-                        className="w-full flex items-center justify-between text-xs font-bold text-phy-muted hover:text-phy-text"
-                    >
-                        <span>快捷动作（次级）</span>
-                        <span>{materialQuickActionsOpen ? '收起' : '展开'}</span>
-                    </button>
-                    {materialQuickActionsOpen ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            <button onClick={collectSelectionToMaterial} className="px-3 py-2 rounded-lg border border-amber-400/30 bg-amber-500/10 text-amber-200 text-xs font-bold">
-                                收藏选中
-                            </button>
-                            <button onClick={collectFromDraft} className="px-3 py-2 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">
-                                草稿采集
-                            </button>
-                            <button onClick={assembleAmmoPack} className="px-3 py-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 text-xs font-bold">
-                                一键组装
-                            </button>
-                            <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">
-                                打开管理
-                            </button>
-                        </div>
-                    ) : null}
-                </div>
-            </div>
-
-            <div className={`flex-1 min-h-0 grid grid-cols-1 ${isMobile ? 'h-auto' : ''}`}>
-                <div className={`${showVocabularyWorkbench ? 'hidden' : isMobile ? 'pb-24' : 'overflow-y-auto custom-scrollbar'} p-3 space-y-2`}>
-                    {drawerMaterials.map((item) => {
-                        const itemCategory = normalizeMaterialCategory(item.category);
-                        const vocabPairsPreview = itemCategory === 'vocabulary' ? parseWriterVocabularyPairs(item) : [];
-                        const sourceKey = getMaterialSourceKey(item);
-                        const isDeepNoteSource = item?.source === 'deep_note';
-                        const isPinnedSource = isDeepNoteSource && sourceKey ? pinnedSourceIds.includes(sourceKey) : false;
-                        const listHint = item.recommendationReason
-                            || item.topic
-                            || (itemCategory === 'vocabulary' && vocabPairsPreview.length ? `${vocabPairsPreview[0].source} -> ${vocabPairsPreview[0].target}` : '')
-                            || (isDeepNoteSource ? '来自深度笔记，点击查看详情' : '点击查看详情');
-                        const isActiveMaterial = activeMaterialId === item.id;
-                        return (
-                            <div
-                                key={item.id}
-                                className={`w-full rounded-xl border p-2.5 transition ${isActiveMaterial ? 'border-indigo-400/40 bg-indigo-500/10' : 'border-phy-border bg-phy-glass hover:border-phy-borderHover'}`}
-                            >
-                                <button
-                                    onClick={() => {
-                                        if (itemCategory === 'vocabulary') {
-                                            setMaterialCategory('vocabulary');
-                                            handleEditMaterial(item);
-                                            return;
-                                        }
-                                        setActiveMaterialId(item.id);
-                                    }}
-                                    className="w-full text-left"
-                                >
-                                    <div className="text-sm font-bold text-phy-text truncate">{item.title}</div>
-                                    <div className="text-[10px] text-phy-muted mt-1 flex items-center gap-1.5">
-                                        <span>{WRITING_MATERIAL_CATEGORY_LABELS[item.category] || item.category}</span>
-                                        {item.topic ? <span>· {item.topic}</span> : null}
-                                        {isDeepNoteSource ? (
-                                            <span className="px-1.5 py-0.5 rounded border border-emerald-400/25 bg-emerald-500/10 text-emerald-200">深度笔记</span>
-                                        ) : null}
-                                        {isPinnedSource ? (
-                                            <span className="px-1.5 py-0.5 rounded border border-amber-400/25 bg-amber-500/10 text-amber-200">已固定</span>
-                                        ) : null}
-                                    </div>
-                                    <div className="text-[11px] text-phy-muted mt-1 line-clamp-1">{listHint}</div>
-                                    {isDeepNoteSource && item?.sourceNoteTitle ? (
-                                        <div className="text-[10px] text-phy-muted mt-1 truncate" title={item.sourceNoteTitle}>
-                                            来源：{item.sourceNoteTitle}{item.sourceSection ? ` / ${item.sourceSection}` : ''}
-                                        </div>
-                                    ) : null}
-                                    <div className="mt-2 flex justify-end">
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] border ${isActiveMaterial ? 'border-indigo-400/30 bg-indigo-500/20 text-indigo-100' : 'border-phy-border text-phy-muted'}`}>
-                                            {itemCategory === 'vocabulary' ? '打开词汇表' : (isActiveMaterial ? '当前详情' : '查看详情')}
-                                        </span>
-                                    </div>
-                                </button>
-                                {isDeepNoteSource ? (
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        <button
-                                            onClick={() => togglePinSourceMaterial(item)}
-                                            className={`px-2 py-1 rounded-md text-[10px] border ${isPinnedSource ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-phy-border text-phy-muted hover:text-phy-text'}`}
-                                        >
-                                            {isPinnedSource ? '取消固定' : '固定保留'}
-                                        </button>
-                                        <button
-                                            onClick={() => toggleHideSourceMaterial(item)}
-                                            className="px-2 py-1 rounded-md text-[10px] border border-rose-400/30 bg-rose-500/10 text-rose-200"
-                                        >
-                                            临时隐藏
-                                        </button>
-                                        {item?.sourceNoteId ? (
-                                            <button
-                                                onClick={() => openSourceNote(item)}
-                                                className="px-2 py-1 rounded-md text-[10px] border border-phy-border text-phy-muted hover:text-phy-text"
-                                            >
-                                                回到笔记
-                                            </button>
-                                        ) : null}
-                                    </div>
-                                ) : null}
-                            </div>
-                        );
-                    })}
-                    {!drawerMaterials.length ? (
-                        <div className="rounded-xl border border-dashed border-phy-border p-3 text-xs text-phy-muted text-center">
-                            {materialDrawerTab === 'deep_note'
-                                    ? '暂无深度笔记来源素材'
-                                    : '没有素材'}
-                        </div>
-                    ) : null}
-                </div>
-
-                <div className="min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
-                    {showVocabularyWorkbench ? (
-                        <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-3">
-                            <div className="flex items-center justify-between gap-2 mb-2">
+                {isVocabularyMode ? (
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                        <div className="rounded-2xl border border-[#34313f] bg-[#201e28] overflow-hidden">
+                            <div className="px-3 py-3 border-b border-[#34313f] flex items-center gap-2">
                                 <div>
-                                    <div className="text-sm font-black text-phy-text">词汇替换表</div>
-                                    <div className="text-[11px] text-phy-muted mt-0.5">点击一行查看对比、理由和用法；词汇不直接插入正文</div>
+                                    <div className="text-sm font-black text-[#eee9e4]">词汇替换表</div>
+                                    <div className="text-[11px] text-[#9f98a6] mt-0.5">点一行看对比、理由、例句和误用提醒。</div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="text-[11px] text-cyan-100 rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-2 py-1">
-                                        {vocabularyRows.length} 组表达
-                                    </div>
-                                    <button
-                                        onClick={startNewVocabularyMaterial}
-                                        className="px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold"
-                                    >
-                                        新增词汇
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={startNewVocabularyMaterial}
+                                    className="ml-auto px-2.5 py-1.5 rounded-lg border border-[#43d6b5]/35 bg-[#16312d] text-[#8debd4] text-[11px] font-bold"
+                                >
+                                    新增词汇
+                                </button>
                             </div>
-                            {vocabView === '__legacy_cards' ? (
-                                <div className="grid grid-cols-1 gap-2 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
-                                    {vocabularyMaterials.map((item) => {
-                                        const pairs = parseWriterVocabularyPairs(item);
-                                        const visiblePairs = pairs.slice(0, 6);
-                                        const hiddenCount = Math.max(0, pairs.length - visiblePairs.length);
-                                        return (
-                                            <div key={`vocab-card-${item.id}`} className="rounded-xl border border-phy-border bg-phy-glass p-2.5">
-                                                <div className="text-[11px] text-phy-muted">{item.title || '词汇替换'}</div>
-                                                {item.replaceReason ? (
-                                                    <div className="mt-1 text-xs text-phy-muted line-clamp-2">{item.replaceReason}</div>
-                                                ) : null}
-                                                {visiblePairs.length ? (
-                                                    <div className="mt-2 space-y-1.5">
-                                                        {visiblePairs.map((pair, pairIdx) => (
-                                                            <div key={`${item.id}-pair-card-${pairIdx}`} className="rounded-lg border border-phy-border bg-phy-glass p-2">
-                                                                <div className="flex items-center justify-between gap-2">
-                                                                    <div className="text-xs font-bold text-rose-200 break-all">{pair.source}</div>
-                                                                    <div className="text-[10px] text-phy-muted">{'->'}</div>
-                                                                    <div className="text-xs font-bold text-emerald-200 break-all text-right">{pair.target}</div>
-                                                                </div>
-                                                                <button
-                                                                    onClick={() => applyVocabularyToSelectedSentence(item, pair)}
-                                                                    className="mt-2 w-full px-2 py-1 rounded-md text-[11px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                                                                >
-                                                                    用到当前句
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        {hiddenCount > 0 ? (
-                                                            <div className="text-[11px] text-phy-muted">还有 {hiddenCount} 组映射，点击素材详情可查看全部。</div>
-                                                        ) : null}
-                                                    </div>
-                                                ) : (
-                                                    <div className="mt-2 text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
-                                                        未解析到“原词 → 替换词”映射，请编辑该素材补全映射。
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="max-h-[340px] overflow-auto custom-scrollbar rounded-xl border border-phy-border bg-phy-glass">
-                                    <table className="w-full text-xs text-left">
-                                        <thead className="bg-phy-glassHeavy border-b border-phy-border text-phy-muted">
-                                            <tr>
-                                                <th className="px-2 py-2">材料</th>
-                                                <th className="px-2 py-2">原词</th>
-                                                <th className="px-2 py-2">替换词</th>
-                                                <th className="px-2 py-2">理由</th>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                    <thead className="text-[#9f98a6] bg-[#181720]">
+                                        <tr>
+                                            <th className="px-3 py-2 text-left font-bold">替换前</th>
+                                            <th className="px-3 py-2 text-left font-bold">替换后</th>
+                                            <th className="px-3 py-2 text-left font-bold">为什么更好</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {vocabularyRows.map((row, idx) => (
+                                            <tr
+                                                key={`${row.item.id}-reader-vocab-${idx}`}
+                                                onClick={() => {
+                                                    setActiveMaterialId(row.item.id);
+                                                    handleEditMaterial(row.item);
+                                                }}
+                                                className={`border-t border-[#34313f] cursor-pointer transition ${activeMaterialId === row.item.id ? 'bg-[#16312d]' : 'hover:bg-[#25232d]'}`}
+                                            >
+                                                <td className="px-3 py-2 text-[#f5b4bd] break-words">{row.pair.source || '-'}</td>
+                                                <td className="px-3 py-2 text-[#9cf0d7] break-words">{row.pair.target || '-'}</td>
+                                                <td className="px-3 py-2 text-[#aaa2ad] leading-5">{row.pair.reason || row.item.replaceReason || '-'}</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            {vocabularyRows.map((row) => (
-                                                <tr
-                                                    key={`vocab-row-${row.id}`}
-                                                    onClick={() => {
-                                                        setActiveMaterialId(row.item.id);
-                                                        handleEditMaterial(row.item);
-                                                    }}
-                                                    className={`border-t border-phy-border cursor-pointer transition ${activeMaterialId === row.item.id ? 'bg-cyan-500/10' : 'hover:bg-phy-glassHeavy'}`}
-                                                >
-                                                    <td className="px-2 py-2 text-phy-muted max-w-[180px] truncate" title={row.item.title || '词汇替换'}>{row.item.title || '词汇替换'}</td>
-                                                    <td className="px-2 py-2 text-phy-text">{row.pair.source || '-'}</td>
-                                                    <td className="px-2 py-2 text-emerald-200">{row.pair.target || '-'}</td>
-                                                    <td className="px-2 py-2 text-phy-muted max-w-[240px] truncate">{row.pair.reason || row.item.replaceReason || '-'}</td>
-                                                </tr>
-                                            ))}
-                                            {!vocabularyRows.length ? (
-                                                <tr className="border-t border-phy-border">
-                                                    <td colSpan={4} className="px-3 py-6 text-center text-phy-muted">
-                                                        还没有词汇替换记录，点击右上角“新增词汇”开始整理。
-                                                    </td>
-                                                </tr>
-                                            ) : null}
-                                        </tbody>
-                                    </table>
+                                        ))}
+                                        {!vocabularyRows.length ? (
+                                            <tr className="border-t border-[#34313f]">
+                                                <td colSpan={3} className="px-3 py-8 text-center text-[#9f98a6]">
+                                                    还没有词汇替换记录。
+                                                </td>
+                                            </tr>
+                                        ) : null}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#34313f] bg-[#201e28] p-4">
+                            <div className="mb-3">
+                                <div className="text-sm font-black text-[#eee9e4]">{materialForm.id ? '词汇详情' : '编写词汇详情'}</div>
+                                <div className="text-[11px] text-[#9f98a6] mt-0.5">这里维护对比、理由、例句、用法和误用提醒。</div>
+                            </div>
+                            {normalizeMaterialCategory(materialForm.category) === 'vocabulary' ? (
+                                MaterialManagerForm
+                            ) : (
+                                <div className="rounded-xl border border-dashed border-[#34313f] p-5 text-sm text-[#9f98a6] text-center">
+                                    点击表格中的一行查看详情，或新增一条词汇。
                                 </div>
                             )}
-                            <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-phy-bg/40 p-3">
-                                <div className="flex items-center justify-between gap-2 mb-3">
-                                    <div>
-                                        <div className="text-sm font-black text-phy-text">{materialForm.id ? '编辑词汇详情' : '编写词汇详情'}</div>
-                                        <div className="text-[11px] text-phy-muted mt-0.5">这里维护对比、理由、例句、用法和误用提醒。</div>
-                                    </div>
-                                    <button
-                                        onClick={startNewVocabularyMaterial}
-                                        className="px-2.5 py-1.5 rounded-lg border border-cyan-400/30 text-cyan-100 text-[11px] font-bold hover:bg-cyan-500/10"
-                                    >
-                                        清空新建
-                                    </button>
-                                </div>
-                                {normalizeMaterialCategory(materialForm.category) === 'vocabulary' ? (
-                                    MaterialManagerForm
-                                ) : (
-                                    <div className="rounded-xl border border-dashed border-phy-border p-4 text-sm text-phy-muted text-center">
-                                        点击表格中的一行查看详情，或点击“新增词汇”直接编写。
-                                    </div>
-                                )}
-                            </div>
                         </div>
-                    ) : null}
-
-                    {!showVocabularyWorkbench && activeMaterial && normalizeMaterialCategory(activeMaterial.category) !== 'vocabulary' ? (
-                        <div 
-                            className="rounded-2xl border border-indigo-400/30 bg-indigo-500/10 p-3"
-                            onMouseUp={() => captureReadOnlySelection('material')}
-                            onClick={(e) => { if (window.innerWidth < 768) handleReadOnlyTextTap(e, 'material'); }}
-                            onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault(); }}
-                            style={{ WebkitTouchCallout: 'none' }}
-                        >
-                            {(() => {
-                                const isVocab = normalizeMaterialCategory(activeMaterial.category) === 'vocabulary';
-                                const activeSourceKey = getMaterialSourceKey(activeMaterial);
-                                const activePinned = activeMaterial?.source === 'deep_note' && activeSourceKey
-                                    ? pinnedSourceIds.includes(activeSourceKey)
-                                    : false;
+                    </div>
+                ) : (
+                    <div className={`flex-1 min-h-0 grid grid-cols-1 ${isMobile ? '' : 'lg:grid-cols-[minmax(220px,0.86fr)_minmax(0,1.35fr)]'} overflow-hidden`}>
+                        <div className={`${isMobile ? 'max-h-[38vh]' : 'h-full'} overflow-y-auto custom-scrollbar p-3 border-b lg:border-b-0 lg:border-r border-[#2b2935] space-y-2`}>
+                            {drawerMaterials.map((item) => {
+                                const itemCategory = normalizeMaterialCategory(item.category);
+                                const sourceKey = getMaterialSourceKey(item);
+                                const isDeepNoteSource = item?.source === 'deep_note';
+                                const isPinnedSource = isDeepNoteSource && sourceKey ? pinnedSourceIds.includes(sourceKey) : false;
                                 return (
-                                    <>
-                                        <div className="text-[11px] font-bold text-indigo-200 mb-1">{isVocab ? '词汇详情' : '素材详情'}</div>
-                                        <div className="flex items-start gap-2">
-                                            <div className="flex-1">
-                                                <div className="text-sm font-black text-phy-text">{activeMaterial.title}</div>
-                                                <div className="text-xs text-phy-muted mt-1">
-                                                    {WRITING_MATERIAL_CATEGORY_LABELS[activeMaterial.category] || activeMaterial.category}
-                                                    {activeMaterial.topic ? ` · ${activeMaterial.topic}` : ''}
-                                                </div>
-                                            </div>
-                                            {activeMaterial?.source === 'deep_note' ? (
-                                                <div className="mt-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/5 px-2.5 py-2 space-y-1">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="px-2 py-0.5 rounded-md text-[10px] border border-emerald-400/30 bg-emerald-500/10 text-emerald-200">
-                                                            来自深度笔记
-                                                        </span>
-                                                        {activePinned ? (
-                                                            <span className="px-2 py-0.5 rounded-md text-[10px] border border-amber-400/30 bg-amber-500/10 text-amber-200">
-                                                                已固定
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                                    {activeMaterial?.sourceNoteTitle ? (
-                                                        <div className="text-[11px] text-phy-muted truncate max-w-[300px]" title={activeMaterial.sourceNoteTitle}>
-                                                            笔记：{activeMaterial.sourceNoteTitle}
-                                                            {activeMaterial.sourceSection ? ` / ${activeMaterial.sourceSection}` : ''}
-                                                        </div>
-                                                    ) : null}
-                                                    {activeMaterial?.updatedAt ? (
-                                                        <div className="text-[11px] text-phy-muted">
-                                                            最近同步：{new Date(activeMaterial.updatedAt).toLocaleString()}
-                                                        </div>
-                                                    ) : null}
-                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                        {activeMaterial?.sourceNoteId ? (
-                                                            <button
-                                                                onClick={() => openSourceNote(activeMaterial)}
-                                                                className="px-2 py-0.5 rounded-md border border-phy-border text-[10px] text-phy-muted hover:text-phy-text"
-                                                            >
-                                                                回到笔记
-                                                            </button>
-                                                        ) : null}
-                                                        <button
-                                                            onClick={() => togglePinSourceMaterial(activeMaterial)}
-                                                            className={`px-2 py-0.5 rounded-md border text-[10px] ${activePinned ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-phy-border text-phy-muted hover:text-phy-text'}`}
-                                                        >
-                                                            {activePinned ? '取消固定' : '固定保留'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => toggleHideSourceMaterial(activeMaterial)}
-                                                            className="px-2 py-0.5 rounded-md border border-rose-400/30 bg-rose-500/10 text-[10px] text-rose-200"
-                                                        >
-                                                            临时隐藏
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ) : null}
-                                            <button
-                                                onClick={() => {
-                                                    handleEditMaterial(activeMaterial);
-                                                    setMaterialManagerModalOpen(true);
-                                                }}
-                                                className="px-2 py-1 rounded-md border border-phy-border text-[11px] text-phy-muted hover:text-phy-text"
-                                            >
-                                                管理编辑
-                                            </button>
+                                    <button
+                                        key={item.id}
+                                        onClick={() => {
+                                            if (itemCategory === 'vocabulary') {
+                                                setMaterialCategory('vocabulary');
+                                                handleEditMaterial(item);
+                                                return;
+                                            }
+                                            setActiveMaterialId(item.id);
+                                        }}
+                                        className={`w-full text-left rounded-xl border p-3 transition ${activeMaterialId === item.id ? 'border-[#f08a7e]/45 bg-[#f07167]/10' : 'border-[#34313f] bg-[#201e28] hover:bg-[#25232d]'}`}
+                                    >
+                                        <div className="text-sm font-bold text-[#eee9e4] leading-5 line-clamp-2">{item.title || '未命名素材'}</div>
+                                        <div className="mt-1 text-[10px] text-[#9f98a6] flex flex-wrap items-center gap-1.5">
+                                            <span>{WRITING_MATERIAL_CATEGORY_LABELS[item.category] || item.category}</span>
+                                            {item.topic ? <span>· {item.topic}</span> : null}
+                                            {isDeepNoteSource ? <span className="text-[#8debd4]">深度笔记</span> : null}
+                                            {isPinnedSource ? <span className="text-[#f2c579]">固定</span> : null}
                                         </div>
-                                        {isVocab ? (
-                                            <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5 space-y-2">
-                                                <div className="text-[11px] text-phy-muted">词汇替换映射</div>
-                                                {(() => {
-                                                    const pairs = parseWriterVocabularyPairs(activeMaterial);
-                                                    if (!pairs.length) {
-                                                        return (
-                                                            <div className="text-xs text-amber-200/90 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1.5">
-                                                                该素材未解析到“原词 → 替换词”映射，请编辑后补全。
-                                                            </div>
-                                                        );
-                                                    }
-                                                    return (
-                                                        <div className="max-h-[220px] overflow-auto custom-scrollbar space-y-1.5 pr-1">
-                                                            {pairs.map((pair, idx) => (
-                                                                <div key={`${activeMaterial.id}-pair-${idx}`} className="rounded-lg border border-phy-border bg-phy-glassHeavy p-2">
-                                                                    <div className="flex items-center justify-between gap-2">
-                                                                        <div className="text-xs font-bold text-rose-200 break-all">{pair.source}</div>
-                                                                        <div className="text-[10px] text-phy-muted">{'->'}</div>
-                                                                        <div className="text-xs font-bold text-emerald-200 break-all text-right">{pair.target}</div>
-                                                                    </div>
-                                                                    {(pair.reason || activeMaterial.replaceReason) ? (
-                                                                        <div className="mt-2 text-[11px] text-phy-muted leading-5">
-                                                                            {pair.reason || activeMaterial.replaceReason}
-                                                                        </div>
-                                                                    ) : null}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                })()}
-                                                {activeMaterial.replaceReason ? (
-                                                    <div className="text-xs text-phy-muted">替换理由：{activeMaterial.replaceReason}</div>
-                                                ) : null}
-                                                {activeMaterial.beforeExample ? (
-                                                    <div className="text-xs text-rose-200/90">替换前：{activeMaterial.beforeExample}</div>
-                                                ) : null}
-                                                {activeMaterial.afterExample ? (
-                                                    <div className="text-xs text-emerald-200">替换后：{activeMaterial.afterExample}</div>
-                                                ) : null}
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-phy-text mt-2 whitespace-pre-wrap break-words leading-6">{activeMaterial.content}</div>
-                                        )}
-                                        {activeMaterial.rewrite ? (
-                                            <div className="mt-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-2.5">
-                                                <div className="text-[11px] text-indigo-200 font-bold mb-1">推荐改写版</div>
-                                                <div className="text-sm text-phy-text whitespace-pre-wrap break-words leading-6">{activeMaterial.rewrite}</div>
-                                            </div>
-                                        ) : null}
-                                        {activeMaterial.usage ? (
-                                            <div className="mt-2 rounded-lg border border-phy-border bg-phy-glass p-2.5">
-                                                <div className="text-[11px] text-emerald-300 font-bold mb-1">适用场景</div>
-                                                <div className="text-xs text-phy-muted whitespace-pre-wrap break-words leading-5">{activeMaterial.usage}</div>
-                                            </div>
-                                        ) : null}
-                                        {activeMaterial.caution ? (
-                                            <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 p-2.5">
-                                                <div className="text-[11px] text-amber-200 font-bold mb-1">误用提醒</div>
-                                                <div className="text-xs text-amber-100/90 whitespace-pre-wrap break-words leading-5">{activeMaterial.caution}</div>
-                                            </div>
-                                        ) : null}
-                                        {Array.isArray(activeMaterial.tags) && activeMaterial.tags.length > 0 ? (
-                                            <div className="mt-2 flex flex-wrap gap-1">
-                                                {activeMaterial.tags.slice(0, 8).map((tag) => (
-                                                    <span key={`${activeMaterial.id}-${tag}`} className="px-1.5 py-0.5 rounded-md text-[10px] bg-phy-bg border border-phy-border text-phy-muted">{tag}</span>
-                                                ))}
-                                            </div>
-                                        ) : null}
-                                        {isVocab ? (
-                                            <div className="mt-3 grid grid-cols-2 gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        handleEditMaterial(activeMaterial);
-                                                        setMaterialManagerModalOpen(true);
-                                                    }}
-                                                    className="px-3 py-2 rounded-lg border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 text-xs font-bold"
-                                                >
-                                                    编辑词汇
-                                                </button>
-                                                <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
-                                            </div>
-                                        ) : (
-                                            <div className="mt-3 grid grid-cols-3 gap-2">
-                                                <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.content, '素材正文预览')} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">预览正文</button>
-                                                <button onClick={() => insertMaterialContent(activeMaterial, activeMaterial.rewrite || activeMaterial.content, '素材改写预览')} className="px-3 py-2 rounded-lg border border-indigo-400/30 bg-indigo-500/10 text-indigo-200 text-xs font-bold">预览改写</button>
-                                                <button onClick={() => setMaterialManagerModalOpen(true)} className="px-3 py-2 rounded-lg border border-phy-border text-phy-text text-xs font-bold hover:bg-phy-glass">更多管理</button>
-                                            </div>
-                                        )}
-                                    </>
+                                        <div className="mt-2 text-[11px] text-[#aaa2ad] leading-5 line-clamp-2">
+                                            {item.content || item.rewrite || item.usage || '点击阅读详情'}
+                                        </div>
+                                    </button>
                                 );
-                            })()}
+                            })}
+                            {!drawerMaterials.length ? (
+                                <div className="rounded-xl border border-dashed border-[#34313f] p-5 text-xs text-[#9f98a6] text-center">
+                                    没有匹配的素材。
+                                </div>
+                            ) : null}
                         </div>
-                    ) : (
-                        <div className="rounded-2xl border border-dashed border-phy-border p-5 text-sm text-phy-muted text-center">
-                            左侧选择一条素材查看详情
-                        </div>
-                    )}
 
-                </div>
+                        <div className="h-full min-h-0 overflow-y-auto custom-scrollbar p-4">
+                            {detailMaterial ? (
+                                <article
+                                    className="max-w-3xl mx-auto rounded-2xl border border-[#34313f] bg-[#201e28] p-5 md:p-6"
+                                    onMouseUp={() => captureReadOnlySelection('material')}
+                                    onClick={(e) => { if (window.innerWidth < 768) handleReadOnlyTextTap(e, 'material'); }}
+                                    onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault(); }}
+                                    style={{ WebkitTouchCallout: 'none' }}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[11px] font-bold text-[#f4b0aa] mb-1">素材详情</div>
+                                            <h3 className="text-lg font-black text-[#eee9e4] leading-7">{detailMaterial.title}</h3>
+                                            <div className="text-xs text-[#9f98a6] mt-1">
+                                                {WRITING_MATERIAL_CATEGORY_LABELS[detailMaterial.category] || detailMaterial.category}
+                                                {detailMaterial.topic ? ` · ${detailMaterial.topic}` : ''}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                handleEditMaterial(detailMaterial);
+                                                setMaterialManagerModalOpen(true);
+                                            }}
+                                            className="px-2.5 py-1.5 rounded-lg border border-[#34313f] text-[11px] font-bold text-[#aaa2ad] hover:text-[#eee9e4] hover:bg-[#25232d]"
+                                        >
+                                            编辑
+                                        </button>
+                                    </div>
+
+                                    {detailMaterial?.source === 'deep_note' ? (
+                                        <div className="mt-4 rounded-xl border border-[#43d6b5]/20 bg-[#16312d]/75 p-3 text-xs text-[#9f98a6] space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-[#8debd4] font-bold">来自深度笔记</span>
+                                                {detailMaterial.sourceNoteTitle ? <span className="truncate">{detailMaterial.sourceNoteTitle}</span> : null}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {detailMaterial?.sourceNoteId ? (
+                                                    <button onClick={() => openSourceNote(detailMaterial)} className="px-2 py-1 rounded-md border border-[#34313f] text-[#aaa2ad] hover:text-[#eee9e4]">
+                                                        回到笔记
+                                                    </button>
+                                                ) : null}
+                                                <button onClick={() => togglePinSourceMaterial(detailMaterial)} className="px-2 py-1 rounded-md border border-[#34313f] text-[#aaa2ad] hover:text-[#eee9e4]">
+                                                    {pinnedSourceIds.includes(getMaterialSourceKey(detailMaterial)) ? '取消固定' : '固定保留'}
+                                                </button>
+                                                <button onClick={() => toggleHideSourceMaterial(detailMaterial)} className="px-2 py-1 rounded-md border border-[#f07167]/25 text-[#f4b0aa]">
+                                                    临时隐藏
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    <section className="mt-5">
+                                        <div className="text-[11px] font-bold text-[#9f98a6] mb-2">原始表达 / 模板</div>
+                                        <div className="text-[15px] text-[#eee9e4] whitespace-pre-wrap break-words leading-7">{detailMaterial.content || '暂无正文内容'}</div>
+                                    </section>
+
+                                    {detailMaterial.rewrite ? (
+                                        <section className="mt-5 rounded-xl border border-[#43d6b5]/20 bg-[#16312d]/70 p-3">
+                                            <div className="text-[11px] font-bold text-[#8debd4] mb-2">改写 / 升级表达</div>
+                                            <div className="text-sm text-[#eee9e4] whitespace-pre-wrap break-words leading-7">{detailMaterial.rewrite}</div>
+                                        </section>
+                                    ) : null}
+
+                                    {detailMaterial.usage ? (
+                                        <section className="mt-5 rounded-xl border border-[#34313f] bg-[#181720] p-3">
+                                            <div className="text-[11px] font-bold text-[#f4b0aa] mb-2">适用场景</div>
+                                            <div className="text-sm text-[#bdb6c2] whitespace-pre-wrap break-words leading-6">{detailMaterial.usage}</div>
+                                        </section>
+                                    ) : null}
+
+                                    {detailMaterial.caution ? (
+                                        <section className="mt-5 rounded-xl border border-[#d8a84f]/25 bg-[#332818]/60 p-3">
+                                            <div className="text-[11px] font-bold text-[#f2c579] mb-2">误用提醒</div>
+                                            <div className="text-sm text-[#ead7ad] whitespace-pre-wrap break-words leading-6">{detailMaterial.caution}</div>
+                                        </section>
+                                    ) : null}
+
+                                    {Array.isArray(detailMaterial.tags) && detailMaterial.tags.length > 0 ? (
+                                        <div className="mt-5 flex flex-wrap gap-1.5">
+                                            {detailMaterial.tags.slice(0, 10).map((tag) => (
+                                                <span key={`${detailMaterial.id}-${tag}`} className="px-2 py-0.5 rounded-md text-[10px] bg-[#181720] border border-[#34313f] text-[#9f98a6]">{tag}</span>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                </article>
+                            ) : (
+                                <div className="h-full min-h-[240px] flex items-center justify-center rounded-2xl border border-dashed border-[#34313f] text-sm text-[#9f98a6]">
+                                    从左侧选择一条素材阅读。
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
-        </div>
-    );
+        );
+    };
 
     const MaterialManagerForm = (
         <div className="rounded-2xl border border-phy-border bg-phy-glass p-3 space-y-2">
@@ -3449,7 +3355,7 @@ const WriterView = ({ params }) => {
 
     const DesktopDockedMaterialPanel = materialPanelMode === 'docked' ? (
         <aside className="hidden md:flex shrink-0 w-[560px] min-w-[520px] max-w-[640px] border-l border-phy-border bg-phy-glassHeavy backdrop-blur-2xl">
-            {MaterialQuickPanel({ compact: false, showClose: true, onClose: () => setMaterialPanelMode('hidden') })}
+            {ReaderMaterialPanel({ showClose: true, onClose: () => setMaterialPanelMode('hidden') })}
         </aside>
     ) : null;
 
@@ -3461,14 +3367,14 @@ const WriterView = ({ params }) => {
                     <div className="px-3 pt-2 pb-2 border-b border-phy-border bg-phy-glass" onTouchStart={onMobileSheetTouchStart} onTouchMove={onMobileSheetTouchMove} onTouchEnd={onMobileSheetTouchEnd}>
                         <div className="mx-auto w-10 h-1.5 rounded-full bg-phy-border mb-2" />
                         <div className="flex items-center gap-2">
-                            <div className="text-sm font-black text-phy-text">素材快插入</div>
+                            <div className="text-sm font-black text-phy-text">素材笔记本</div>
                             <div className="text-[11px] text-phy-muted ml-auto">上滑展开 / 下滑收起</div>
                             <button onClick={() => setMaterialManagerModalOpen(true)} className="px-2 py-1 rounded-md border border-phy-border text-[11px] text-phy-text">管理</button>
                             <button onClick={() => setMobileMaterialSheetOpen(false)} className="p-1.5 rounded-lg text-phy-muted hover:text-phy-text hover:bg-phy-glass"><X size={14} /></button>
                         </div>
                     </div>
                     <div className="flex-1 min-h-0">
-                        {MaterialQuickPanel({ compact: true, showClose: false })}
+                        {ReaderMaterialPanel({ showClose: false })}
                     </div>
                 </div>
             </div>
@@ -3477,9 +3383,19 @@ const WriterView = ({ params }) => {
 
     const Main = (
         <div className="h-full min-h-0 flex flex-col bg-transparent">
-            {workflowStep !== 'write' ? StepNav : null}
+            {writerExperience === 'guided' && workflowStep !== 'write' ? StepNav : null}
             <div className="flex-1 min-h-0 overflow-hidden">
-                {workflowStep === 'prompt' ? ImprovedPromptPane : workflowStep === 'outline' ? ImprovedOutlinePane : workflowStep === 'write' ? WritePane : ImprovedDiagnosePane}
+                {writerExperience === 'notebook'
+                    ? (workflowStep === 'diagnose' ? (
+                        <div className="h-full min-h-0 flex flex-col">
+                            <div className="shrink-0 px-4 py-2 border-b border-phy-border bg-phy-glass/40 flex items-center gap-2">
+                                <button onClick={() => setWorkflowStep('write')} className="px-3 py-1.5 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">回到写作</button>
+                                <button onClick={requestAnalyze} disabled={isAnalyzing} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold disabled:opacity-60">{isAnalyzing ? '诊断中' : '重新诊断'}</button>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-hidden">{ImprovedDiagnosePane}</div>
+                        </div>
+                    ) : NotebookWritePane)
+                    : workflowStep === 'prompt' ? ImprovedPromptPane : workflowStep === 'outline' ? ImprovedOutlinePane : workflowStep === 'write' ? WritePane : ImprovedDiagnosePane}
             </div>
         </div>
     );
@@ -3502,6 +3418,49 @@ const WriterView = ({ params }) => {
             </div>
         </div>
     );
+
+    const AnalyzeSetupSheet = analyzeSetupOpen ? (
+        <div className="fixed inset-0 z-[128] flex items-end md:items-center justify-center bg-black/55 backdrop-blur-sm p-3">
+            <div className="w-full max-w-2xl rounded-2xl border border-phy-border bg-phy-glassHeavy shadow-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-phy-border flex items-center gap-2">
+                    <div>
+                        <div className="text-sm font-black text-phy-text">补充诊断要求</div>
+                        <div className="text-xs text-phy-muted mt-0.5">可以现在填题目，也可以直接用默认考试设置分析。</div>
+                    </div>
+                    <button onClick={() => setAnalyzeSetupOpen(false)} className="ml-auto p-1.5 rounded-lg text-phy-muted hover:text-phy-text hover:bg-phy-glass">
+                        <X size={14} />
+                    </button>
+                </div>
+                <div className="p-4 space-y-3">
+                    <textarea
+                        value={examContext.prompt}
+                        onChange={(e) => setExamContext((prev) => ({ ...prev, prompt: e.target.value }))}
+                        rows={4}
+                        placeholder="题目、写作要求、评分重点（可选）"
+                        className="w-full rounded-xl border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text outline-none resize-y"
+                    />
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <select value={examContext.examType} onChange={(e) => setExamContext((prev) => ({ ...prev, examType: e.target.value }))} className="rounded-lg border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text">
+                            {['CET-4', 'CET-6', 'IELTS', 'TOEFL'].map((item) => <option key={item} value={item}>{item}</option>)}
+                        </select>
+                        <select value={examContext.genre} onChange={(e) => setExamContext((prev) => ({ ...prev, genre: e.target.value }))} className="rounded-lg border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text">
+                            {['Argumentative', 'Expository', 'Narrative', 'Email'].map((item) => <option key={item} value={item}>{item}</option>)}
+                        </select>
+                        <input type="number" min="80" max="1200" value={examContext.wordTarget} onChange={(e) => setExamContext((prev) => ({ ...prev, wordTarget: clamp(Number(e.target.value) || 200, 80, 1200) }))} className="rounded-lg border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text" />
+                        <input type="number" min="1" max="15" value={examContext.targetScore} onChange={(e) => setExamContext((prev) => ({ ...prev, targetScore: clamp(Number(e.target.value) || 12, 1, 15) }))} className="rounded-lg border border-phy-border bg-phy-bg px-3 py-2 text-sm text-phy-text" />
+                    </div>
+                </div>
+                <div className="px-4 py-3 border-t border-phy-border flex flex-wrap justify-end gap-2 bg-phy-glass/40">
+                    <button onClick={() => { setAnalyzeSetupOpen(false); runAnalyze(); }} className="px-3 py-2 rounded-lg border border-phy-border bg-phy-glass text-phy-text text-xs font-bold">
+                        直接用默认设置
+                    </button>
+                    <button onClick={() => { setAnalyzeSetupOpen(false); runAnalyze(); }} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold">
+                        开始 AI 诊断
+                    </button>
+                </div>
+            </div>
+        </div>
+    ) : null;
 
     const pendingInsertPreview = pendingInsert ? buildInsertPreview(pendingInsert, content) : null;
     const InsertPreviewModal = pendingInsert ? (
@@ -3605,6 +3564,7 @@ const WriterView = ({ params }) => {
     return (
         <div className="w-full h-full min-h-0 flex flex-col overflow-hidden">
             {showTemplateModal ? TemplatePicker : null}
+            {AnalyzeSetupSheet}
             {AmmoPickerModal}
             {InsertPreviewModal}
             {showPolishModal && selection ? <PolishChatModal selectedText={selection.text} onClose={() => setShowPolishModal(false)} /> : null}
@@ -3612,7 +3572,9 @@ const WriterView = ({ params }) => {
             {MobileMaterialSheet}
             <div className="hidden md:flex h-full min-h-0 overflow-hidden rounded-2xl border border-phy-border bg-phy-glassHeavy shadow-xl">
                 <div className="min-w-0 flex-1 overflow-hidden">
-                    {(workflowStep === 'write' && focusMode) || isWriterLeftPanelHidden ? (
+                    {writerExperience === 'notebook' ? (
+                        <div className="h-full min-h-0 overflow-hidden">{Main}</div>
+                    ) : (workflowStep === 'write' && focusMode) || isWriterLeftPanelHidden ? (
                         <div className="h-full min-h-0 overflow-hidden">{Main}</div>
                     ) : (
                         <div className="h-full min-h-0 overflow-hidden">
@@ -3679,14 +3641,24 @@ const WriterView = ({ params }) => {
                 ) : (
                     <div className="flex items-center justify-between p-2 px-4 bg-phy-glassHeavy border-b border-phy-border shrink-0">
                         <div className="font-bold text-phy-text text-sm">写作助手</div>
-                        <div className="flex bg-phy-glass rounded-lg p-1">
+                        <button
+                            onClick={() => {
+                                setEditorLayoutMode('merged');
+                                setWriterExperience((mode) => (mode === 'notebook' ? 'guided' : 'notebook'));
+                                setWorkflowStep('write');
+                            }}
+                            className="px-3 py-1.5 rounded-lg border border-phy-border bg-phy-glass text-xs font-bold text-phy-text"
+                        >
+                            {writerExperience === 'notebook' ? '高级流程' : '极简写作'}
+                        </button>
+                        <div className="hidden">
                             <button onClick={() => setMobileTab('tools')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'tools' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>工具</button>
                             <button onClick={() => setMobileTab('editor')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>编辑</button>
                             <button onClick={() => setMobileTab('analysis')} className={`px-3 py-1 text-xs rounded-md ${mobileTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-phy-muted'}`}>诊断</button>
                         </div>
                     </div>
                 )}
-                <div className="flex-1 overflow-hidden">{mobileTab === 'tools' ? ImprovedSidebar : mobileTab === 'editor' ? Main : ImprovedDiagnosePane}</div>
+                <div className="flex-1 overflow-hidden">{Main}</div>
             </div>
         </div>
     );

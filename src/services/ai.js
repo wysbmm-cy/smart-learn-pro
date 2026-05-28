@@ -8,6 +8,25 @@ import { stripOutlineParagraphLabel } from '../utils/writerText';
 
 // Helper for delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const SERVER_MANAGED_API_KEY = 'server-managed';
+
+const isServerManagedKey = (apiKey) => String(apiKey || '').trim() === SERVER_MANAGED_API_KEY;
+const proxyAccessToken = (settings) => String(settings?.proxyAccessToken || '').trim();
+const apiHeaders = (apiKey, settings, extra = {}) => {
+  const headers = { ...extra };
+  if (apiKey && !isServerManagedKey(apiKey)) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  const token = proxyAccessToken(settings);
+  if (token) {
+    headers['X-VerbaPath-Proxy-Token'] = token;
+  }
+  return headers;
+};
+
+const jsonApiHeaders = (apiKey, settings) => apiHeaders(apiKey, settings, {
+  'Content-Type': 'application/json'
+});
 
 export const sendChat = async (messages, settings, jsonRequired = false) => {
   return await fetchFromAI(messages, settings, jsonRequired);
@@ -42,10 +61,7 @@ const fetchFromAI = async (messages, settings, jsonRequired = true, retries = 3,
       const response = await fetch(`${cleanUrl}/chat/completions`, {
         method: 'POST',
         signal,
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
+        headers: jsonApiHeaders(apiKey, settings),
         body: JSON.stringify({
           model: modelName || "gpt-3.5-turbo",
           messages,
@@ -1471,10 +1487,7 @@ export const checkConnection = async (settings) => {
 
   const response = await fetch(`${cleanUrl}/models`, {
     method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    }
+    headers: jsonApiHeaders(apiKey, settings)
   });
 
   if (!response.ok) throw new Error("Connection failed");
@@ -1488,10 +1501,7 @@ export const checkAudioConnection = async (settings) => {
 
   const response = await fetch(`${cleanUrl}/models`, {
     method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    }
+    headers: jsonApiHeaders(apiKey, settings)
   });
 
   if (!response.ok) throw new Error("Audio API Connection failed");
@@ -1539,10 +1549,7 @@ Output in Chinese with sections:
 
   const response = await fetch(`${cleanUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: jsonApiHeaders(apiKey, settings),
     body: JSON.stringify({
       model: modelName || "gpt-4o-mini",
       messages: [{ role: "user", content }],
@@ -1578,10 +1585,7 @@ export const streamChatMessage = async (messages, settings, onDelta) => {
   try {
     const response = await fetch(`${cleanUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({
         model: modelName || "gpt-3.5-turbo",
         messages: finalMessages,
@@ -1691,6 +1695,63 @@ const wrapPcmAsWav = async (pcmBlob, contentType, settings = {}) => {
   return new Blob([header, pcmBuffer], { type: 'audio/wav' });
 };
 
+const DEFAULT_TTS_CUSTOM_HEADERS = `{
+  "Authorization": "Bearer {{apiKey}}",
+  "Content-Type": "application/json"
+}`;
+
+const DEFAULT_TTS_CUSTOM_BODY = `{
+  "model": "{{model}}",
+  "input": "{{text}}",
+  "voice": "{{voice}}"
+}`;
+
+const replaceTemplateVars = (value, vars) => {
+  if (typeof value === 'string') {
+    return value.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? '');
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceTemplateVars(item, vars));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, replaceTemplateVars(item, vars)])
+    );
+  }
+  return value;
+};
+
+const parseJsonTemplate = (raw, fallback, vars, label) => {
+  const source = String(raw || '').trim() || fallback;
+  try {
+    return replaceTemplateVars(JSON.parse(source), vars);
+  } catch (error) {
+    throw new Error(`Invalid TTS ${label} JSON: ${error.message}`);
+  }
+};
+
+const getValueByPath = (value, path) => {
+  if (!path) return value;
+  return String(path)
+    .split('.')
+    .filter(Boolean)
+    .reduce((current, key) => current?.[key], value);
+};
+
+const base64ToBlob = (base64, mimeType = 'audio/wav') => {
+  const pureBase64 = String(base64 || '').replace(/^data:[^,]+,/, '').replace(/\s/g, '');
+  if (!pureBase64) {
+    throw new Error("TTS JSON response did not contain audio data");
+  }
+
+  const binary = window.atob(pureBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+};
+
 export const transcribeAudio = async (file, settings) => {
   // Use specific audio settings if available, otherwise fallback to main settings
   const apiKey = settings.audioApiKey || settings.apiKey;
@@ -1709,10 +1770,8 @@ export const transcribeAudio = async (file, settings) => {
   try {
     const response = await fetch(`${cleanUrl}/audio/transcriptions`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        // Do NOT set Content-Type here, let browser set it with boundary
-      },
+      // Do NOT set Content-Type here, let browser set it with boundary
+      headers: apiHeaders(apiKey, settings),
       body: formData
     });
 
@@ -1733,7 +1792,10 @@ export const synthesizeSpeech = async (text, settings) => {
   const apiKey = settings.ttsApiKey || settings.audioApiKey || settings.apiKey;
   const apiUrl = settings.ttsApiBaseUrl || settings.audioApiBaseUrl || settings.apiBaseUrl;
   const cleanUrl = apiUrl.replace(/\/+$/, '');
-  const speechEndpoint = /\/audio\/speech$/i.test(cleanUrl) ? cleanUrl : `${cleanUrl}/audio/speech`;
+  const requestMode = settings.ttsRequestMode || 'speech';
+  const speechEndpoint = requestMode === 'custom'
+    ? cleanUrl
+    : (/\/audio\/speech$/i.test(cleanUrl) ? cleanUrl : `${cleanUrl}/audio/speech`);
 
   const modelName = settings.ttsModelName || "tts-1";
   const voice = settings.ttsVoice || "alloy";
@@ -1742,28 +1804,45 @@ export const synthesizeSpeech = async (text, settings) => {
   if (!apiKey) throw new Error("Missing AI/TTS API Key");
 
   try {
-    const speechRequest = {
+    const templateVars = {
+      apiKey,
       model: modelName,
-      input: text,
-      voice: voice
+      text,
+      voice,
+      style: settings.ttsCustomStylePrompt || ''
     };
 
-    if (responseFormat) {
+    const speechRequest = requestMode === 'custom'
+      ? parseJsonTemplate(settings.ttsCustomBody, DEFAULT_TTS_CUSTOM_BODY, templateVars, 'body')
+      : {
+        model: modelName,
+        input: text,
+        voice: voice
+      };
+
+    if (requestMode !== 'custom' && responseFormat) {
       speechRequest.response_format = responseFormat;
     }
 
+    const headers = requestMode === 'custom'
+      ? parseJsonTemplate(settings.ttsCustomHeaders, DEFAULT_TTS_CUSTOM_HEADERS, templateVars, 'headers')
+      : jsonApiHeaders(apiKey, settings);
+
     const response = await fetch(speechEndpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(speechRequest)
     });
 
     if (!response.ok) {
       const err = await response.text();
       throw new Error(`TTS Error: ${response.status} - ${err}`);
+    }
+
+    if (requestMode === 'custom' && settings.ttsCustomResponseType === 'json_base64') {
+      const data = await response.json();
+      const audioData = getValueByPath(data, settings.ttsCustomAudioPath || 'choices.0.message.audio.data');
+      return base64ToBlob(audioData, settings.ttsCustomAudioMimeType || 'audio/wav');
     }
 
     // Return Blob for playback
@@ -1824,9 +1903,6 @@ export const synthesizeSpeech = async (text, settings) => {
 };
 
 export const checkTTSConnection = async (settings) => {
-  const apiKey = settings.ttsApiKey || settings.audioApiKey || settings.apiKey;
-  const apiBaseUrl = settings.ttsApiBaseUrl || settings.audioApiBaseUrl || settings.apiBaseUrl;
-
   // Simple "Hello" test
   try {
     await synthesizeSpeech("Hello", settings);
@@ -3272,7 +3348,7 @@ export const checkImageGenConnection = async (settings) => {
   if (isOpenRouter) {
     response = await fetch(`${cleanUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({
         model: model,
         messages: [{ role: "user", content: "Generate a simple blue circle" }],
@@ -3283,7 +3359,7 @@ export const checkImageGenConnection = async (settings) => {
     const endpoint = isSiliconFlow ? '/image/generations' : '/images/generations';
     response = await fetch(`${cleanUrl}${endpoint}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({ model: model, prompt: "A simple blue circle", n: 1, size: "1024x1024" })
     });
   }
@@ -3448,7 +3524,7 @@ Art direction detail:
   if (isOpenRouter) {
     response = await fetch(`${cleanUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({
         model: model,
         messages: [{ role: 'user', content: prompt }],
@@ -3459,7 +3535,7 @@ Art direction detail:
     const endpoint = isSiliconFlow ? '/image/generations' : '/images/generations';
     response = await fetch(`${cleanUrl}${endpoint}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({ model: model, prompt, n: 1, size: '1024x1024' })
     });
   }
@@ -3665,15 +3741,12 @@ const buildForcedToolPlan = (flow, userGoal = '') => ({
   })
 });
 
-const buildForcedToolArgs = async ({ cleanUrl, apiKey, modelName, messages, flow, step, stepIndex, previousResults }) => {
+const buildForcedToolArgs = async ({ cleanUrl, apiKey, modelName, messages, flow, step, stepIndex, previousResults, settings }) => {
   const toolDef = getAgentToolDefinition(step.toolName);
   const userGoal = getLatestUserGoal(messages);
   const response = await fetch(`${cleanUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: jsonApiHeaders(apiKey, settings),
     body: JSON.stringify({
       model: modelName || "gpt-3.5-turbo",
       messages: [
@@ -3749,10 +3822,7 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall, o
   const callWithTools = async (msgs) => {
     const response = await fetch(`${cleanUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({
         model: modelName || "gpt-3.5-turbo",
         messages: msgs,
@@ -3775,10 +3845,7 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall, o
   const streamFinalResponse = async (msgs) => {
     const response = await fetch(`${cleanUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({
         model: modelName || "gpt-3.5-turbo",
         messages: msgs,
@@ -3848,7 +3915,8 @@ export const streamAgentChat = async (messages, settings, onDelta, onToolCall, o
             flow: forcedFlow,
             step,
             stepIndex: i,
-            previousResults
+            previousResults,
+            settings
           });
         } catch (argError) {
           prepared = { skip: false, reason: '', args: { ...(step.defaultParams || {}) } };
@@ -4206,7 +4274,7 @@ ${formatLayoutInstructions[format]} Dynamic composition, expressive characters, 
   if (isOpenRouter) {
     response = await fetch(`${cleanUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({
         model: model,
         messages: [{ role: "user", content: finalPrompt }],
@@ -4217,7 +4285,7 @@ ${formatLayoutInstructions[format]} Dynamic composition, expressive characters, 
     const endpoint = isSiliconFlow ? '/image/generations' : '/images/generations';
     response = await fetch(`${cleanUrl}${endpoint}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: jsonApiHeaders(apiKey, settings),
       body: JSON.stringify({ model: model, prompt: finalPrompt, n: 1, size: "1024x1024" })
     });
   }

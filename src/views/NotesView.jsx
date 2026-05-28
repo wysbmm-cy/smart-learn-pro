@@ -20,7 +20,11 @@ const NOTE_LINK_TOOLBAR_HIDDEN_KEY = 'notes_link_toolbar_hidden';
 const splitTagInput = (value) => normalizeNoteTags(String(value || '').split(/[,，]/));
 
 const normalizeSearchText = (value) =>
-    String(value || '').trim().replace(/^#+/, '').toLowerCase();
+    String(value || '')
+        .trim()
+        .replace(/^#+/, '')
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
 
 const NOTE_LINKING_TEMPLATES = {
     material: `@素材[argument]{title=请填写素材标题}
@@ -109,6 +113,26 @@ const NotesView = ({ params }) => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    useEffect(() => {
+        if (!isMobile) return undefined;
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousBodyOverscroll = document.body.style.overscrollBehavior;
+        const previousHtmlOverflow = document.documentElement.style.overflow;
+        const previousHtmlOverscroll = document.documentElement.style.overscrollBehavior;
+
+        document.body.style.overflow = 'hidden';
+        document.body.style.overscrollBehavior = 'none';
+        document.documentElement.style.overflow = 'hidden';
+        document.documentElement.style.overscrollBehavior = 'none';
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.body.style.overscrollBehavior = previousBodyOverscroll;
+            document.documentElement.style.overflow = previousHtmlOverflow;
+            document.documentElement.style.overscrollBehavior = previousHtmlOverscroll;
+        };
+    }, [isMobile]);
 
     useEffect(() => {
         return () => {
@@ -331,15 +355,15 @@ const NotesView = ({ params }) => {
     };
 
     const filteredNotes = notes.filter(n => {
-        const titleStr = (n.title || '').toLowerCase();
-        const contentStr = (n.content || '').toLowerCase();
+        const titleStr = normalizeSearchText(n.title);
+        const contentStr = normalizeSearchText(n.content);
         const tags = Array.isArray(n.tags) ? n.tags : [];
-        const tagsCombo = tags.flatMap((tag) => [tag, `#${tag}`]).join(' ').toLowerCase();
+        const tagsCombo = normalizeSearchText(tags.flatMap((tag) => [tag, `#${tag}`]).join(' '));
         const query = normalizeSearchText(searchQuery);
         const terms = query.split(/\s+/).filter(Boolean);
         
         const haystack = `${titleStr}\n${contentStr}\n${tagsCombo}`;
-        const matchesSearch = terms.length === 0 || terms.every((term) => haystack.includes(term));
+        const matchesSearch = terms.length === 0 || haystack.includes(query) || terms.every((term) => haystack.includes(term));
         const matchesTag = terms.length > 0 || activeTag === 'All' || tags.includes(activeTag);
         return matchesSearch && matchesTag;
     });
@@ -350,6 +374,9 @@ const NotesView = ({ params }) => {
     }, [viewingMobileId, notes, activeNote]);
 
     const getEditingNote = () => (isMobile ? activeNoteForMobile : activeNote);
+    const stopMobileScrollPropagation = (event) => {
+        event.stopPropagation();
+    };
 
     const handleManualKnowledgeSync = async (noteInput = null) => {
         const note = noteInput || getEditingNote();
@@ -1408,7 +1435,12 @@ const NotesView = ({ params }) => {
     if (isMobile && viewingMobileId) {
         const note = activeNoteForMobile;
         return (
-            <div className="h-full min-h-0 overflow-hidden flex flex-col bg-phy-bg overscroll-none animate-in slide-in-from-right duration-300">
+            <div
+                className="h-full min-h-0 overflow-hidden flex flex-col bg-phy-bg overscroll-none animate-in slide-in-from-right duration-300"
+                onTouchMove={stopMobileScrollPropagation}
+                onWheel={stopMobileScrollPropagation}
+                style={{ overscrollBehavior: 'none' }}
+            >
                 {/* Mobile Navbar */}
                 <div className="px-4 h-16 shrink-0 flex items-center justify-between border-b border-phy-border bg-white/40 dark:bg-black/20 backdrop-blur-md sticky top-0 z-50">
                     <div className="flex items-center gap-3">
@@ -1469,7 +1501,13 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Content Area */}
-                <div ref={mobileReadPaneRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-32 overscroll-contain touch-pan-y">
+                <div
+                    ref={mobileReadPaneRef}
+                    className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-32 overscroll-contain touch-pan-y"
+                    onTouchMove={stopMobileScrollPropagation}
+                    onWheel={stopMobileScrollPropagation}
+                    style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+                >
                     {viewMode === 'edit' ? (
                         <div className="h-full flex flex-col rounded-2xl border border-phy-border/50 bg-phy-glass/20 overflow-hidden">
                             {renderKnowledgeLinkToolBar('mobile')}
@@ -1596,7 +1634,12 @@ const NotesView = ({ params }) => {
 
     if (isMobile) {
         return (
-            <div className="h-full min-h-0 overflow-hidden flex flex-col bg-phy-bg px-5 pt-10 pb-20 overscroll-none animate-in fade-in duration-500">
+            <div
+                className="h-full min-h-0 overflow-hidden flex flex-col bg-phy-bg px-5 pt-10 pb-20 overscroll-none animate-in fade-in duration-500"
+                onTouchMove={stopMobileScrollPropagation}
+                onWheel={stopMobileScrollPropagation}
+                style={{ overscrollBehavior: 'none' }}
+            >
                 {/* Mobile Header */}
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex flex-col">
@@ -1626,7 +1669,12 @@ const NotesView = ({ params }) => {
                 </div>
 
                 {/* Mobile Card List */}
-                <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1 pb-32 custom-scrollbar overscroll-contain touch-pan-y">
+                <div
+                    className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1 pb-32 custom-scrollbar overscroll-contain touch-pan-y"
+                    onTouchMove={stopMobileScrollPropagation}
+                    onWheel={stopMobileScrollPropagation}
+                    style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+                >
                     {filteredNotes.map(renderNoteCard)}
                     {filteredNotes.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-20 text-phy-muted gap-4 opacity-50">

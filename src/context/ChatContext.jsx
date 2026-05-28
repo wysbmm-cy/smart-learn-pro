@@ -130,7 +130,8 @@ export const ChatProvider = ({ children }) => {
 
     const addChatMessage = useCallback((role, content, options = {}) => {
         setChatMessages((prev) => {
-            const next = [...prev, { role, content }];
+            const extra = options.messageData && typeof options.messageData === 'object' ? options.messageData : {};
+            const next = [...prev, { role, content, ...extra }];
             let sessionId = currentSessionIdRef.current;
             if (!sessionId) {
                 sessionId = Date.now().toString();
@@ -148,13 +149,43 @@ export const ChatProvider = ({ children }) => {
         setChatMessages((prev) => {
             if (!prev.length) return prev;
             const next = [...prev];
-            next[next.length - 1] = { ...next[next.length - 1], content };
+            const patch = options.messagePatch && typeof options.messagePatch === 'object' ? options.messagePatch : {};
+            next[next.length - 1] = { ...next[next.length - 1], content, ...patch };
 
             const sessionId = currentSessionIdRef.current;
             if (sessionId && options.persist !== false) {
                 scheduleSave(next, sessionId, { immediate: options.immediate === true });
             }
             return next;
+        });
+    }, [scheduleSave]);
+
+    const updateLastChatMessageMeta = useCallback((patch = {}, options = {}) => {
+        if (!patch || typeof patch !== 'object') return;
+        setChatMessages((prev) => {
+            if (!prev.length) return prev;
+            const next = [...prev];
+            next[next.length - 1] = { ...next[next.length - 1], ...patch };
+
+            const sessionId = currentSessionIdRef.current;
+            if (sessionId && options.persist !== false) {
+                scheduleSave(next, sessionId, { immediate: options.immediate === true });
+            }
+            return next;
+        });
+    }, [scheduleSave]);
+
+    const deleteChatMessage = useCallback((index) => {
+        setChatMessages((prev) => {
+            if (index < 0 || index >= prev.length) return prev;
+            const next = prev.filter((_, idx) => idx !== index);
+            const finalNext = next.length > 0 ? next : [DEFAULT_MSG];
+            
+            const sessionId = currentSessionIdRef.current;
+            if (sessionId) {
+                scheduleSave(finalNext, sessionId, { immediate: true });
+            }
+            return finalNext;
         });
     }, [scheduleSave]);
 
@@ -180,6 +211,8 @@ export const ChatProvider = ({ children }) => {
         removeChatSession,
         addChatMessage,
         updateLastChatMessage,
+        updateLastChatMessageMeta,
+        deleteChatMessage,
         flushChatSession
     };
 

@@ -42,6 +42,18 @@ const isDue = (c, now = Date.now()) => {
 };
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 const clean = (v) => String(v ?? '').trim();
+const SERVER_MANAGED_API_KEY = 'server-managed';
+const jsonApiHeaders = (apiKey, settings = {}) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey && apiKey !== SERVER_MANAGED_API_KEY) {
+        headers.Authorization = `Bearer ${apiKey}`;
+    }
+    const proxyToken = clean(settings.proxyAccessToken);
+    if (proxyToken) {
+        headers['X-VerbaPath-Proxy-Token'] = proxyToken;
+    }
+    return headers;
+};
 const AGENT_FLASHCARD_BATCH_UNDO_KEY = 'agent_flashcard_last_batch_undo_v1';
 const EXAM_SESSION_KEY = 'exam_adversarial_session_v2';
 const EXAM_HISTORY_KEY = 'exam_adversarial_history_v1';
@@ -938,10 +950,7 @@ Output Format: Markdown (Strictly follow this structure):
 
     const response = await fetch(`${cleanUrl}/chat/completions`, {
         method: 'POST',
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
+        headers: jsonApiHeaders(apiKey, settings),
         body: JSON.stringify({
             model: modelName,
             messages: [

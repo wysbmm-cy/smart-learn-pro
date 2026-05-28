@@ -57,17 +57,30 @@ const AppContext = createContext();
 
 export const useApp = () => useContext(AppContext);
 
+const SERVER_MANAGED_API_KEY = 'server-managed';
+const DEFAULT_PUBLIC_API_PROXY_ORIGIN = 'http://139.224.210.180:3001';
+const cleanProxyOrigin = (value = '') => String(value || '').trim().replace(/\/+$/, '');
+const PUBLIC_API_PROXY_ORIGIN = cleanProxyOrigin(import.meta.env.VITE_API_PROXY_ORIGIN || DEFAULT_PUBLIC_API_PROXY_ORIGIN);
+const proxyUrl = (path) => PUBLIC_API_PROXY_ORIGIN ? `${PUBLIC_API_PROXY_ORIGIN}${path}` : path;
+
 export const BUILTIN_API_CONFIG = {
-    mainApiBaseUrl: '/api/ai',
+    mainApiBaseUrl: proxyUrl('/api/ai'),
     mainModelName: 'deepseek-v4-flash',
-    mainApiKey: 'server-managed',
-    audioApiBaseUrl: '/api/audio',
-    audioApiKey: 'server-managed',
+    mainApiKey: SERVER_MANAGED_API_KEY,
+    audioApiBaseUrl: proxyUrl('/api/audio'),
+    audioApiKey: SERVER_MANAGED_API_KEY,
     audioModelName: 'TeleAI/TeleSpeechASR',
-    ttsApiBaseUrl: '/api/tts',
-    ttsApiKey: 'server-managed',
+    ttsApiBaseUrl: proxyUrl('/api/tts'),
+    ttsApiKey: SERVER_MANAGED_API_KEY,
     ttsModelName: 'x-ai/grok-voice-tts-1.0',
     ttsVoice: 'Eve',
+    ttsRequestMode: 'speech',
+    ttsCustomHeaders: '',
+    ttsCustomBody: '',
+    ttsCustomResponseType: 'raw',
+    ttsCustomAudioPath: '',
+    ttsCustomAudioMimeType: 'audio/wav',
+    ttsCustomStylePrompt: '',
 };
 
 // Initial default settings
@@ -77,6 +90,7 @@ const DEFAULT_SETTINGS = {
     apiKey: BUILTIN_API_CONFIG.mainApiKey,
     apiProfiles: [],
     activeApiProfileId: '',
+    proxyAccessToken: '',
     preloadAll: true,
     maxReviewCards: 0,  // 0 = unlimited, otherwise cap per session
     writingLevel: "CET-6",
@@ -129,8 +143,15 @@ Output Format: Markdown (Strictly follow this structure):
     ttsApiKey: BUILTIN_API_CONFIG.ttsApiKey, // Same as audioApiKey
     ttsModelName: BUILTIN_API_CONFIG.ttsModelName,
     ttsVoice: BUILTIN_API_CONFIG.ttsVoice,
-    imageGenApiUrl: '/api/image',
-    imageGenApiKey: 'server-managed',
+    ttsRequestMode: BUILTIN_API_CONFIG.ttsRequestMode,
+    ttsCustomHeaders: BUILTIN_API_CONFIG.ttsCustomHeaders,
+    ttsCustomBody: BUILTIN_API_CONFIG.ttsCustomBody,
+    ttsCustomResponseType: BUILTIN_API_CONFIG.ttsCustomResponseType,
+    ttsCustomAudioPath: BUILTIN_API_CONFIG.ttsCustomAudioPath,
+    ttsCustomAudioMimeType: BUILTIN_API_CONFIG.ttsCustomAudioMimeType,
+    ttsCustomStylePrompt: BUILTIN_API_CONFIG.ttsCustomStylePrompt,
+    imageGenApiUrl: proxyUrl('/api/image'),
+    imageGenApiKey: SERVER_MANAGED_API_KEY,
     imageGenModel: 'dall-e-3',
 
     // Appearance (Zen Mode)
@@ -191,10 +212,35 @@ const normalizePublicApiDefaults = (input = {}) => {
         next.ttsVoice = BUILTIN_API_CONFIG.ttsVoice;
     }
 
+    if (!next.ttsRequestMode) {
+        next.ttsRequestMode = BUILTIN_API_CONFIG.ttsRequestMode;
+        next.ttsCustomHeaders = BUILTIN_API_CONFIG.ttsCustomHeaders;
+        next.ttsCustomBody = BUILTIN_API_CONFIG.ttsCustomBody;
+        next.ttsCustomResponseType = BUILTIN_API_CONFIG.ttsCustomResponseType;
+        next.ttsCustomAudioPath = BUILTIN_API_CONFIG.ttsCustomAudioPath;
+        next.ttsCustomAudioMimeType = BUILTIN_API_CONFIG.ttsCustomAudioMimeType;
+        next.ttsCustomStylePrompt = BUILTIN_API_CONFIG.ttsCustomStylePrompt;
+    }
+
     if (!next.imageGenApiUrl) {
         next.imageGenApiUrl = DEFAULT_SETTINGS.imageGenApiUrl;
         next.imageGenApiKey = DEFAULT_SETTINGS.imageGenApiKey;
         next.imageGenModel = DEFAULT_SETTINGS.imageGenModel;
+    }
+
+    if (PUBLIC_API_PROXY_ORIGIN) {
+        if (next.apiKey === SERVER_MANAGED_API_KEY && next.apiBaseUrl === '/api/ai') {
+            next.apiBaseUrl = BUILTIN_API_CONFIG.mainApiBaseUrl;
+        }
+        if (next.audioApiKey === SERVER_MANAGED_API_KEY && next.audioApiBaseUrl === '/api/audio') {
+            next.audioApiBaseUrl = BUILTIN_API_CONFIG.audioApiBaseUrl;
+        }
+        if (next.ttsApiKey === SERVER_MANAGED_API_KEY && next.ttsApiBaseUrl === '/api/tts') {
+            next.ttsApiBaseUrl = BUILTIN_API_CONFIG.ttsApiBaseUrl;
+        }
+        if (next.imageGenApiKey === SERVER_MANAGED_API_KEY && next.imageGenApiUrl === '/api/image') {
+            next.imageGenApiUrl = DEFAULT_SETTINGS.imageGenApiUrl;
+        }
     }
 
     next.apiProfiles = Array.isArray(next.apiProfiles) ? next.apiProfiles : [];

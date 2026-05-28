@@ -19,6 +19,40 @@ const sections = [
     { id: 'appearance', label: '外观设置', icon: Palette },
 ];
 
+const DEFAULT_TTS_CUSTOM_HEADERS = `{
+  "Authorization": "Bearer {{apiKey}}",
+  "Content-Type": "application/json"
+}`;
+
+const DEFAULT_TTS_CUSTOM_BODY = `{
+  "model": "{{model}}",
+  "input": "{{text}}",
+  "voice": "{{voice}}"
+}`;
+
+const MIMO_TTS_HEADERS = `{
+  "api-key": "{{apiKey}}",
+  "Content-Type": "application/json"
+}`;
+
+const MIMO_TTS_BODY = `{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "{{style}}"
+    },
+    {
+      "role": "assistant",
+      "content": "{{text}}"
+    }
+  ],
+  "audio": {
+    "format": "wav",
+    "voice": "{{voice}}"
+  }
+}`;
+
 const SettingsView = () => {
     const { settings, updateSetting, exportUserData, saveFile, deleteFile, addCustomStyle, removeCustomStyle, theme, setTheme } = useApp();
     const [connectionStatus, setConnectionStatus] = useState('idle');
@@ -247,6 +281,33 @@ const SettingsView = () => {
         return model ? `${base} - ${model} @ ${host}` : `${base} @ ${host}`;
     };
 
+    const resetTtsSettings = () => {
+        updateSetting('ttsApiBaseUrl', BUILTIN_API_CONFIG.ttsApiBaseUrl);
+        updateSetting('ttsModelName', BUILTIN_API_CONFIG.ttsModelName);
+        updateSetting('ttsVoice', BUILTIN_API_CONFIG.ttsVoice);
+        updateSetting('ttsApiKey', BUILTIN_API_CONFIG.ttsApiKey);
+        updateSetting('ttsRequestMode', BUILTIN_API_CONFIG.ttsRequestMode);
+        updateSetting('ttsCustomHeaders', BUILTIN_API_CONFIG.ttsCustomHeaders);
+        updateSetting('ttsCustomBody', BUILTIN_API_CONFIG.ttsCustomBody);
+        updateSetting('ttsCustomResponseType', BUILTIN_API_CONFIG.ttsCustomResponseType);
+        updateSetting('ttsCustomAudioPath', BUILTIN_API_CONFIG.ttsCustomAudioPath);
+        updateSetting('ttsCustomAudioMimeType', BUILTIN_API_CONFIG.ttsCustomAudioMimeType);
+        updateSetting('ttsCustomStylePrompt', BUILTIN_API_CONFIG.ttsCustomStylePrompt);
+    };
+
+    const applyMimoTtsTemplate = () => {
+        updateSetting('ttsRequestMode', 'custom');
+        updateSetting('ttsApiBaseUrl', 'https://api.xiaomimimo.com/v1/chat/completions');
+        updateSetting('ttsModelName', 'mimo-v2.5-tts');
+        updateSetting('ttsVoice', 'Chloe');
+        updateSetting('ttsCustomHeaders', MIMO_TTS_HEADERS);
+        updateSetting('ttsCustomBody', MIMO_TTS_BODY);
+        updateSetting('ttsCustomResponseType', 'json_base64');
+        updateSetting('ttsCustomAudioPath', 'choices.0.message.audio.data');
+        updateSetting('ttsCustomAudioMimeType', 'audio/wav');
+        updateSetting('ttsCustomStylePrompt', 'Natural English listening material, clear pronunciation, steady pace.');
+    };
+
     const Toggle = ({ title, checked, onChange }) => (
         <div
             className={`cursor-pointer p-5 rounded-2xl border transition-all duration-200 flex items-center justify-between ${checked
@@ -387,6 +448,19 @@ const SettingsView = () => {
                                     className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
                                     placeholder={isUsingBuiltinMainKey ? '平台内置密钥已隐藏' : '输入你自己的 API Key'}
                                 />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-phy-muted mb-2">后端访问口令（可选）</label>
+                                <input
+                                    type="password"
+                                    value={settings.proxyAccessToken || ''}
+                                    onChange={(e) => updateSetting('proxyAccessToken', e.target.value)}
+                                    className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
+                                    placeholder="只有服务器配置了 PROXY_ACCESS_TOKEN 时才需要填写"
+                                />
+                                <p className="text-[11px] text-phy-muted mt-2">
+                                    这个口令只用来访问你自己的后端代理，不是模型服务商 API Key。公开网页场景下不要把真实模型 Key 放在这里。
+                                </p>
                             </div>
                         </div>
                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 leading-relaxed">
@@ -566,12 +640,7 @@ const SettingsView = () => {
                                 <p className="text-xs text-phy-muted mt-1">可填写自己的 TTS 地址、模型、音色和密钥。</p>
                             </div>
                             <button
-                                onClick={() => {
-                                    updateSetting('ttsApiBaseUrl', BUILTIN_API_CONFIG.ttsApiBaseUrl);
-                                    updateSetting('ttsModelName', BUILTIN_API_CONFIG.ttsModelName);
-                                    updateSetting('ttsVoice', BUILTIN_API_CONFIG.ttsVoice);
-                                    updateSetting('ttsApiKey', BUILTIN_API_CONFIG.ttsApiKey);
-                                }}
+                                onClick={resetTtsSettings}
                                 className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
                             >
                                 恢复内置
@@ -606,6 +675,86 @@ const SettingsView = () => {
                                 className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
                                 placeholder={isUsingBuiltinTtsKey ? '平台内置密钥已隐藏' : '输入你的朗读 API Key'}
                             />
+                        </div>
+                        <div className="rounded-2xl border border-phy-border bg-phy-bg/50 p-4 space-y-4">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-bold text-phy-text">高级 TTS 接口适配</div>
+                                    <div className="text-xs text-phy-muted mt-1">不同厂商的 TTS 请求体和返回结构不一样，可以在这里自己写模板。</div>
+                                </div>
+                                <button
+                                    onClick={applyMimoTtsTemplate}
+                                    className="px-3 py-2 rounded-xl border border-purple-500/40 text-xs font-bold text-purple-500 hover:bg-purple-500/10"
+                                >
+                                    套用 MiMo 模板
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <select
+                                    value={settings.ttsRequestMode || 'speech'}
+                                    onChange={(e) => updateSetting('ttsRequestMode', e.target.value)}
+                                    className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text outline-none"
+                                >
+                                    <option value="speech">默认：/audio/speech 音频流</option>
+                                    <option value="custom">自定义：完整 URL + JSON 模板</option>
+                                </select>
+                                <select
+                                    value={settings.ttsCustomResponseType || 'raw'}
+                                    onChange={(e) => updateSetting('ttsCustomResponseType', e.target.value)}
+                                    disabled={(settings.ttsRequestMode || 'speech') !== 'custom'}
+                                    className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm text-phy-text outline-none disabled:opacity-50"
+                                >
+                                    <option value="raw">响应就是音频文件</option>
+                                    <option value="json_base64">JSON 里包含 base64 音频</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    value={settings.ttsCustomAudioPath || ''}
+                                    onChange={(e) => updateSetting('ttsCustomAudioPath', e.target.value)}
+                                    disabled={(settings.ttsRequestMode || 'speech') !== 'custom' || settings.ttsCustomResponseType !== 'json_base64'}
+                                    className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none disabled:opacity-50"
+                                    placeholder="base64 路径，如 choices.0.message.audio.data"
+                                />
+                                <input
+                                    type="text"
+                                    value={settings.ttsCustomAudioMimeType || ''}
+                                    onChange={(e) => updateSetting('ttsCustomAudioMimeType', e.target.value)}
+                                    disabled={(settings.ttsRequestMode || 'speech') !== 'custom' || settings.ttsCustomResponseType !== 'json_base64'}
+                                    className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none disabled:opacity-50"
+                                    placeholder="音频 MIME，如 audio/wav"
+                                />
+                            </div>
+
+                            {(settings.ttsRequestMode || 'speech') === 'custom' && (
+                                <div className="space-y-3">
+                                    <textarea
+                                        value={settings.ttsCustomStylePrompt || ''}
+                                        onChange={(e) => updateSetting('ttsCustomStylePrompt', e.target.value)}
+                                        className="w-full min-h-[72px] bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none resize-y"
+                                        placeholder="可选：{{style}} 风格指令，例如 Clear English listening narration, steady pace."
+                                    />
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                        <textarea
+                                            value={settings.ttsCustomHeaders || DEFAULT_TTS_CUSTOM_HEADERS}
+                                            onChange={(e) => updateSetting('ttsCustomHeaders', e.target.value)}
+                                            className="w-full min-h-[180px] bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none resize-y"
+                                            spellCheck={false}
+                                            placeholder={DEFAULT_TTS_CUSTOM_HEADERS}
+                                        />
+                                        <textarea
+                                            value={settings.ttsCustomBody || DEFAULT_TTS_CUSTOM_BODY}
+                                            onChange={(e) => updateSetting('ttsCustomBody', e.target.value)}
+                                            className="w-full min-h-[180px] bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none resize-y"
+                                            spellCheck={false}
+                                            placeholder={DEFAULT_TTS_CUSTOM_BODY}
+                                        />
+                                    </div>
+                                    <div className="text-xs text-phy-muted">
+                                        可用变量：{'{{apiKey}}'}、{'{{model}}'}、{'{{voice}}'}、{'{{text}}'}、{'{{style}}'}。
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

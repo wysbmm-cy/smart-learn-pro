@@ -1,3 +1,4 @@
+/* eslint-env node */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -24,12 +25,19 @@ const loadLocalEnv = () => {
 loadLocalEnv();
 
 const PORT = Number(process.env.PORT || 3001);
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const CLIENT_ORIGINS = String(process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+const DEFAULT_CLIENT_ORIGIN = CLIENT_ORIGINS[0] || 'http://localhost:5173';
 const COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'verbapath_session';
 const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS || 30);
 const SESSION_MAX_AGE_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PROXY_ACCESS_TOKEN = String(process.env.PROXY_ACCESS_TOKEN || '').trim();
+const PROXY_RATE_LIMIT_WINDOW_MS = Number(process.env.PROXY_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
+const PROXY_RATE_LIMIT_MAX = Number(process.env.PROXY_RATE_LIMIT_MAX || 40);
 const AI_PROXY_BASE_URL = process.env.AI_PROXY_BASE_URL || 'https://api.deepseek.com/v1';
 const AI_PROXY_API_KEY = process.env.AI_PROXY_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.MOONSHOT_API_KEY || '';
 const AI_PROXY_MODEL = process.env.AI_PROXY_MODEL || 'deepseek-v4-flash';
@@ -44,14 +52,30 @@ const IMAGE_PROXY_MODEL = process.env.IMAGE_PROXY_MODEL || 'dall-e-3';
 const now = () => Date.now();
 const createId = (prefix) => `${prefix}_${crypto.randomBytes(16).toString('hex')}`;
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+const rateLimitBuckets = new Map();
 
-const json = (res, status, payload, extraHeaders = {}) => {
+const requestOrigin = (req) => String(req.headers.origin || '').replace(/\/+$/, '');
+const isAllowedOrigin = (req) => {
+  const origin = requestOrigin(req);
+  return !origin || CLIENT_ORIGINS.includes(origin);
+};
+const corsOrigin = (req) => {
+  const origin = requestOrigin(req);
+  return origin && CLIENT_ORIGINS.includes(origin) ? origin : DEFAULT_CLIENT_ORIGIN;
+};
+const baseHeaders = (req, contentType = 'application/json; charset=utf-8') => ({
+  'Content-Type': contentType,
+  'Access-Control-Allow-Origin': corsOrigin(req),
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-VerbaPath-Proxy-Token',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Vary': 'Origin',
+  'X-Content-Type-Options': 'nosniff',
+});
+
+const json = (req, res, status, payload, extraHeaders = {}) => {
   res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': CLIENT_ORIGIN,
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    ...baseHeaders(req),
     ...extraHeaders,
   });
   res.end(JSON.stringify(payload));
@@ -98,6 +122,12 @@ const hashPassword = (password) => {
   return `scrypt$${salt}$${hash}`;
 };
 
+const safeEqual = (left, right) => {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
 const verifyPassword = (password, stored) => {
   const [method, salt, hash] = String(stored || '').split('$');
   if (method !== 'scrypt' || !salt || !hash) return false;
@@ -132,48 +162,76 @@ const handleRegister = async (req, res) => {
   const password = String(body.password || '');
   const nickname = String(body.nickname || '').trim().slice(0, 50);
 
-  if (!emailPattern.test(email)) return json(res, 400, { error: '邮箱格式不正确' });
-  if (password.length < 8) return json(res, 400, { error: '密码至少需要 8 位' });
-  if (statements.findUserByEmail.get(email)) return json(res, 409, { error: '该邮箱已经注册' });
+  if (!emailPattern.test(email)) return json(req, res, 400, { error: '邮箱格式不正确' });
+  if (password.length < 8) return json(req, res, 400, { error: '密码至少需要 8 位' });
+  if (statements.findUserByEmail.get(email)) return json(req, res, 409, { error: '该邮箱已经注册' });
 
   const createdAt = now();
   const userId = createId('user');
   statements.insertUser.run(userId, email, hashPassword(password), nickname, createdAt, createdAt);
   const user = statements.findUserById.get(userId);
   const sessionId = createSession(userId);
-  return json(res, 201, { user: toPublicUser(user) }, { 'Set-Cookie': sessionCookie(sessionId) });
+  return json(req, res, 201, { user: toPublicUser(user) }, { 'Set-Cookie': sessionCookie(sessionId) });
 };
 
 const handleLogin = async (req, res) => {
   const body = await readBody(req);
   const user = statements.findUserByEmail.get(normalizeEmail(body.email));
   if (!user || !verifyPassword(String(body.password || ''), user.password_hash)) {
-    return json(res, 401, { error: '邮箱或密码不正确' });
+    return json(req, res, 401, { error: '邮箱或密码不正确' });
   }
   const sessionId = createSession(user.id);
-  return json(res, 200, { user: toPublicUser(user) }, { 'Set-Cookie': sessionCookie(sessionId) });
+  return json(req, res, 200, { user: toPublicUser(user) }, { 'Set-Cookie': sessionCookie(sessionId) });
 };
 
 const handleLogout = (req, res) => {
   const sessionId = parseCookies(req)[COOKIE_NAME];
   if (sessionId) statements.deleteSession.run(sessionId);
-  return json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
+  return json(req, res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
 };
-
-const corsHeaders = (contentType = 'application/json; charset=utf-8') => ({
-  'Content-Type': contentType,
-  'Access-Control-Allow-Origin': CLIENT_ORIGIN,
-  'Access-Control-Allow-Credentials': 'true',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-});
 
 const normalizeBaseUrl = (value) => String(value || '').replace(/\/+$/, '');
 
+const clientIp = (req) => {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket.remoteAddress || 'unknown';
+};
+
+const hasProxyAccess = (req) => {
+  if (!PROXY_ACCESS_TOKEN) return true;
+  return safeEqual(req.headers['x-verbapath-proxy-token'], PROXY_ACCESS_TOKEN);
+};
+
+const consumeProxyRateLimit = (req, prefix) => {
+  if (!PROXY_RATE_LIMIT_MAX || PROXY_RATE_LIMIT_MAX <= 0) return true;
+  const nowMs = now();
+  const key = `${clientIp(req)}:${prefix}`;
+  const current = rateLimitBuckets.get(key);
+  if (!current || current.resetAt <= nowMs) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: nowMs + PROXY_RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  current.count += 1;
+  return current.count <= PROXY_RATE_LIMIT_MAX;
+};
+
+const guardProxyRequest = (req, res, prefix) => {
+  if (!hasProxyAccess(req)) {
+    json(req, res, 401, { error: 'Proxy access token is required' });
+    return false;
+  }
+  if (!consumeProxyRateLimit(req, prefix)) {
+    json(req, res, 429, { error: 'Too many proxy requests. Please try again later.' });
+    return false;
+  }
+  return true;
+};
+
 const proxyProviderRequest = async (req, res, url, config) => {
   const { prefix, baseUrl, apiKey, defaultModel } = config;
+  if (!guardProxyRequest(req, res, prefix)) return;
   if (!apiKey) {
-    return json(res, 500, { error: '服务器未配置 AI 服务密钥' });
+    return json(req, res, 500, { error: '服务器未配置上游服务密钥' });
   }
 
   const cleanBase = normalizeBaseUrl(baseUrl);
@@ -181,7 +239,7 @@ const proxyProviderRequest = async (req, res, url, config) => {
   const upstreamUrl = `${cleanBase}${upstreamPath}${url.search || ''}`;
   const contentType = req.headers['content-type'] || 'application/json';
   const headers = {
-    'Authorization': `Bearer ${apiKey}`,
+    Authorization: `Bearer ${apiKey}`,
     'Content-Type': contentType,
   };
 
@@ -205,22 +263,26 @@ const proxyProviderRequest = async (req, res, url, config) => {
     body,
   });
   const upstreamContentType = upstream.headers.get('content-type') || 'application/json; charset=utf-8';
-  res.writeHead(upstream.status, corsHeaders(upstreamContentType));
+  res.writeHead(upstream.status, baseHeaders(req, upstreamContentType));
   const responseBuffer = Buffer.from(await upstream.arrayBuffer());
   return res.end(responseBuffer);
 };
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === 'OPTIONS') return json(res, 204, {});
+    if (!isAllowedOrigin(req)) {
+      return json(req, res, 403, { error: 'Origin is not allowed' });
+    }
+    if (req.method === 'OPTIONS') return json(req, res, 204, {});
+
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === 'GET' && url.pathname === '/api/health') {
-      return json(res, 200, { ok: true, service: 'verbapath-auth' });
+      return json(req, res, 200, { ok: true, service: 'verbapath-api' });
     }
     if (req.method === 'GET' && url.pathname === '/api/auth/me') {
       statements.deleteExpiredSessions.run(now());
-      return json(res, 200, { user: toPublicUser(readSessionUser(req, res)) });
+      return json(req, res, 200, { user: toPublicUser(readSessionUser(req, res)) });
     }
     if (req.method === 'POST' && url.pathname === '/api/auth/register') return handleRegister(req, res);
     if (req.method === 'POST' && url.pathname === '/api/auth/login') return handleLogin(req, res);
@@ -256,13 +318,13 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    return json(res, 404, { error: '接口不存在' });
+    return json(req, res, 404, { error: '接口不存在' });
   } catch (error) {
     console.error(error);
-    return json(res, 500, { error: '服务器内部错误' });
+    return json(req, res, 500, { error: '服务器内部错误' });
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`VerbaPath auth server listening on http://localhost:${PORT}`);
+  console.log(`VerbaPath API server listening on http://localhost:${PORT}`);
 });
