@@ -58,6 +58,11 @@ const triggerBrowserDownload = (blob, fileName) => {
     window.setTimeout(() => URL.revokeObjectURL(url), 30000);
 };
 
+const isExportCancelError = (error) => {
+    const message = String(error?.message || error || '');
+    return error?.name === 'AbortError' || message.includes('取消') || message.toLowerCase().includes('cancel');
+};
+
 const saveWithFilePicker = async (blob, fileName) => {
     if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') {
         return false;
@@ -75,6 +80,16 @@ const saveWithFilePicker = async (blob, fileName) => {
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
+    return true;
+};
+
+const saveWithNativeFlashcardExporter = async (content, fileName) => {
+    const exporter = typeof window !== 'undefined'
+        ? window.Capacitor?.Plugins?.FlashcardExporter
+        : null;
+    if (!exporter?.save) return false;
+
+    await exporter.save({ content, fileName });
     return true;
 };
 
@@ -665,7 +680,13 @@ const FlashcardView = ({ params }) => {
             const fileName = `smartlearn-flashcards-${stamp}.json`;
 
             if (isMobile) {
-                setPendingFlashcardExport({ blob, fileName, count: cards.length });
+                const savedWithNative = await saveWithNativeFlashcardExporter(content, fileName);
+                if (savedWithNative) {
+                    toast.success(`已保存 ${cards.length} 张闪卡`);
+                    return;
+                }
+
+                setPendingFlashcardExport({ blob, content, fileName, count: cards.length });
                 toast.success(`已生成 ${cards.length} 张闪卡的导出文件，请点“保存/分享”完成保存`);
                 return;
             }
@@ -676,7 +697,7 @@ const FlashcardView = ({ params }) => {
             }
             toast.success(`已导出 ${cards.length} 张闪卡`);
         } catch (e) {
-            if (e?.name === 'AbortError') {
+            if (isExportCancelError(e)) {
                 toast('已取消导出');
             } else {
                 toast.error(`导出失败: ${e.message}`);
@@ -689,9 +710,16 @@ const FlashcardView = ({ params }) => {
     const handleSavePreparedFlashcardExport = async () => {
         if (!pendingFlashcardExport || isSavingPreparedExport) return;
         setIsSavingPreparedExport(true);
-        const { blob, fileName, count } = pendingFlashcardExport;
+        const { blob, content, fileName, count } = pendingFlashcardExport;
 
         try {
+            const savedWithNative = await saveWithNativeFlashcardExporter(content, fileName);
+            if (savedWithNative) {
+                toast.success('已保存闪卡导出文件');
+                setPendingFlashcardExport(null);
+                return;
+            }
+
             const shared = await shareExportFile(blob, fileName, count);
             if (shared) {
                 toast.success('已打开系统保存/分享面板');
@@ -702,7 +730,7 @@ const FlashcardView = ({ params }) => {
             triggerBrowserDownload(blob, fileName);
             toast('当前手机环境不支持系统文件分享，已尝试触发浏览器下载');
         } catch (e) {
-            if (e?.name === 'AbortError') {
+            if (isExportCancelError(e)) {
                 toast('已取消保存/分享');
             } else {
                 console.error('Mobile flashcard export failed:', e);

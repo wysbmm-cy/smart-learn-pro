@@ -358,6 +358,15 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
     };
 
     const handleSpeakMessage = (text, index) => {
+        const canUseSpeech = typeof window !== 'undefined'
+            && window.speechSynthesis
+            && typeof window.speechSynthesis.cancel === 'function'
+            && typeof window.speechSynthesis.speak === 'function'
+            && typeof window.SpeechSynthesisUtterance === 'function';
+        if (!canUseSpeech) {
+            setSpeakingMessageIndex(null);
+            return;
+        }
         if (speakingMessageIndex === index) {
             window.speechSynthesis.cancel();
             setSpeakingMessageIndex(null);
@@ -370,7 +379,7 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
             .replace(/[*#`>_\-]/g, '')
             .replace(/\[.*?\]\(.*?\)/g, '')
             .trim();
-        const utterance = new SpeechSynthesisUtterance(cleanText);
+        const utterance = new window.SpeechSynthesisUtterance(cleanText);
         utterance.lang = 'en-US';
         utterance.onend = () => {
             setSpeakingMessageIndex(null);
@@ -385,7 +394,9 @@ const ChatSidebar = ({ isMobileSheet = false }) => {
 
     useEffect(() => {
         return () => {
-            window.speechSynthesis.cancel();
+            if (typeof window !== 'undefined' && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') {
+                window.speechSynthesis.cancel();
+            }
         };
     }, [currentSessionId]);
 
