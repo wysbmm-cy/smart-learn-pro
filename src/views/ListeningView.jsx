@@ -14,11 +14,12 @@ import {
     ChevronLeft,
     Folder,
     FolderOpen,
+    Trash2,
     Wand2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
-import { generateListeningQuizFromTranscript, synthesizeSpeech, transcribeAudio } from '../services/ai';
+import { generateListeningQuizFromTranscript, sendChat, synthesizeSpeech, transcribeAudio } from '../services/ai';
 import { getListeningData, saveFile, saveListeningData } from '../services/db';
 
 const extractOption = (option, idx) => {
@@ -37,10 +38,83 @@ const normalizeAnswer = (value) => {
 const normalizeFolderName = (value) => String(value || '').trim().replace(/\s+/g, ' ').slice(0, 24);
 const getListeningFolder = (file) => normalizeFolderName(file?.listeningFolder);
 const sanitizeAudioName = (value) => String(value || 'AI Listening').trim().replace(/[\\/:*?"<>|]/g, '-').slice(0, 80);
+const DEFAULT_TTS_SEGMENT_LIMIT = 12000;
+
+const clampTtsSegmentLimit = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return DEFAULT_TTS_SEGMENT_LIMIT;
+    return Math.min(15000, Math.max(1000, parsed));
+};
+
+const getAudioExtension = (type = '') => {
+    const normalized = String(type || '').toLowerCase();
+    if (normalized.includes('wav')) return 'wav';
+    if (normalized.includes('ogg')) return 'ogg';
+    if (normalized.includes('webm')) return 'webm';
+    if (normalized.includes('mp4')) return 'm4a';
+    return 'mp3';
+};
+
+const parseSegmentResponse = (raw) => {
+    const text = String(raw || '').trim();
+    const candidates = [
+        text,
+        text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1],
+        text.match(/\{[\s\S]*\}/)?.[0]
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        try {
+            const parsed = JSON.parse(candidate);
+            const segments = Array.isArray(parsed?.segments) ? parsed.segments : [];
+            return segments
+                .map((segment, index) => ({
+                    title: sanitizeAudioName(segment?.title || `Part ${index + 1}`),
+                    text: String(segment?.text || '').trim()
+                }))
+                .filter(segment => segment.text);
+        } catch {
+            // Try the next candidate.
+        }
+    }
+
+    return [];
+};
+
+const splitTextByLength = (text, limit) => {
+    const sentences = String(text || '')
+        .replace(/\r\n/g, '\n')
+        .split(/(?<=[.!?。！？])\s+|\n{2,}/)
+        .map(item => item.trim())
+        .filter(Boolean);
+    const units = sentences.length ? sentences : String(text || '').match(new RegExp(`[\\s\\S]{1,${limit}}`, 'g')) || [];
+    const segments = [];
+    let current = '';
+
+    units.forEach((unit) => {
+        if ((current + '\n\n' + unit).trim().length > limit && current.trim()) {
+            segments.push({ title: `Part ${segments.length + 1}`, text: current.trim() });
+            current = unit;
+        } else {
+            current = [current, unit].filter(Boolean).join('\n\n');
+        }
+
+        while (current.length > limit) {
+            segments.push({ title: `Part ${segments.length + 1}`, text: current.slice(0, limit).trim() });
+            current = current.slice(limit).trim();
+        }
+    });
+
+    if (current.trim()) {
+        segments.push({ title: `Part ${segments.length + 1}`, text: current.trim() });
+    }
+
+    return segments;
+};
 
 const ListeningView = () => {
     const fileInputRef = useRef(null);
-    const { loadFiles, playAudio, settings, saveToFileLibrary } = useApp();
+    const { loadFiles, playAudio, closeAudio, settings, saveToFileLibrary, removeFileItem } = useApp();
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [folderFilter, setFolderFilter] = useState('all');
@@ -49,6 +123,8 @@ const ListeningView = () => {
     const [showGenerator, setShowGenerator] = useState(false);
     const [generatedAudioTitle, setGeneratedAudioTitle] = useState('');
     const [generatedAudioText, setGeneratedAudioText] = useState('');
+    const [ttsSegmentLimit, setTtsSegmentLimit] = useState(DEFAULT_TTS_SEGMENT_LIMIT);
+    const [splitLongAudio, setSplitLongAudio] = useState(true);
     const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
 
     // Responsive State
@@ -164,7 +240,7 @@ const ListeningView = () => {
 
     const handleOrganizeFile = async (file) => {
         const currentFolder = getListeningFolder(file);
-        const nextFolder = normalizeFolderName(window.prompt('Audio folder name. Leave empty for Unfiled.', currentFolder));
+        const nextFolder = normalizeFolderName(window.prompt('移动到哪个文件夹？留空则移到未整理。', currentFolder));
         if (nextFolder === currentFolder) return;
 
         try {
@@ -188,47 +264,131 @@ const ListeningView = () => {
         }
     };
 
+    const handleDeleteListeningFile = async (file) => {
+        if (!file) return;
+        const ok = window.confirm(`确定删除这个听力吗？\n\n${file.name}`);
+        if (!ok) return;
+
+        try {
+            await removeFileItem(file.id);
+            setFiles(prev => prev.filter(item => item.id !== file.id));
+            if (activeFile?.id === file.id) {
+                if (activeFile?.url) URL.revokeObjectURL(activeFile.url);
+                setActiveFile(null);
+                setTranscriptText('');
+                setListeningQuiz(null);
+                closeAudio();
+                if (isMobile) setShowSidebarOnMobile(true);
+            }
+            toast.success('听力已删除');
+        } catch (e) {
+            console.error('Failed to delete listening file', e);
+            toast.error(`删除失败: ${e.message}`);
+        }
+    };
+
+    const splitListeningTextWithAI = async (text, limit) => {
+        const systemPrompt = [
+            'You split long English listening scripts into natural audio-generation segments.',
+            'Return strict JSON only: {"segments":[{"title":"Part 1","text":"..."}]}.',
+            `Each segment must be no longer than ${limit} characters.`,
+            'Preserve the original wording, punctuation, paragraph order, and speaker labels.',
+            'Split at topic shifts, speaker turns, paragraphs, or sentence boundaries. Do not summarize or rewrite.'
+        ].join('\n');
+
+        const raw = await sendChat([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text }
+        ], settings, true);
+
+        const segments = parseSegmentResponse(raw);
+        if (!segments.length) {
+            throw new Error('AI did not return a valid segment list');
+        }
+
+        return segments.flatMap((segment) => (
+            segment.text.length > limit
+                ? splitTextByLength(segment.text, limit)
+                : [segment]
+        ));
+    };
+
     const handleGenerateListeningAudio = async () => {
         const text = generatedAudioText.trim();
         if (!text) {
             toast.error('请先输入英文听力文本');
             return;
         }
-        if (text.length > 4000) {
-            toast.error('文本太长了，建议控制在 4000 字符以内');
+        const segmentLimit = clampTtsSegmentLimit(ttsSegmentLimit);
+        if (text.length > segmentLimit && !splitLongAudio) {
+            toast.error(`文本超过单段上限 ${segmentLimit} 字符，请开启分段生成`);
             return;
         }
 
         setIsGeneratingAudio(true);
         const toastId = toast.loading('正在生成英文听力音频...');
         try {
-            const audioBlob = await synthesizeSpeech(text, settings);
             const safeTitle = sanitizeAudioName(generatedAudioTitle || text.split(/\s+/).slice(0, 8).join(' '));
-            const ext = audioBlob.type?.includes('wav') ? 'wav' : 'mp3';
-            const record = await saveToFileLibrary({
-                name: `[AI听力] ${safeTitle}.${ext}`,
-                type: audioBlob.type || 'audio/mpeg',
-                blob: audioBlob,
-                listeningFolder: 'AI生成'
-            });
+            let segments = [{ title: safeTitle, text }];
 
-            await saveListeningData({
-                fileId: record.id,
-                transcript: text,
-                quizData: null
-            });
+            if (text.length > segmentLimit) {
+                toast.loading('正在让 AI 分析并切分长文本...', { id: toastId });
+                try {
+                    segments = await splitListeningTextWithAI(text, segmentLimit);
+                } catch (segmentError) {
+                    console.warn('AI segmenting failed, using sentence fallback', segmentError);
+                    segments = splitTextByLength(text, segmentLimit);
+                    toast.loading('AI 分段失败，已改用本地句子分段...', { id: toastId });
+                }
+            }
 
-            const nextRecord = { ...record, listeningFolder: 'AI生成' };
-            setFiles(prev => [nextRecord, ...prev.filter(item => item.id !== record.id)]);
-            setFolderFilter('AI生成');
-            setTranscriptText(text);
+            const folderName = segments.length > 1
+                ? (normalizeFolderName(`AI生成 ${safeTitle}`) || 'AI生成分段')
+                : 'AI生成';
+            const savedRecords = [];
+
+            for (let index = 0; index < segments.length; index += 1) {
+                const segment = segments[index];
+                toast.loading(`正在生成第 ${index + 1}/${segments.length} 段音频...`, { id: toastId });
+                const audioBlob = await synthesizeSpeech(segment.text, settings);
+                const ext = getAudioExtension(audioBlob.type);
+                const segmentSuffix = segments.length > 1 ? ` ${index + 1}-${segments.length}` : '';
+                const segmentTitle = segments.length > 1 && segment.title ? ` - ${sanitizeAudioName(segment.title)}` : '';
+                const record = await saveToFileLibrary({
+                    name: `[AI听力${segmentSuffix}] ${safeTitle}${segmentTitle}.${ext}`,
+                    type: audioBlob.type || 'audio/mpeg',
+                    blob: audioBlob,
+                    listeningFolder: folderName,
+                    sourceTranscriptPart: index + 1,
+                    sourceTranscriptParts: segments.length
+                });
+
+                await saveListeningData({
+                    fileId: record.id,
+                    transcript: segment.text,
+                    quizData: null
+                });
+
+                savedRecords.push({ ...record, listeningFolder: folderName });
+            }
+
+            setFiles(prev => [
+                ...savedRecords,
+                ...prev.filter(item => !savedRecords.some(record => record.id === item.id))
+            ]);
+            setFolderFilter(folderName);
+            setTranscriptText(segments.map((segment, index) => (
+                segments.length > 1
+                    ? `Part ${index + 1}: ${segment.title || ''}\n${segment.text}`
+                    : segment.text
+            )).join('\n\n'));
             setListeningQuiz(null);
             setWorkbenchMode('transcript');
-            handleSelectFile(nextRecord);
+            handleSelectFile(savedRecords[0]);
             setShowGenerator(false);
             setGeneratedAudioTitle('');
             setGeneratedAudioText('');
-            toast.success('听力音频已生成并保存', { id: toastId });
+            toast.success(segments.length > 1 ? `已生成 ${segments.length} 段音频并放入「${folderName}」` : '听力音频已生成并保存', { id: toastId });
         } catch (e) {
             console.error('Generate listening audio failed', e);
             toast.error(`生成失败: ${e.message}`, { id: toastId });
@@ -348,7 +508,7 @@ const ListeningView = () => {
     const showTranscriptPane = workbenchMode !== 'quiz' || !hasQuiz;
     const showQuizPane = hasQuiz && workbenchMode !== 'transcript';
     const contentLayoutClass = isMobile
-        ? 'flex flex-col overflow-y-auto no-scrollbar pb-10'
+        ? 'flex flex-col overflow-y-auto no-scrollbar pb-28'
         : showTranscriptPane && showQuizPane
             ? 'grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] overflow-hidden min-h-0'
             : 'grid grid-cols-1 overflow-hidden min-h-0';
@@ -405,7 +565,7 @@ const ListeningView = () => {
     const Sidebar = (
         <>
             <input type="file" ref={fileInputRef} onChange={handleDirectUpload} accept="audio/*" className="hidden" />
-        <div className={`${isMobile ? 'w-full' : 'w-80'} flex flex-col glass-sidebar rounded-[2rem] border border-phy-border overflow-hidden transition-all duration-500`}>
+        <div className={`${isMobile ? 'w-full min-h-0' : 'w-80'} flex flex-col glass-sidebar rounded-[2rem] border border-phy-border overflow-hidden transition-all duration-500`}>
             <div className="p-5 border-b border-phy-border bg-phy-glassHeavy/30">
                 <div className="flex items-center justify-between mb-4">
                     <div className="p-2.5 bg-phy-accentGlass text-phy-accent rounded-2xl shadow-sm">
@@ -452,8 +612,33 @@ const ListeningView = () => {
                             rows={5}
                             className="w-full resize-none bg-phy-glass border border-phy-border rounded-xl px-3 py-2 text-xs leading-relaxed outline-none focus:ring-1 focus:ring-phy-accent/50 custom-scrollbar"
                         />
+                        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                            <label className="flex items-center gap-2 rounded-xl border border-phy-border bg-phy-glass px-3 py-2 text-[10px] text-phy-muted">
+                                <input
+                                    type="checkbox"
+                                    checked={splitLongAudio}
+                                    onChange={(e) => setSplitLongAudio(e.target.checked)}
+                                    className="accent-indigo-500"
+                                />
+                                超长文本由 AI 分段生成
+                            </label>
+                            <input
+                                type="number"
+                                min={1000}
+                                max={15000}
+                                step={500}
+                                value={ttsSegmentLimit}
+                                onChange={(e) => setTtsSegmentLimit(e.target.value)}
+                                onBlur={() => setTtsSegmentLimit(clampTtsSegmentLimit(ttsSegmentLimit))}
+                                className="w-24 bg-phy-glass border border-phy-border rounded-xl px-2 py-2 text-[10px] font-mono outline-none focus:ring-1 focus:ring-phy-accent/50"
+                                title="单段 TTS 字符上限"
+                            />
+                        </div>
                         <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] text-phy-muted">{generatedAudioText.trim().length} / 4000</span>
+                            <span className="text-[10px] text-phy-muted">
+                                {generatedAudioText.trim().length} / {clampTtsSegmentLimit(ttsSegmentLimit)}
+                                {generatedAudioText.trim().length > clampTtsSegmentLimit(ttsSegmentLimit) && splitLongAudio ? ' · 将分段保存' : ''}
+                            </span>
                             <button
                                 onClick={handleGenerateListeningAudio}
                                 disabled={isGeneratingAudio || !generatedAudioText.trim()}
@@ -564,6 +749,16 @@ const ListeningView = () => {
                                 >
                                     <Folder size={14} />
                                 </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteListeningFile(file);
+                                    }}
+                                    className="shrink-0 p-2 rounded-lg text-phy-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                    title="删除听力"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
                             </div>
                         </div>
                     );
@@ -575,14 +770,14 @@ const ListeningView = () => {
     );
 
     return (
-        <div className={`w-full max-w-none h-full flex animate-fade-in p-2 md:p-3 ${isMobile ? 'flex-col gap-3' : 'flex-row gap-3 2xl:gap-4'}`}>
+        <div className={`w-full max-w-none h-full flex animate-fade-in p-2 md:p-3 ${isMobile ? 'flex-col gap-3 overflow-y-auto pb-28' : 'flex-row gap-3 2xl:gap-4'}`}>
             
             {/* Sidebar Logic for Mobile/Desktop */}
             {(!isMobile || showSidebarOnMobile) && Sidebar}
 
             {/* Main Workbench */}
             {(!isMobile || !showSidebarOnMobile) && (
-                <div className="flex-1 flex flex-col gap-3 overflow-hidden min-h-0 min-w-0">
+                <div className={`flex-1 flex flex-col gap-3 min-h-0 min-w-0 ${isMobile ? 'overflow-visible' : 'overflow-hidden'}`}>
                     {!activeFile ? (
                         <div className="flex-1 glass-panel rounded-[2rem] flex flex-col items-center justify-center text-phy-muted animate-slide-up p-6 text-center">
                             <div className="relative mb-6">
@@ -722,7 +917,7 @@ const ListeningView = () => {
                                         </div>
                                         <span className="text-[10px] text-phy-muted bg-phy-bg px-2 py-1 rounded-md">AI 生成供参考</span>
                                     </div>
-                                    <div className="flex-1 p-4 md:p-5 overflow-y-auto custom-scrollbar leading-loose text-phy-text text-sm md:text-[15px] space-y-4">
+                                    <div className={`flex-1 p-4 md:p-5 overflow-y-auto custom-scrollbar leading-loose text-phy-text text-sm md:text-[15px] space-y-4 ${isMobile ? 'pb-28' : ''}`}>
                                         {!transcriptText ? (
                                             <div className="h-full flex flex-col items-center justify-center opacity-30 italic text-sm text-center">
                                                 尚未转写，请点击上方按钮开始
@@ -753,7 +948,7 @@ const ListeningView = () => {
                                             )}
                                         </div>
 
-                                        <div className={`flex-1 p-4 md:p-5 overflow-y-auto custom-scrollbar ${
+                                        <div className={`flex-1 p-4 md:p-5 overflow-y-auto custom-scrollbar ${isMobile ? 'pb-28' : ''} ${
                                             showQuizPane && !showTranscriptPane && !isMobile
                                                 ? 'grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-5 content-start'
                                                 : 'space-y-5 md:space-y-6'

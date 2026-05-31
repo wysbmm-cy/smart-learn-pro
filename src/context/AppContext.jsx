@@ -58,22 +58,27 @@ const AppContext = createContext();
 export const useApp = () => useContext(AppContext);
 
 const SERVER_MANAGED_API_KEY = 'server-managed';
-const DEFAULT_PUBLIC_API_PROXY_ORIGIN = 'http://139.224.210.180:3001';
+const DEFAULT_MAIN_API_BASE_URL = 'https://api.deepseek.com';
+const DEFAULT_MAIN_MODEL_NAME = 'deepseek-chat';
 const cleanProxyOrigin = (value = '') => String(value || '').trim().replace(/\/+$/, '');
-const PUBLIC_API_PROXY_ORIGIN = cleanProxyOrigin(import.meta.env.VITE_API_PROXY_ORIGIN || DEFAULT_PUBLIC_API_PROXY_ORIGIN);
-const proxyUrl = (path) => PUBLIC_API_PROXY_ORIGIN ? `${PUBLIC_API_PROXY_ORIGIN}${path}` : path;
+const isRemovedPublicProxyEndpoint = (value, path) => {
+    const cleaned = cleanProxyOrigin(value);
+    return cleaned === path;
+};
+const shouldClearRemovedProxyDefault = (apiKey, url, path) =>
+    String(apiKey || '').trim() === SERVER_MANAGED_API_KEY || isRemovedPublicProxyEndpoint(url, path);
 
 export const BUILTIN_API_CONFIG = {
-    mainApiBaseUrl: proxyUrl('/api/ai'),
-    mainModelName: 'deepseek-v4-flash',
-    mainApiKey: SERVER_MANAGED_API_KEY,
-    audioApiBaseUrl: proxyUrl('/api/audio'),
-    audioApiKey: SERVER_MANAGED_API_KEY,
-    audioModelName: 'TeleAI/TeleSpeechASR',
-    ttsApiBaseUrl: proxyUrl('/api/tts'),
-    ttsApiKey: SERVER_MANAGED_API_KEY,
-    ttsModelName: 'x-ai/grok-voice-tts-1.0',
-    ttsVoice: 'Eve',
+    mainApiBaseUrl: DEFAULT_MAIN_API_BASE_URL,
+    mainModelName: DEFAULT_MAIN_MODEL_NAME,
+    mainApiKey: '',
+    audioApiBaseUrl: '',
+    audioApiKey: '',
+    audioModelName: 'whisper-1',
+    ttsApiBaseUrl: '',
+    ttsApiKey: '',
+    ttsModelName: 'tts-1',
+    ttsVoice: 'alloy',
     ttsRequestMode: 'speech',
     ttsCustomHeaders: '',
     ttsCustomBody: '',
@@ -92,7 +97,7 @@ const DEFAULT_SETTINGS = {
     activeApiProfileId: '',
     proxyAccessToken: '',
     preloadAll: true,
-    maxReviewCards: 0,  // 0 = unlimited, otherwise cap per session
+    maxReviewCards: 200,
     writingLevel: "CET-6",
     writingPrompt: "Strict examiner mode. Find all errors.",
     vocabCount: "10-15",
@@ -150,8 +155,8 @@ Output Format: Markdown (Strictly follow this structure):
     ttsCustomAudioPath: BUILTIN_API_CONFIG.ttsCustomAudioPath,
     ttsCustomAudioMimeType: BUILTIN_API_CONFIG.ttsCustomAudioMimeType,
     ttsCustomStylePrompt: BUILTIN_API_CONFIG.ttsCustomStylePrompt,
-    imageGenApiUrl: proxyUrl('/api/image'),
-    imageGenApiKey: SERVER_MANAGED_API_KEY,
+    imageGenApiUrl: '',
+    imageGenApiKey: '',
     imageGenModel: 'dall-e-3',
 
     // Appearance (Zen Mode)
@@ -191,25 +196,45 @@ const DEFAULT_ANALYSIS = {
 
 const normalizePublicApiDefaults = (input = {}) => {
     const next = { ...input };
+    const clearMainApiDefault = shouldClearRemovedProxyDefault(next.apiKey, next.apiBaseUrl, '/api/ai');
+    const clearAudioApiDefault = shouldClearRemovedProxyDefault(next.audioApiKey, next.audioApiBaseUrl, '/api/audio');
+    const clearTtsApiDefault = shouldClearRemovedProxyDefault(next.ttsApiKey, next.ttsApiBaseUrl, '/api/tts');
+    const clearImageApiDefault = shouldClearRemovedProxyDefault(next.imageGenApiKey, next.imageGenApiUrl, '/api/image');
 
-    if (!next.apiBaseUrl) {
+    if (!next.apiBaseUrl || clearMainApiDefault) {
         next.apiBaseUrl = BUILTIN_API_CONFIG.mainApiBaseUrl;
         next.modelName = BUILTIN_API_CONFIG.mainModelName;
         next.apiKey = BUILTIN_API_CONFIG.mainApiKey;
         next.activeApiProfileId = '';
     }
+    if (!next.modelName || clearMainApiDefault) {
+        next.modelName = BUILTIN_API_CONFIG.mainModelName;
+    }
+    if (clearMainApiDefault) {
+        next.apiKey = '';
+        next.proxyAccessToken = '';
+    }
 
-    if (!next.audioApiBaseUrl) {
+    if (!next.audioApiBaseUrl || clearAudioApiDefault) {
         next.audioApiBaseUrl = BUILTIN_API_CONFIG.audioApiBaseUrl;
         next.audioApiKey = BUILTIN_API_CONFIG.audioApiKey;
         next.audioModelName = BUILTIN_API_CONFIG.audioModelName;
     }
+    if (!next.audioModelName || clearAudioApiDefault) {
+        next.audioModelName = BUILTIN_API_CONFIG.audioModelName;
+    }
+    if (clearAudioApiDefault) {
+        next.audioApiKey = '';
+    }
 
-    if (!next.ttsApiBaseUrl || next.ttsModelName === 'fnlp/MOSS-TTSD-v0.5') {
+    if (!next.ttsApiBaseUrl || next.ttsModelName === 'fnlp/MOSS-TTSD-v0.5' || clearTtsApiDefault) {
         next.ttsApiBaseUrl = BUILTIN_API_CONFIG.ttsApiBaseUrl;
         next.ttsApiKey = BUILTIN_API_CONFIG.ttsApiKey;
         next.ttsModelName = BUILTIN_API_CONFIG.ttsModelName;
         next.ttsVoice = BUILTIN_API_CONFIG.ttsVoice;
+    }
+    if (clearTtsApiDefault) {
+        next.ttsApiKey = '';
     }
 
     if (!next.ttsRequestMode) {
@@ -222,25 +247,13 @@ const normalizePublicApiDefaults = (input = {}) => {
         next.ttsCustomStylePrompt = BUILTIN_API_CONFIG.ttsCustomStylePrompt;
     }
 
-    if (!next.imageGenApiUrl) {
+    if (!next.imageGenApiUrl || clearImageApiDefault) {
         next.imageGenApiUrl = DEFAULT_SETTINGS.imageGenApiUrl;
         next.imageGenApiKey = DEFAULT_SETTINGS.imageGenApiKey;
         next.imageGenModel = DEFAULT_SETTINGS.imageGenModel;
     }
-
-    if (PUBLIC_API_PROXY_ORIGIN) {
-        if (next.apiKey === SERVER_MANAGED_API_KEY && next.apiBaseUrl === '/api/ai') {
-            next.apiBaseUrl = BUILTIN_API_CONFIG.mainApiBaseUrl;
-        }
-        if (next.audioApiKey === SERVER_MANAGED_API_KEY && next.audioApiBaseUrl === '/api/audio') {
-            next.audioApiBaseUrl = BUILTIN_API_CONFIG.audioApiBaseUrl;
-        }
-        if (next.ttsApiKey === SERVER_MANAGED_API_KEY && next.ttsApiBaseUrl === '/api/tts') {
-            next.ttsApiBaseUrl = BUILTIN_API_CONFIG.ttsApiBaseUrl;
-        }
-        if (next.imageGenApiKey === SERVER_MANAGED_API_KEY && next.imageGenApiUrl === '/api/image') {
-            next.imageGenApiUrl = DEFAULT_SETTINGS.imageGenApiUrl;
-        }
+    if (clearImageApiDefault) {
+        next.imageGenApiKey = '';
     }
 
     next.apiProfiles = Array.isArray(next.apiProfiles) ? next.apiProfiles : [];

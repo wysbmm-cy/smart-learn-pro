@@ -1,0 +1,30 @@
+{
+    "files":  127,
+    "filteredByIgnore":  2,
+    "byCategory":  {
+                       "docs":  12,
+                       "config":  23,
+                       "infra":  2,
+                       "code":  83,
+                       "script":  1,
+                       "markup":  6
+                   },
+    "nodes":  678,
+    "edges":  1220,
+    "layers":  11,
+    "tour":  6,
+    "nodeTypes":  {
+                      "document":  12,
+                      "config":  23,
+                      "pipeline":  2,
+                      "file":  90,
+                      "function":  545,
+                      "class":  6
+                  },
+    "edgeTypes":  {
+                      "contains":  551,
+                      "imports":  134,
+                      "calls":  535
+                  },
+    "warnings":  51
+}

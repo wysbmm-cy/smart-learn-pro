@@ -943,7 +943,7 @@ const FlashcardView = ({ params }) => {
             // Take top cards: all due cards for FSRS review (with optional limit), or drawCount for manual
             let selected;
             if (useAllCards) {
-                const maxCards = settings?.maxReviewCards || 0;
+                const maxCards = settings?.maxReviewCards || 200;
                 selected = maxCards > 0
                     ? sortedByWeakness.slice(0, maxCards)
                     : sortedByWeakness;

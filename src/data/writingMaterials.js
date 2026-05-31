@@ -4,6 +4,7 @@
     { value: 'evidence', label: '例证素材' },
     { value: 'transition', label: '连接与转折' },
     { value: 'conclusion', label: '结尾升华' },
+    { value: 'whole_template', label: '整文模板' },
     { value: 'vocabulary', label: '词汇替换' }
 ];
 

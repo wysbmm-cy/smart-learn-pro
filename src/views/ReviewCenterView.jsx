@@ -15,7 +15,7 @@ const ReviewCenterView = ({ onNavigate }) => {
     const [selectedFolderIds, setSelectedFolderIds] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [maxCards, setMaxCards] = useState(settings?.maxReviewCards || 0);
+    const [maxCards, setMaxCards] = useState(settings?.maxReviewCards || 200);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -37,6 +37,10 @@ const ReviewCenterView = ({ onNavigate }) => {
     useEffect(() => {
         loadData();
     }, []);
+
+    useEffect(() => {
+        setMaxCards(settings?.maxReviewCards || 200);
+    }, [settings?.maxReviewCards]);
 
     const folderNameMap = useMemo(() => {
         const map = new Map();
@@ -134,12 +138,12 @@ const ReviewCenterView = ({ onNavigate }) => {
                     <div className="mt-2">
                         <input
                             type="number"
-                            min={0}
+                            min={1}
                             value={maxCards}
-                            onChange={(event) => setMaxCards(Math.max(0, Number(event.target.value) || 0))}
+                            onChange={(event) => setMaxCards(Math.max(1, Number(event.target.value) || 200))}
                             className="w-full px-3 py-2 rounded-lg bg-phy-bg border border-phy-border text-sm"
                         />
-                        <div className="text-[10px] text-phy-muted mt-1">0 表示不限制数量</div>
+                        <div className="text-[10px] text-phy-muted mt-1">默认跟随设置里的每日复习上限。</div>
                     </div>
                 </div>
             </div>

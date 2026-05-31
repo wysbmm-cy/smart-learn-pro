@@ -1,12 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Play, Pause, X, Music, Maximize2, Minimize2, GripHorizontal } from 'lucide-react';
+import { Play, Pause, X, Music, Maximize2, Minimize2, GripHorizontal, Repeat } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const GlobalPlayer = () => {
     const { audioState, closeAudio, toggleAudioPlay } = useApp();
     const audioRef = useRef(null);
     const [rate, setRate] = useState(1.0);
+    const [loop, setLoop] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
 
     // Progress State
@@ -15,7 +16,10 @@ const GlobalPlayer = () => {
     const progressRef = useRef(null);
 
     // Draggable State
-    const [position, setPosition] = useState({ x: window.innerWidth - 340, y: window.innerHeight - 150 });
+    const [position, setPosition] = useState(() => ({
+        x: Math.max(12, window.innerWidth - 356),
+        y: Math.max(72, window.innerHeight - 220)
+    }));
     const [isDragging, setIsDragging] = useState(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
@@ -32,8 +36,8 @@ const GlobalPlayer = () => {
         const handleResize = () => {
             // Optional: reset or clamp position
             setPosition(prev => ({
-                x: Math.min(prev.x, window.innerWidth - 100),
-                y: Math.min(prev.y, window.innerHeight - 100)
+                x: Math.min(Math.max(12, prev.x), Math.max(12, window.innerWidth - 80)),
+                y: Math.min(Math.max(72, prev.y), Math.max(72, window.innerHeight - 96))
             }));
         };
         window.addEventListener('resize', handleResize);
@@ -43,23 +47,46 @@ const GlobalPlayer = () => {
     // Drag Handlers
     const dragStartPosition = useRef({ x: 0, y: 0 });
 
-    const handleMouseDown = (e) => {
+    const startDrag = (clientX, clientY) => {
         setIsDragging(true);
-        dragStartPosition.current = { x: e.clientX, y: e.clientY };
+        dragStartPosition.current = { x: clientX, y: clientY };
         dragOffset.current = {
-            x: e.clientX - position.x,
-            y: e.clientY - position.y
+            x: clientX - position.x,
+            y: clientY - position.y
         };
     };
 
+    const handleMouseDown = (e) => {
+        startDrag(e.clientX, e.clientY);
+    };
+
+    const handleTouchStart = (e) => {
+        const touch = e.touches?.[0];
+        if (!touch) return;
+        startDrag(touch.clientX, touch.clientY);
+    };
+
     useEffect(() => {
+        const moveTo = (clientX, clientY) => {
+            if (!isDragging) return;
+            setPosition({
+                x: Math.min(Math.max(12, clientX - dragOffset.current.x), Math.max(12, window.innerWidth - 80)),
+                y: Math.min(Math.max(72, clientY - dragOffset.current.y), Math.max(72, window.innerHeight - 96))
+            });
+        };
+
         const handleMouseMove = (e) => {
             if (!isDragging) return;
             e.preventDefault();
-            setPosition({
-                x: e.clientX - dragOffset.current.x,
-                y: e.clientY - dragOffset.current.y
-            });
+            moveTo(e.clientX, e.clientY);
+        };
+
+        const handleTouchMove = (e) => {
+            if (!isDragging) return;
+            const touch = e.touches?.[0];
+            if (!touch) return;
+            e.preventDefault();
+            moveTo(touch.clientX, touch.clientY);
         };
 
         const handleMouseUp = (e) => {
@@ -69,10 +96,14 @@ const GlobalPlayer = () => {
         if (isDragging) {
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleMouseUp);
         }
         return () => {
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleMouseUp);
         };
     }, [isDragging]);
 
@@ -168,16 +199,20 @@ const GlobalPlayer = () => {
             style={{
                 left: position.x,
                 top: position.y,
-                cursor: isDragging ? 'grabbing' : 'auto'
+                cursor: isDragging ? 'grabbing' : 'auto',
+                touchAction: 'none'
             }}
         >
             {/* Hidden Audio Element */}
             <audio
                 ref={audioRef}
                 src={audioState.file.url}
+                loop={loop}
                 onPlay={handleAudioEvents}
                 onPause={handleAudioEvents}
-                onEnded={() => toggleAudioPlay(false)}
+                onEnded={() => {
+                    if (!loop) toggleAudioPlay(false);
+                }}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 className="hidden"
@@ -188,6 +223,7 @@ const GlobalPlayer = () => {
                 <div
                     className="relative group"
                     onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
                     onClick={handleExpandClick} // Handle click logic here
                 >
                     <div className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center border-2 border-white cursor-grab active:cursor-grabbing hover:scale-105 transition-transform ${audioState.isPlaying ? 'bg-gradient-to-r from-blue-500 to-indigo-600 animate-spin-slow' : 'bg-phy-glassHeavy'
@@ -202,12 +238,13 @@ const GlobalPlayer = () => {
                 </div>
             ) : (
                 // Expanded Player Card
-                <div className="bg-phy-glassHeavy backdrop-blur-xl border border-phy-border shadow-2xl rounded-2xl p-3 flex flex-col gap-2 w-80 shadow-phy-accentGlass/10">
+                <div className="bg-phy-glassHeavy backdrop-blur-xl border border-phy-border shadow-2xl rounded-2xl p-3 flex flex-col gap-2 w-[min(calc(100vw-24px),20rem)] shadow-phy-accentGlass/10">
 
                     {/* Drag Handle & Header */}
                     <div
                         className="flex items-center justify-between border-b border-phy-border pb-2 cursor-grab active:cursor-grabbing"
                         onMouseDown={handleMouseDown}
+                        onTouchStart={handleTouchStart}
                     >
                         <div className="text-phy-muted">
                             <GripHorizontal size={16} />
@@ -281,7 +318,17 @@ const GlobalPlayer = () => {
                             {audioState.isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
                         </button>
 
-                        <div className="w-8" /> {/* Spacer for symmetry */}
+                        <button
+                            onClick={() => setLoop(prev => !prev)}
+                            className={`p-1.5 rounded-full border transition-all ${
+                                loop
+                                    ? 'bg-phy-accent text-white border-phy-accent shadow-sm shadow-phy-accent/20'
+                                    : 'bg-phy-glass border-phy-border text-phy-muted hover:text-phy-accent'
+                            }`}
+                            title={loop ? '关闭循环' : '循环播放'}
+                        >
+                            <Repeat size={16} />
+                        </button>
                     </div>
                 </div>
             )}

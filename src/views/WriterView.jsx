@@ -970,6 +970,28 @@ const WriterView = ({ params }) => {
         });
     };
 
+    const startNewWholeTemplateMaterial = () => {
+        setMaterialFormAdvancedOpen(true);
+        setMaterialForm({
+            id: null,
+            title: title ? `${title} 模板` : '新的整文模板',
+            content: content.trim(),
+            rewrite: '',
+            usage: examContext.prompt || '',
+            caution: '',
+            sourceTerm: '',
+            targetTerm: '',
+            replaceReason: '',
+            beforeExample: '',
+            afterExample: '',
+            category: 'whole_template',
+            topic: examContext.prompt.slice(0, 36),
+            tags: [examContext.examType, examContext.genre].filter(Boolean).join(', ')
+        });
+        setMaterialCategory('whole_template');
+        setMaterialManagerModalOpen(true);
+    };
+
     const applyMaterialFilter = (list) => {
         const q = materialQuery.trim().toLowerCase();
         return (list || []).filter((m) => {
@@ -1132,6 +1154,21 @@ const WriterView = ({ params }) => {
             mode: insertModePreference,
             anchor: insertAnchor
         });
+    };
+
+    const applyWholeTemplateMaterial = (item) => {
+        if (!item?.content?.trim()) return toast.error('这个整文模板还没有正文内容');
+        const ok = !content.trim() || window.confirm(`用「${item.title || '整文模板'}」替换当前正文？`);
+        if (!ok) return;
+        setContent(item.content);
+        setContentOrigin('template');
+        setIsContentDirty(true);
+        setAutoSaveState('idle');
+        setTitle(item.title || title || '整文模板作文');
+        setWorkflowStep('write');
+        setWriterExperience('notebook');
+        closeMaterialsPanel();
+        toast.success('已用整文模板生成草稿');
     };
 
     const handleSaveMaterial = async () => {
@@ -2223,6 +2260,7 @@ const WriterView = ({ params }) => {
         return rows;
     }, [outline, content]);
     const isVocabMaterialForm = normalizeMaterialCategory(materialForm.category) === 'vocabulary';
+    const isWholeTemplateMaterialForm = normalizeMaterialCategory(materialForm.category) === 'whole_template';
     const showVocabularyWorkbench = materialCategory === 'vocabulary';
     useEffect(() => {
         if (!showVocabularyWorkbench || !activeMaterial) return;
@@ -2281,6 +2319,9 @@ const WriterView = ({ params }) => {
                     </div>
                     <button onClick={saveDraft} disabled={isSaving} className="px-3 py-2 rounded-lg border border-[#34313f] bg-[#23212c] text-[#eee9e4] text-xs font-bold hover:border-[#f08a7e]/55 hover:bg-[#292733] disabled:opacity-60">
                         {isSaving ? '保存中' : '保存'}
+                    </button>
+                    <button onClick={startNewWholeTemplateMaterial} className="px-3 py-2 rounded-lg border border-[#43d6b5]/30 bg-[#16312d] text-[#8debd4] text-xs font-bold hover:bg-[#1d3d38]">
+                        存为整文模板
                     </button>
                     <button onClick={() => { setEditorLayoutMode('merged'); setWriterExperience('guided'); setWorkflowStep('write'); }} className="px-3 py-2 rounded-lg border border-[#34313f] bg-[#23212c] text-[#aaa2ad] hover:border-[#f08a7e]/55 hover:text-[#f4b0aa] text-xs font-bold">
                         高级流程
@@ -2440,7 +2481,7 @@ const WriterView = ({ params }) => {
                     专注模式已开启：已隐藏次要干扰操作。
                 </div>
             )}
-            <div className={`w-full min-h-[420px] p-4 md:p-6 ${focusMode ? 'pt-8 md:pt-10' : ''} pb-28 md:pb-8 space-y-3`}>
+            <div className={`w-full min-h-[420px] p-4 md:p-6 ${focusMode ? 'pt-8 md:pt-10' : ''} pb-8 space-y-3`}>
                 {editorLayoutMode === 'merged' ? (
                     <textarea
                         value={content}
@@ -2551,17 +2592,6 @@ const WriterView = ({ params }) => {
                 </button>
                     </>
                 )}
-            </div>
-            <div
-                className="md:hidden absolute bottom-0 left-0 right-0 border-t border-phy-border bg-phy-glassHeavy backdrop-blur-3xl px-3 py-2 flex items-center gap-2"
-                style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
-            >
-                <button onClick={openMaterialsPanel} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95 transition-all">素材</button>
-                <button onClick={assembleAmmoPack} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold border border-emerald-400/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-200 active:scale-95 transition-all">组装</button>
-                <button onClick={requestAnalyze} disabled={isAnalyzing} className="flex-1 px-2 py-2 rounded-lg text-xs font-bold bg-[#f07167] text-[#211619] disabled:opacity-60 active:scale-95 transition-all">
-                    {isAnalyzing ? '诊断中' : '诊断'}
-                </button>
-                <button onClick={saveDraft} className="px-3 py-2 rounded-lg text-xs font-bold border border-phy-border bg-phy-glass text-phy-text active:scale-95 transition-all">保存</button>
             </div>
         </div>
     );
@@ -2889,8 +2919,14 @@ const WriterView = ({ params }) => {
                             <div className="text-[10px] text-[#9f98a6] font-medium">{visibleMaterials.length} 条可读素材</div>
                         </div>
                         <button
+                            onClick={startNewWholeTemplateMaterial}
+                            className="ml-auto px-2.5 py-1.5 rounded-lg border border-[#43d6b5]/30 bg-[#16312d] text-[11px] font-bold text-[#8debd4] hover:bg-[#1d3d38] transition-colors"
+                        >
+                            新增整文模板
+                        </button>
+                        <button
                             onClick={() => setMaterialManagerModalOpen(true)}
-                            className="ml-auto px-2.5 py-1.5 rounded-lg border border-[#363340] text-[11px] font-bold text-[#b5aeba] hover:text-[#eee9e4] hover:bg-[#25232d] transition-colors"
+                            className="px-2.5 py-1.5 rounded-lg border border-[#363340] text-[11px] font-bold text-[#b5aeba] hover:text-[#eee9e4] hover:bg-[#25232d] transition-colors"
                         >
                             管理
                         </button>
@@ -3079,6 +3115,14 @@ const WriterView = ({ params }) => {
                                                 {detailMaterial.topic ? ` · ${detailMaterial.topic}` : ''}
                                             </div>
                                         </div>
+                                        {normalizeMaterialCategory(detailMaterial.category) === 'whole_template' ? (
+                                            <button
+                                                onClick={() => applyWholeTemplateMaterial(detailMaterial)}
+                                                className="px-2.5 py-1.5 rounded-lg border border-[#43d6b5]/30 bg-[#16312d] text-[11px] font-bold text-[#8debd4] hover:bg-[#1d3d38]"
+                                            >
+                                                用此模板写作
+                                            </button>
+                                        ) : null}
                                         <button
                                             onClick={() => {
                                                 handleEditMaterial(detailMaterial);
@@ -3162,13 +3206,13 @@ const WriterView = ({ params }) => {
         <div className="rounded-2xl border border-phy-border bg-phy-glass p-3 space-y-2">
             <div className="text-xs font-bold text-phy-muted uppercase tracking-wide">
                 {materialForm.id
-                    ? (isVocabMaterialForm ? '编辑词汇' : '编辑素材')
-                    : (isVocabMaterialForm ? '新增词汇' : '新增素材')}
+                    ? (isVocabMaterialForm ? '编辑词汇' : (isWholeTemplateMaterialForm ? '编辑整文模板' : '编辑素材'))
+                    : (isVocabMaterialForm ? '新增词汇' : (isWholeTemplateMaterialForm ? '新增整文模板' : '新增素材'))}
             </div>
             <input
                 value={materialForm.title}
                 onChange={(e) => setMaterialForm((p) => ({ ...p, title: e.target.value }))}
-                placeholder={isVocabMaterialForm ? '标题（可选，不填将自动生成）' : '素材标题'}
+                placeholder={isVocabMaterialForm ? '标题（可选，不填将自动生成）' : (isWholeTemplateMaterialForm ? '模板标题' : '素材标题')}
                 className="w-full rounded-lg bg-phy-bg border border-phy-border px-3 py-2 text-sm text-phy-text"
             />
             {isVocabMaterialForm ? (
@@ -3231,22 +3275,22 @@ const WriterView = ({ params }) => {
                     <textarea
                         value={materialForm.content}
                         onChange={(e) => setMaterialForm((p) => ({ ...p, content: e.target.value }))}
-                        rows={4}
-                        placeholder="素材内容（句级表达优先）"
+                        rows={isWholeTemplateMaterialForm ? 10 : 4}
+                        placeholder={isWholeTemplateMaterialForm ? '整篇文章模板正文' : '素材内容（句级表达优先）'}
                         className="w-full rounded-lg bg-phy-bg border border-phy-border px-3 py-2 text-sm text-phy-text resize-y"
                     />
                     <textarea
                         value={materialForm.rewrite}
                         onChange={(e) => setMaterialForm((p) => ({ ...p, rewrite: e.target.value }))}
                         rows={3}
-                        placeholder="推荐改写版（可选）"
+                        placeholder={isWholeTemplateMaterialForm ? '结构说明 / 升级版 / 可替换段落（可选）' : '推荐改写版（可选）'}
                         className="w-full rounded-lg bg-phy-bg border border-phy-border px-3 py-2 text-sm text-phy-text resize-y"
                     />
                     <textarea
                         value={materialForm.usage}
                         onChange={(e) => setMaterialForm((p) => ({ ...p, usage: e.target.value }))}
                         rows={2}
-                        placeholder="适用场景（例如：适合放在P2论证句）"
+                        placeholder={isWholeTemplateMaterialForm ? '适用题型、主题或使用说明' : '适用场景（例如：适合放在P2论证句）'}
                         className="w-full rounded-lg bg-phy-bg border border-phy-border px-3 py-2 text-sm text-phy-text resize-y"
                     />
                     <textarea

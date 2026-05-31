@@ -71,7 +71,8 @@ const Dashboard = ({ onNavigate }) => {
                 const allCards = await getFlashcards();
                 const now = Date.now();
                 const dueCards = allCards.filter(c => !c.nextReview || c.nextReview <= now);
-                setDueCount(dueCards.length);
+                const reviewLimit = settings?.maxReviewCards || 200;
+                setDueCount(Math.min(dueCards.length, reviewLimit));
                 const allNotes = await getNotes();
                 const allHistory = await getHistory();
                 const allChat = await getChatSessions();
@@ -121,7 +122,7 @@ const Dashboard = ({ onNavigate }) => {
             }
         };
         load();
-    }, []);
+    }, [settings?.maxReviewCards]);
 
     const handleGenerateComic = async () => {
         if (!todayHighlights.length) {

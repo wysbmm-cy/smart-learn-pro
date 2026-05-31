@@ -224,10 +224,10 @@ const SettingsView = () => {
         return `${value.slice(0, 4)}••••••••${value.slice(-4)}`;
     };
 
-    const isUsingBuiltinMainKey = settings.apiKey === BUILTIN_API_CONFIG.mainApiKey;
-    const isUsingBuiltinAudioKey = settings.audioApiKey === BUILTIN_API_CONFIG.audioApiKey;
-    const isUsingBuiltinTtsKey = settings.ttsApiKey === BUILTIN_API_CONFIG.ttsApiKey;
-    const isUsingBuiltinImageKey = settings.imageGenApiKey === 'server-managed';
+    const isUsingBuiltinMainKey = Boolean(BUILTIN_API_CONFIG.mainApiKey) && settings.apiKey === BUILTIN_API_CONFIG.mainApiKey;
+    const isUsingBuiltinAudioKey = Boolean(BUILTIN_API_CONFIG.audioApiKey) && settings.audioApiKey === BUILTIN_API_CONFIG.audioApiKey;
+    const isUsingBuiltinTtsKey = Boolean(BUILTIN_API_CONFIG.ttsApiKey) && settings.ttsApiKey === BUILTIN_API_CONFIG.ttsApiKey;
+    const isUsingBuiltinImageKey = Boolean(BUILTIN_API_CONFIG.imageGenApiKey) && settings.imageGenApiKey === BUILTIN_API_CONFIG.imageGenApiKey;
 
     const handleUseBuiltinMainKey = () => {
         updateSetting('apiKey', BUILTIN_API_CONFIG.mainApiKey);
@@ -235,6 +235,7 @@ const SettingsView = () => {
         setCustomMainKeyDraft('');
         updateSetting('apiBaseUrl', BUILTIN_API_CONFIG.mainApiBaseUrl);
         updateSetting('modelName', BUILTIN_API_CONFIG.mainModelName);
+        updateSetting('proxyAccessToken', '');
         updateSetting('activeApiProfileId', '');
     };
 
@@ -362,14 +363,14 @@ const SettingsView = () => {
                         </div>
                         <div>
                             <h3 className="text-lg">AI 服务</h3>
-                            <p className="text-xs text-phy-muted mt-1">内置服务已启用，普通用户无需填写接口地址、模型或密钥。</p>
+                            <p className="text-xs text-phy-muted mt-1">请填写你自己的 OpenAI 兼容 API 地址、模型和密钥。</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
                             <div className="text-xs text-phy-muted mb-1">服务状态</div>
-                            <div className="text-sm font-bold text-blue-300">平台内置</div>
+                            <div className="text-sm font-bold text-blue-300">用户自备</div>
                         </div>
                         <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
                             <div className="text-xs text-phy-muted mb-1">适用功能</div>
@@ -377,13 +378,13 @@ const SettingsView = () => {
                         </div>
                         <div className="rounded-2xl border border-slate-500/20 bg-phy-bg/60 p-4">
                             <div className="text-xs text-phy-muted mb-1">接口密钥</div>
-                            <div className="text-sm font-bold text-phy-text">已隐藏</div>
+                            <div className="text-sm font-bold text-phy-text">仅本地保存</div>
                         </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
                         <div className="text-sm text-phy-muted leading-relaxed">
-                            默认 API 由服务器托管，不在前端展示。高级用户也可以在下方填写自己的 API 地址、模型和密钥。
+                            当前版本不再提供默认免费后端。AI 功能需要用户填写自己的 API 配置，密钥只保存在当前设备本地。
                         </div>
                         <button
                             onClick={handleTest}
@@ -408,14 +409,14 @@ const SettingsView = () => {
                     <div className="mt-5 rounded-2xl border border-phy-border bg-phy-bg/40 p-5 space-y-4">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div>
-                                <h4 className="text-sm font-bold text-phy-text">自定义 API（可选）</h4>
-                                <p className="text-xs text-phy-muted mt-1">不填写自己的密钥时，系统继续使用平台内置服务；填写后只在你的本地设置中生效。</p>
+                                <h4 className="text-sm font-bold text-phy-text">API 配置</h4>
+                                <p className="text-xs text-phy-muted mt-1">请使用自己的 API Key。网页端不会再默认连接平台后端。</p>
                             </div>
                             <button
                                 onClick={handleUseBuiltinMainKey}
                                 className="px-4 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover transition-colors"
                             >
-                                恢复平台内置
+                                恢复推荐配置
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -426,7 +427,7 @@ const SettingsView = () => {
                                     value={settings.apiBaseUrl || ''}
                                     onChange={(e) => updateSetting('apiBaseUrl', e.target.value)}
                                     className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
-                                    placeholder="/api/ai 或 https://api.openai.com/v1"
+                                    placeholder="https://api.deepseek.com 或 https://api.openai.com/v1"
                                 />
                             </div>
                             <div>
@@ -446,25 +447,12 @@ const SettingsView = () => {
                                     value={isUsingBuiltinMainKey ? '' : (settings.apiKey || '')}
                                     onChange={(e) => updateSetting('apiKey', e.target.value)}
                                     className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
-                                    placeholder={isUsingBuiltinMainKey ? '平台内置密钥已隐藏' : '输入你自己的 API Key'}
+                                    placeholder="输入你自己的 API Key"
                                 />
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-xs font-bold text-phy-muted mb-2">后端访问口令（可选）</label>
-                                <input
-                                    type="password"
-                                    value={settings.proxyAccessToken || ''}
-                                    onChange={(e) => updateSetting('proxyAccessToken', e.target.value)}
-                                    className="w-full bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono text-phy-text"
-                                    placeholder="只有服务器配置了 PROXY_ACCESS_TOKEN 时才需要填写"
-                                />
-                                <p className="text-[11px] text-phy-muted mt-2">
-                                    这个口令只用来访问你自己的后端代理，不是模型服务商 API Key。公开网页场景下不要把真实模型 Key 放在这里。
-                                </p>
                             </div>
                         </div>
                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 leading-relaxed">
-                            提醒：平台内置密钥不会显示给用户；如果用户填写自己的密钥，该密钥只保存在当前设备本地。
+                            提醒：不要把你的 API Key 写进公开代码或截图里。用户填写的密钥只保存在当前设备本地。
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3">
                             <input
@@ -476,7 +464,7 @@ const SettingsView = () => {
                             />
                             <button
                                 onClick={handleSaveCurrentApiProfile}
-                                disabled={isUsingBuiltinMainKey}
+                                disabled={!settings.apiKey}
                                 className="px-4 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 保存配置
@@ -533,7 +521,7 @@ const SettingsView = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
                         <div>
-                            <div className="text-sm font-bold text-phy-text">内置语音识别已配置</div>
+                            <div className="text-sm font-bold text-phy-text">语音识别需自行配置</div>
                             <div className="text-xs text-phy-muted mt-1">接口地址、模型和密钥不向普通用户展示。</div>
                         </div>
                         <button
@@ -569,7 +557,7 @@ const SettingsView = () => {
                                 }}
                                 className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
                             >
-                                恢复内置
+                                清空配置
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -592,7 +580,7 @@ const SettingsView = () => {
                                 value={isUsingBuiltinAudioKey ? '' : (settings.audioApiKey || '')}
                                 onChange={(e) => updateSetting('audioApiKey', e.target.value)}
                                 className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
-                                placeholder={isUsingBuiltinAudioKey ? '平台内置密钥已隐藏' : '输入你的语音 API Key'}
+                                placeholder="输入你的语音 API Key"
                             />
                         </div>
                     </div>
@@ -611,7 +599,7 @@ const SettingsView = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
                         <div>
-                            <div className="text-sm font-bold text-phy-text">内置朗读服务已配置</div>
+                            <div className="text-sm font-bold text-phy-text">朗读服务需自行配置</div>
                             <div className="text-xs text-phy-muted mt-1">普通用户不需要理解模型或语音参数。</div>
                         </div>
                         <button
@@ -643,7 +631,7 @@ const SettingsView = () => {
                                 onClick={resetTtsSettings}
                                 className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
                             >
-                                恢复内置
+                                清空配置
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -673,7 +661,7 @@ const SettingsView = () => {
                                 value={isUsingBuiltinTtsKey ? '' : (settings.ttsApiKey || '')}
                                 onChange={(e) => updateSetting('ttsApiKey', e.target.value)}
                                 className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
-                                placeholder={isUsingBuiltinTtsKey ? '平台内置密钥已隐藏' : '输入你的朗读 API Key'}
+                                placeholder="输入你的朗读 API Key"
                             />
                         </div>
                         <div className="rounded-2xl border border-phy-border bg-phy-bg/50 p-4 space-y-4">
@@ -772,7 +760,7 @@ const SettingsView = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 p-4">
                         <div>
-                            <div className="text-sm font-bold text-phy-text">内置图像生成服务已配置</div>
+                            <div className="text-sm font-bold text-phy-text">图像生成需自行配置</div>
                             <div className="text-xs text-phy-muted mt-1">测试会消耗少量额度，请只在需要排查时使用。</div>
                         </div>
                         <button
@@ -798,17 +786,17 @@ const SettingsView = () => {
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <h4 className="text-sm font-bold text-phy-text">自定义生图服务（可选）</h4>
-                                <p className="text-xs text-phy-muted mt-1">可填写自己的图像生成接口；平台默认密钥仍然隐藏。</p>
+                                <p className="text-xs text-phy-muted mt-1">可填写自己的图像生成接口和密钥。</p>
                             </div>
                             <button
                                 onClick={() => {
-                                    updateSetting('imageGenApiUrl', '/api/image');
-                                    updateSetting('imageGenModel', 'dall-e-3');
-                                    updateSetting('imageGenApiKey', 'server-managed');
+                                    updateSetting('imageGenApiUrl', BUILTIN_API_CONFIG.imageGenApiUrl);
+                                    updateSetting('imageGenModel', BUILTIN_API_CONFIG.imageGenModel);
+                                    updateSetting('imageGenApiKey', BUILTIN_API_CONFIG.imageGenApiKey);
                                 }}
                                 className="px-3 py-2 rounded-xl border border-phy-border text-xs font-bold text-phy-text hover:bg-phy-glassHover"
                             >
-                                恢复内置
+                                清空配置
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -831,7 +819,7 @@ const SettingsView = () => {
                                 value={isUsingBuiltinImageKey ? '' : (settings.imageGenApiKey || '')}
                                 onChange={(e) => updateSetting('imageGenApiKey', e.target.value)}
                                 className="bg-phy-bg border border-phy-border rounded-xl px-4 py-3 text-sm font-mono text-phy-text outline-none"
-                                placeholder={isUsingBuiltinImageKey ? '平台内置密钥已隐藏' : '输入你的生图 API Key'}
+                                placeholder="输入你的生图 API Key"
                             />
                         </div>
                     </div>
@@ -1332,20 +1320,20 @@ const SettingsView = () => {
                     </div>
                     <div className="space-y-4">
                         <div>
-                            <label className="text-sm font-medium text-phy-text mb-1 block">每次复习上限</label>
+                            <label className="text-sm font-medium text-phy-text mb-1 block">每日复习上限</label>
                             <div className="flex items-center gap-3">
                                 <input
                                     type="number"
-                                    min="0"
-                                    max="200"
-                                    value={settings.maxReviewCards || 0}
-                                    onChange={e => updateSetting('maxReviewCards', parseInt(e.target.value) || 0)}
+                                    min="1"
+                                    max="1000"
+                                    value={settings.maxReviewCards || 200}
+                                    onChange={e => updateSetting('maxReviewCards', Math.max(1, parseInt(e.target.value) || 200))}
                                     className="w-24 px-3 py-2 border border-phy-border rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                                 />
-                                <span className="text-sm text-phy-muted">张 (0 = 不限制)</span>
+                                <span className="text-sm text-phy-muted">张 / 天</span>
                             </div>
                             <p className="text-[11px] text-phy-muted mt-2 ml-1">
-                                首页「开始复习」按钮每次最多复习的卡片数量。设为 0 则复习全部到期卡片。
+                                控制今日复习队列最多纳入多少张到期卡片，避免一次聚集过多。默认 200 张。
                             </p>
                         </div>
                     </div>
