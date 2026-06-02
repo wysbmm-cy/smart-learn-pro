@@ -6,11 +6,12 @@ import rehypeRaw from 'rehype-raw';
 import {
     NotebookPen, Plus, Search, Trash2, Folder, FolderPlus,
     PanelLeft, FileDown, ChevronRight, ChevronDown, Bookmark,
-    ArrowLeft, MoreVertical, LayoutGrid, ListFilter, FileText, Check, Tag, CalendarDays, Link2
+    ArrowLeft, MoreVertical, LayoutGrid, ListFilter, FileText, Check, Tag, CalendarDays, Link2,
+    Network, Sparkles, Loader2, X, FilePlus2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { saveHighlight, getFolders, saveFolder } from '../services/db';
-import { chatNoteKnowledgeLinking } from '../services/ai';
+import { chatNoteKnowledgeLinking, generateNoteMindMap } from '../services/ai';
 import { getTodayNotesFolderName, isDateNoteTag, normalizeNoteTags } from '../utils/noteFolders';
 import { parseWikiLinks, parseWikiLinkLabel, resolveWikiTarget } from '../utils/noteLinks';
 import { parseKnowledgeBlocks } from '../utils/knowledgeLinking';
@@ -100,6 +101,8 @@ const NotesView = ({ params }) => {
     const [knowledgeAiInput, setKnowledgeAiInput] = useState('请先帮我挑出这篇笔记里最值得接入写作/翻译的内容。');
     const [knowledgeSelectedMap, setKnowledgeSelectedMap] = useState({});
     const [isKnowledgeAiRunning, setIsKnowledgeAiRunning] = useState(false);
+    const [showMindMap, setShowMindMap] = useState(false);
+    const [isMindMapGenerating, setIsMindMapGenerating] = useState(false);
     const [showLinkToolBar, setShowLinkToolBar] = useState(() => {
         try {
             return localStorage.getItem(NOTE_LINK_TOOLBAR_HIDDEN_KEY) !== '1';
@@ -376,6 +379,84 @@ const NotesView = ({ params }) => {
     const getEditingNote = () => (isMobile ? activeNoteForMobile : activeNote);
     const stopMobileScrollPropagation = (event) => {
         event.stopPropagation();
+    };
+
+    const updateNoteImmediately = async (updated) => {
+        setActiveNote(updated);
+        setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+        if (isMobile) setViewingMobileId(updated.id);
+        await saveToNotes(updated);
+    };
+
+    const flattenMindMapToMarkdown = (mindMap) => {
+        if (!mindMap?.nodes?.length) return '';
+        const lines = [
+            `## ${mindMap.title || '思维导图'}`,
+            '',
+            mindMap.summary ? `> ${mindMap.summary}` : ''
+        ].filter(Boolean);
+
+        const walk = (nodes, depth = 0) => {
+            nodes.forEach((node) => {
+                const indent = '  '.repeat(depth);
+                lines.push(`${indent}- ${node.label}${node.note ? `：${node.note}` : ''}`);
+                if (Array.isArray(node.children) && node.children.length > 0) {
+                    walk(node.children, depth + 1);
+                }
+            });
+        };
+        walk(mindMap.nodes);
+        return `${lines.join('\n')}\n`;
+    };
+
+    const handleGenerateMindMap = async () => {
+        const note = getEditingNote();
+        if (!note?.id) {
+            toast.error('请先打开一篇笔记');
+            return;
+        }
+        if (!String(note.content || '').trim()) {
+            toast.error('这篇笔记还没有内容，先写一点再生成思维导图');
+            return;
+        }
+        if (!settings?.apiKey) {
+            toast.error('请先在设置中配置 API Key');
+            return;
+        }
+
+        setIsMindMapGenerating(true);
+        try {
+            const mindMap = await generateNoteMindMap(
+                { title: note.title || '', content: note.content || '' },
+                settings
+            );
+            const updated = { ...note, mindMap, updatedAt: Date.now() };
+            await updateNoteImmediately(updated);
+            setShowMindMap(true);
+            toast.success('思维导图已生成');
+        } catch (error) {
+            console.error('generate mind map failed', error);
+            toast.error(`思维导图生成失败: ${error.message}`);
+        } finally {
+            setIsMindMapGenerating(false);
+        }
+    };
+
+    const handleAppendMindMapToNote = async () => {
+        const note = getEditingNote();
+        const markdown = flattenMindMapToMarkdown(note?.mindMap);
+        if (!note?.id || !markdown) {
+            toast.error('暂无可追加的思维导图');
+            return;
+        }
+        const existing = String(note.content || '').trimEnd();
+        const updated = {
+            ...note,
+            content: `${existing}\n\n${markdown}`,
+            updatedAt: Date.now()
+        };
+        await updateNoteImmediately(updated);
+        toast.success('已追加到笔记末尾');
     };
 
     const handleManualKnowledgeSync = async (noteInput = null) => {
@@ -1431,6 +1512,109 @@ const NotesView = ({ params }) => {
         );
     };
 
+    const renderMindMapNode = (node, depth = 0) => (
+        <div key={node.id || `${node.label}-${depth}`} className="relative">
+            <div className={`rounded-2xl border px-3 py-2 shadow-sm ${
+                depth === 0
+                    ? 'border-sky-400/40 bg-sky-500/12'
+                    : depth === 1
+                        ? 'border-emerald-400/30 bg-emerald-500/10'
+                        : 'border-phy-border bg-phy-glass/60'
+            }`}>
+                <div className="text-sm font-black text-phy-text leading-snug">{node.label}</div>
+                {node.note ? (
+                    <div className="mt-1 text-[11px] leading-relaxed text-phy-muted">{node.note}</div>
+                ) : null}
+            </div>
+            {Array.isArray(node.children) && node.children.length > 0 ? (
+                <div className="ml-4 mt-2 border-l border-phy-border/70 pl-3 space-y-2">
+                    {node.children.map((child) => renderMindMapNode(child, depth + 1))}
+                </div>
+            ) : null}
+        </div>
+    );
+
+    const renderMindMapModal = () => {
+        const note = getEditingNote();
+        const mindMap = note?.mindMap || null;
+        if (!showMindMap) return null;
+
+        return (
+            <div className="fixed inset-0 z-[145] bg-black/55 backdrop-blur-sm flex items-center justify-center p-3 md:p-6" onClick={() => setShowMindMap(false)}>
+                <div
+                    className="w-full max-w-6xl max-h-[88vh] rounded-3xl border border-phy-border bg-phy-bg shadow-2xl flex flex-col overflow-hidden"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="shrink-0 px-4 md:px-5 py-4 border-b border-phy-border bg-phy-glass/60 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-phy-accent text-xs font-black uppercase tracking-[0.18em]">
+                                <Network size={14} />
+                                <span>AI Mind Map</span>
+                            </div>
+                            <h3 className="mt-1 text-lg md:text-2xl font-black text-phy-text truncate">
+                                {mindMap?.title || `${note?.title || '当前笔记'} 思维导图`}
+                            </h3>
+                            {mindMap?.summary ? (
+                                <p className="mt-1 text-xs md:text-sm text-phy-muted leading-relaxed">{mindMap.summary}</p>
+                            ) : null}
+                        </div>
+                        <button
+                            onClick={() => setShowMindMap(false)}
+                            className="shrink-0 p-2 rounded-xl border border-phy-border text-phy-muted hover:text-phy-text hover:bg-phy-glass"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
+                        {mindMap?.nodes?.length ? (
+                            <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
+                                <div className="rounded-3xl border border-phy-accent/30 bg-phy-accentGlass/50 p-4 h-fit">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-phy-accent mb-2">Core</div>
+                                    <div className="text-xl font-black text-phy-text leading-tight">{mindMap.title || note?.title || '思维导图'}</div>
+                                    {mindMap.summary ? <div className="mt-3 text-xs leading-relaxed text-phy-muted">{mindMap.summary}</div> : null}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                    {mindMap.nodes.map((node) => renderMindMapNode(node, 0))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="py-20 text-center text-phy-muted">
+                                <Network size={48} className="mx-auto opacity-40 mb-3" />
+                                <div className="text-sm font-bold">还没有思维导图</div>
+                                <div className="text-xs mt-1">点击生成后，AI 会根据当前笔记整理复习结构。</div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="shrink-0 border-t border-phy-border bg-phy-glass/60 px-4 md:px-5 py-3 flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+                        <div className="text-[11px] text-phy-muted">
+                            {mindMap?.generatedAt ? `生成时间：${new Date(mindMap.generatedAt).toLocaleString()}` : '生成后会保存到当前笔记。'}
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleGenerateMindMap}
+                                disabled={isMindMapGenerating}
+                                className="px-3 py-2 rounded-xl border border-sky-400/30 bg-sky-500/10 text-xs font-black text-sky-200 disabled:opacity-60 inline-flex items-center gap-1.5"
+                            >
+                                {isMindMapGenerating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                重新生成
+                            </button>
+                            <button
+                                onClick={handleAppendMindMapToNote}
+                                disabled={!mindMap?.nodes?.length}
+                                className="px-3 py-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 text-xs font-black text-emerald-200 disabled:opacity-50 inline-flex items-center gap-1.5"
+                            >
+                                <FilePlus2 size={14} />
+                                追加到笔记
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // --- MOBILE VIEW ---
     if (isMobile && viewingMobileId) {
         const note = activeNoteForMobile;
@@ -1462,6 +1646,17 @@ const NotesView = ({ params }) => {
                         )}
                         <button onClick={() => setShowMobileBacklinks(true)} className="p-2 text-phy-muted rounded-full hover:bg-phy-glass">
                             <Link2 size={18} />
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (note?.mindMap) setShowMindMap(true);
+                                else handleGenerateMindMap();
+                            }}
+                            disabled={isMindMapGenerating}
+                            className="p-2 text-sky-500 rounded-full hover:bg-phy-glass disabled:opacity-60"
+                            title="AI 思维导图"
+                        >
+                            {isMindMapGenerating ? <Loader2 size={18} className="animate-spin" /> : <Network size={18} />}
                         </button>
                          <button 
                             onClick={async () => {
@@ -1628,6 +1823,7 @@ const NotesView = ({ params }) => {
                 {renderDuplicatePicker()}
                 {renderPreviewPopup()}
                 {renderKnowledgeAiModal()}
+                {renderMindMapModal()}
             </div>
         );
     }
@@ -1883,6 +2079,22 @@ const NotesView = ({ params }) => {
                                     ))}
                                 </div>
                                 <button
+                                    onClick={() => {
+                                        if (activeNote?.mindMap) setShowMindMap(true);
+                                        else handleGenerateMindMap();
+                                    }}
+                                    disabled={isMindMapGenerating}
+                                    className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-colors inline-flex items-center gap-1.5 ${
+                                        activeNote?.mindMap
+                                            ? 'border-sky-400/40 text-sky-300 bg-sky-500/10'
+                                            : 'border-phy-border text-phy-muted hover:text-sky-300 hover:border-sky-400/30'
+                                    } disabled:opacity-60`}
+                                    title="AI 生成思维导图"
+                                >
+                                    {isMindMapGenerating ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
+                                    <span>Mind Map</span>
+                                </button>
+                                <button
                                     onClick={() => setShowDesktopBacklinks(prev => !prev)}
                                     className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-colors ${
                                         showDesktopBacklinks
@@ -1970,6 +2182,7 @@ const NotesView = ({ params }) => {
             {renderDuplicatePicker()}
             {renderPreviewPopup()}
             {renderKnowledgeAiModal()}
+            {renderMindMapModal()}
         </div>
     );
 };

@@ -3,6 +3,7 @@ import { saveHistory, getHistory, deleteHistory, saveFile, getFiles, getFile, de
 import { generateDailySummaryImage, generateStoryComic } from '../services/ai';
 import { normalizeNoteTags, resolveTodayNotesFolderName } from '../utils/noteFolders';
 import { parseKnowledgeBlocks, normalizeKnowledgeLinkingSettings, getDefaultKnowledgeLinkingSettings, upsertTranslationLinkedExamplesForNote, removeTranslationLinkedExamplesByNoteId } from '../utils/knowledgeLinking';
+import { DEFAULT_MOBILE_BOTTOM_TAB_IDS, normalizeMobileBottomTabs } from '../utils/mobileNavigation';
 import { FSRS, Rating, createEmptyCard, State, generatorParameters } from 'ts-fsrs';
 
 // ===== FSRS Algorithm Setup =====
@@ -169,6 +170,7 @@ Output Format: Markdown (Strictly follow this structure):
     pomodoroFocus: 25,
     pomodoroBreak: 5,
     customStyles: [],
+    mobileBottomTabs: DEFAULT_MOBILE_BOTTOM_TAB_IDS,
     knowledgeLinking: getDefaultKnowledgeLinkingSettings()
 };
 
@@ -257,6 +259,7 @@ const normalizePublicApiDefaults = (input = {}) => {
     }
 
     next.apiProfiles = Array.isArray(next.apiProfiles) ? next.apiProfiles : [];
+    next.mobileBottomTabs = normalizeMobileBottomTabs(next.mobileBottomTabs);
     return next;
 };
 
@@ -922,6 +925,7 @@ export const AppProvider = ({ children }) => {
             content: noteObj.content || "",
             folder: folderName || "Uncategorized",
             tags,
+            ...(noteObj.mindMap ? { mindMap: noteObj.mindMap } : {}),
             updatedAt: Date.now()
         };
         await saveNote(record);

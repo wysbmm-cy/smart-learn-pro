@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash, Loader2, Sparkles, Wand2 } from 'lucide-react';
+import { Settings, Server, Wifi, Box, CheckCircle, X, Check, Save, Mic, Volume2, Download, Database, Palette, Image as ImageIcon, Upload, Trash2, Clock, Plus, BookMarked, Hash, Loader2, Sparkles, Wand2, Smartphone, RotateCcw, Home, BookOpen, NotebookPen, Layers, Target, PenTool, FileQuestion, Share2, FolderOpen, PlayCircle, Languages, Headphones, Route } from 'lucide-react';
 import { BUILTIN_API_CONFIG, useApp } from '../context/AppContext';
 import { checkConnection, checkAudioConnection, checkTTSConnection, checkImageGenConnection, optimizePromptTemplate } from '../services/ai';
 import KnowledgeLinkingSettingsCard from '../components/KnowledgeLinkingSettingsCard';
+import { DEFAULT_MOBILE_BOTTOM_TAB_IDS, MOBILE_BOTTOM_TAB_LIMIT, MOBILE_NAV_ITEMS, normalizeMobileBottomTabs } from '../utils/mobileNavigation';
 
 // Navigation sections for quick jump
 const sections = [
@@ -12,6 +13,7 @@ const sections = [
     { id: 'image', label: '总结生图', icon: ImageIcon },
     { id: 'system', label: 'AI 指令', icon: Settings },
     { id: 'tools', label: '效率工具', icon: Clock },
+    { id: 'mobile_nav', label: '手机底栏', icon: Smartphone },
     { id: 'styles', label: '漫画风格', icon: BookMarked },
     { id: 'drills', label: '智能练习', icon: Hash },
     { id: 'review', label: '复习设置', icon: Clock },
@@ -52,6 +54,23 @@ const MIMO_TTS_BODY = `{
     "voice": "{{voice}}"
   }
 }`;
+
+const MOBILE_NAV_ICON_MAP = {
+    home: Home,
+    bookOpen: BookOpen,
+    layers: Layers,
+    target: Target,
+    penTool: PenTool,
+    mic: Mic,
+    notebookPen: NotebookPen,
+    languages: Languages,
+    headphones: Headphones,
+    route: Route,
+    upload: Upload,
+    playCircle: PlayCircle,
+    share2: Share2,
+    folderOpen: FolderOpen
+};
 
 const SettingsView = () => {
     const { settings, updateSetting, exportUserData, saveFile, deleteFile, addCustomStyle, removeCustomStyle, theme, setTheme } = useApp();
@@ -329,6 +348,37 @@ const SettingsView = () => {
         if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+    };
+
+    const mobileBottomTabIds = normalizeMobileBottomTabs(settings.mobileBottomTabs);
+    const mobileBottomTabIdSet = new Set(mobileBottomTabIds);
+    const isMobileTabLimitReached = mobileBottomTabIds.length >= MOBILE_BOTTOM_TAB_LIMIT;
+
+    const updateMobileBottomTabs = (nextIds) => {
+        updateSetting('mobileBottomTabs', normalizeMobileBottomTabs(nextIds));
+    };
+
+    const toggleMobileBottomTab = (id) => {
+        if (mobileBottomTabIdSet.has(id)) {
+            if (mobileBottomTabIds.length <= 1) return;
+            updateMobileBottomTabs(mobileBottomTabIds.filter((itemId) => itemId !== id));
+            return;
+        }
+        if (isMobileTabLimitReached) return;
+        updateMobileBottomTabs([...mobileBottomTabIds, id]);
+    };
+
+    const moveMobileBottomTab = (id, direction) => {
+        const index = mobileBottomTabIds.indexOf(id);
+        const targetIndex = index + direction;
+        if (index < 0 || targetIndex < 0 || targetIndex >= mobileBottomTabIds.length) return;
+        const next = [...mobileBottomTabIds];
+        [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+        updateMobileBottomTabs(next);
+    };
+
+    const resetMobileBottomTabs = () => {
+        updateSetting('mobileBottomTabs', DEFAULT_MOBILE_BOTTOM_TAB_IDS);
     };
 
     return (
@@ -966,6 +1016,112 @@ const SettingsView = () => {
                                 <option value="500">500 词</option>
                             </select>
                             <p className="text-[11px] text-phy-muted mt-2 ml-1">限制每次批量导入提取的最大词汇数量，设置上限可加快处理速度</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Mobile Bottom Navigation Settings */}
+                <div id="mobile_nav" className="bg-phy-glass rounded-[2rem] p-8 shadow-sm border border-phy-border scroll-mt-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-phy-border pb-4 mb-6">
+                        <div className="flex items-center gap-3 text-phy-text font-bold">
+                            <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
+                                <Smartphone size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg">手机底部菜单栏</h3>
+                                <p className="text-xs text-phy-muted mt-1">选择常用功能并调整顺序，底部会一直保留“菜单”入口。</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={resetMobileBottomTabs}
+                            className="self-start sm:self-auto px-4 py-2 rounded-xl border border-phy-border text-sm font-bold text-phy-muted hover:text-phy-text hover:bg-phy-bg transition-all flex items-center gap-2"
+                        >
+                            <RotateCcw size={16} />
+                            恢复默认
+                        </button>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div>
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                                <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider">
+                                    当前底栏顺序
+                                </label>
+                                <span className="text-xs text-phy-muted">{mobileBottomTabIds.length}/{MOBILE_BOTTOM_TAB_LIMIT}</span>
+                            </div>
+                            <div className="space-y-2">
+                                {mobileBottomTabIds.map((id, index) => {
+                                    const item = MOBILE_NAV_ITEMS.find((option) => option.id === id);
+                                    if (!item) return null;
+                                    const Icon = MOBILE_NAV_ICON_MAP[item.icon] || Smartphone;
+                                    return (
+                                        <div key={id} className="flex items-center gap-3 rounded-2xl border border-phy-border bg-phy-bg/50 px-3 py-3">
+                                            <div className="w-8 h-8 rounded-xl bg-phy-accentGlass text-phy-accent flex items-center justify-center shrink-0">
+                                                <Icon size={17} />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-sm font-bold text-phy-text truncate">{item.label}</div>
+                                                <div className="text-[11px] text-phy-muted">显示为：{item.shortLabel || item.label}</div>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveMobileBottomTab(id, -1)}
+                                                    disabled={index === 0}
+                                                    className="px-2 py-1 rounded-lg text-xs font-bold border border-phy-border text-phy-muted disabled:opacity-30 hover:bg-phy-glass"
+                                                >
+                                                    上移
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveMobileBottomTab(id, 1)}
+                                                    disabled={index === mobileBottomTabIds.length - 1}
+                                                    className="px-2 py-1 rounded-lg text-xs font-bold border border-phy-border text-phy-muted disabled:opacity-30 hover:bg-phy-glass"
+                                                >
+                                                    下移
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-phy-muted uppercase tracking-wider mb-3">
+                                可选功能
+                            </label>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {MOBILE_NAV_ITEMS.map((item) => {
+                                    const selected = mobileBottomTabIdSet.has(item.id);
+                                    const disabled = !selected && isMobileTabLimitReached;
+                                    const Icon = MOBILE_NAV_ICON_MAP[item.icon] || Smartphone;
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            type="button"
+                                            disabled={disabled}
+                                            onClick={() => toggleMobileBottomTab(item.id)}
+                                            className={`min-h-[74px] rounded-2xl border p-3 text-left transition-all flex flex-col justify-between ${selected
+                                                ? 'border-sky-500/50 bg-sky-500/10 text-sky-500'
+                                                : 'border-phy-border bg-phy-bg/40 text-phy-muted hover:bg-phy-glass hover:text-phy-text'
+                                                } ${disabled ? 'opacity-45 cursor-not-allowed' : ''}`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <Icon size={18} />
+                                                <span className={`w-5 h-5 rounded-full border flex items-center justify-center ${selected ? 'bg-sky-500 border-sky-500 text-white' : 'border-phy-border'}`}>
+                                                    {selected && <Check size={12} strokeWidth={3} />}
+                                                </span>
+                                            </div>
+                                            <span className="text-sm font-bold">{item.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[11px] text-phy-muted mt-3">
+                                最多选择 {MOBILE_BOTTOM_TAB_LIMIT} 个常用入口；完整功能仍可通过底部“菜单”打开。
+                            </p>
                         </div>
                     </div>
                 </div>

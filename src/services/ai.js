@@ -2118,6 +2118,86 @@ ${String(userMessage || '').trim() || '请先给我可接入候选项'}
 };
 
 // 🚀 Smart Coach 2.0: Advanced Planner
+const normalizeMindMapNode = (node, fallbackId = 'node', depth = 0) => {
+  const children = Array.isArray(node?.children) && depth < 3
+    ? node.children.slice(0, 8).map((child, index) => normalizeMindMapNode(child, `${fallbackId}-${index + 1}`, depth + 1))
+    : [];
+
+  return {
+    id: String(node?.id || fallbackId),
+    label: String(node?.label || node?.title || '未命名节点').trim().slice(0, 60),
+    note: String(node?.note || node?.summary || '').trim().slice(0, 220),
+    children
+  };
+};
+
+export const generateNoteMindMap = async (noteInput, settings) => {
+  if (!settings?.apiKey) throw new Error("Missing API Key");
+
+  const title = String(noteInput?.title || '').trim() || 'Untitled Note';
+  const content = String(noteInput?.content || '').trim();
+  if (!content) throw new Error("Empty note content");
+
+  const prompt = `
+你是 VerbaPath 的英语学习思维导图教练。
+请把当前笔记整理成适合复习的思维导图：抓主线、分层、保留英语关键词/例句、用中文解释学习目的。
+
+只返回 JSON，不要 Markdown，不要代码块：
+{
+  "title": "思维导图标题",
+  "summary": "一句中文复习策略",
+  "nodes": [
+    {
+      "id": "n1",
+      "label": "一级主题",
+      "note": "这一支为什么重要",
+      "children": [
+        {
+          "id": "n1-1",
+          "label": "二级要点",
+          "note": "关键词、例句或易错点",
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+
+规则：
+1. 一级主题 3-6 个，每个一级主题下 2-5 个子节点。
+2. label 要短，适合放在节点里；note 用于复习提示。
+3. 如果笔记是词汇/语法，突出：含义、搭配、例句、易混点、考试应用。
+4. 如果笔记是文章/写作素材，突出：中心观点、论据、结构、表达、可迁移用法。
+5. 不要编造笔记中完全没有依据的事实。
+
+笔记标题：${title}
+
+笔记内容：
+${content.slice(0, 8000)}
+`;
+
+  const jsonStr = await fetchFromAI([
+    { role: 'system', content: 'You create concise educational mind maps. Return valid JSON only.' },
+    { role: 'user', content: prompt }
+  ], settings, true);
+
+  const parsed = extractJSON(jsonStr);
+  if (!parsed) throw new Error("AI returned invalid mind map JSON");
+
+  const nodes = Array.isArray(parsed.nodes)
+    ? parsed.nodes.slice(0, 8).map((node, index) => normalizeMindMapNode(node, `n${index + 1}`))
+    : [];
+
+  if (!nodes.length) throw new Error("AI returned an empty mind map");
+
+  return {
+    title: String(parsed.title || `${title} 思维导图`).trim().slice(0, 80),
+    summary: String(parsed.summary || '').trim().slice(0, 260),
+    nodes,
+    generatedAt: Date.now()
+  };
+};
+
 export const generatePlanInsight = async (history, userGoal = null, recentLogs = [], settings) => {
   if (!settings.apiKey) return null;
 

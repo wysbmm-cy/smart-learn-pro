@@ -6,6 +6,7 @@ import ChatSidebar from '../components/ChatSidebar';
 import PomodoroTimer from '../components/PomodoroTimer';
 import GlobalPlayer from '../components/GlobalPlayer';
 import SplitPane from '../components/SplitPane';
+import { MOBILE_NAV_ITEMS, normalizeMobileBottomTabs } from '../utils/mobileNavigation';
 
 import {
     BarChart2, Upload, BookOpen, Activity, Settings, Brain,
@@ -38,6 +39,25 @@ const MobileTab = ({ icon: Icon, label, active, onClick }) => (
         </span>
     </button>
 );
+
+const MOBILE_NAV_ICON_MAP = {
+    home: Home,
+    bookOpen: BookOpen,
+    layers: Layers,
+    target: Target,
+    penTool: PenTool,
+    mic: Mic,
+    notebookPen: NotebookPen,
+    languages: Languages,
+    headphones: Headphones,
+    route: Route,
+    upload: Upload,
+    playCircle: PlayCircle,
+    share2: Share2,
+    folderOpen: FolderOpen
+};
+
+const MOBILE_NAV_META_BY_ID = new Map(MOBILE_NAV_ITEMS.map((item) => [item.id, item]));
 
 const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, onOpenSplit, secondaryContent }) => {
     const { settings } = useApp();
@@ -136,14 +156,17 @@ const Layout = ({ currentView, setCurrentView, children, isSplit, setIsSplit, on
 
     ];
 
-    const mobileBottomTabs = [
-        { id: 'dashboard', icon: Home, label: '首页' },
-        { id: 'exam', icon: BookOpen, label: '阅读与考试' },
-        { id: 'flashcards', icon: Layers, label: '复习' },
-        { id: 'review', icon: Target, label: '记忆曲线' },
-        { id: 'writer', icon: PenTool, label: '写作' },
-        { id: 'coach', icon: Mic, label: '口语' },
-    ];
+    const mobileBottomTabs = normalizeMobileBottomTabs(settings.mobileBottomTabs)
+        .map((id) => {
+            const meta = MOBILE_NAV_META_BY_ID.get(id);
+            if (!meta) return null;
+            return {
+                id,
+                icon: MOBILE_NAV_ICON_MAP[meta.icon] || Home,
+                label: meta.shortLabel || meta.label
+            };
+        })
+        .filter(Boolean);
 
     const currentPageLabel = navItems.find(i => i.id === currentView)?.label?.split(' (')[0] || (currentView === 'settings' ? '设置' : '页面');
 
